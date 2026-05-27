@@ -7,6 +7,8 @@ to the user for review before it is persisted as an ImportFormat.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import re
@@ -84,33 +86,57 @@ def _extract_json(text: str) -> dict:
         return json.loads(match.group(0))
 
 
-def _sanitize(raw: dict, sample_headers: list[str]) -> ImportFormatSuggestion:
+def _sanitize(raw: dict, raw_sample: str) -> ImportFormatSuggestion:
     column_map = raw.get("column_map") or {}
     cleaned: dict[str, str] = {}
     for src, target in column_map.items():
         if not isinstance(src, str) or not isinstance(target, str):
             continue
         if target in SUPPORTED_TARGETS:
-            cleaned[src] = target
+            cleaned[src.strip()] = target
+
+    separator = str(raw.get("separator") or ",")[:4]
+    # Re-detect headers using the separator the model chose, so quoted commas
+    # in a semicolon-CSV don't fool us. Then union with the AI's keys — that
+    # way every column the AI suggested is rendered as a row in the review UI,
+    # even if our parser missed it.
+    detected = _peek_headers(raw_sample, separator=separator if separator != "\\t" else "\t")
+    seen = {h: True for h in detected}
+    for src in cleaned:
+        if src not in seen:
+            detected.append(src)
+            seen[src] = True
+
     return ImportFormatSuggestion(
         source_hint=str(raw.get("source_hint") or "custom")[:64],
-        separator=str(raw.get("separator") or ",")[:4],
+        separator=separator,
         encoding=str(raw.get("encoding") or "utf-8")[:16],
         date_format=str(raw.get("date_format") or "%Y-%m-%d")[:32],
         time_format=str(raw.get("time_format") or "%H:%M")[:32],
         column_map=cleaned,
         default_project_code=(raw.get("default_project_code") or None),
         notes=str(raw.get("notes") or "")[:1024],
-        detected_headers=sample_headers,
+        detected_headers=detected,
     )
 
 
-def _peek_headers(sample: str) -> list[str]:
-    first = sample.splitlines()[0] if sample else ""
-    for sep in (";", ",", "\t", "|"):
-        if sep in first:
-            return [h.strip() for h in first.split(sep)]
-    return [first.strip()] if first else []
+def _peek_headers(sample: str, separator: str | None = None) -> list[str]:
+    """Read the header row using the csv module so quoted fields parse
+    cleanly. If `separator` is supplied we use it; otherwise we sniff
+    the most likely one from the first line."""
+    if not sample:
+        return []
+    if separator is None:
+        first = sample.splitlines()[0]
+        candidates = (",", ";", "\t", "|")
+        separator = max(candidates, key=lambda s: first.count(s))
+        if first.count(separator) == 0:
+            return [first.strip()]
+    reader = csv.reader(io.StringIO(sample), delimiter=separator)
+    try:
+        return [h.strip() for h in next(reader)]
+    except StopIteration:
+        return []
 
 
 def suggest_mapping(raw_text: str) -> ImportFormatSuggestion:
@@ -122,7 +148,6 @@ def suggest_mapping(raw_text: str) -> ImportFormatSuggestion:
         )
 
     sample = _ensure_sample(raw_text, settings.ai_mapping_max_sample_lines)
-    headers = _peek_headers(sample)
 
     # Import lazily so the app still boots when anthropic isn't installed
     from anthropic import Anthropic
@@ -159,4 +184,4 @@ def suggest_mapping(raw_text: str) -> ImportFormatSuggestion:
     if not parts:
         raise AiMappingError("AI returned no text")
     raw = _extract_json("\n".join(parts))
-    return _sanitize(raw, headers)
+    return _sanitize(raw, sample)

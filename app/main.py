@@ -1,8 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
@@ -10,6 +13,8 @@ from app.api import api_router
 from app.config import get_settings
 from app.services.bootstrap import ensure_initial_admin
 from app.web.router import router as web_router
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level.upper())
@@ -37,8 +42,14 @@ app.add_middleware(
 )
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
 
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(api_router)
 app.include_router(web_router)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "icon.svg", media_type="image/svg+xml")
 
 
 @app.get("/healthz", tags=["system"])
