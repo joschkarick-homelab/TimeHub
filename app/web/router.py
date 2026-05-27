@@ -1,8 +1,9 @@
 import json
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +15,7 @@ from app.deps import get_current_user
 from app.models import ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
+from app.services import reports as report_svc
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
 
@@ -40,34 +42,146 @@ def _ctx(request: Request, user: User, **extra) -> dict:
     return {"request": request, "user": user, "ai_enabled": bool(get_settings().anthropic_api_key), **extra}
 
 
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _group_by_day(entries: list[TimeEntry]) -> list[dict]:
+    """Group entries by entry_date (descending) and attach per-day subtotals."""
+    grouped: dict[date, list[TimeEntry]] = {}
+    for e in entries:
+        grouped.setdefault(e.entry_date, []).append(e)
+    days = []
+    for day in sorted(grouped.keys(), reverse=True):
+        items = grouped[day]
+        days.append({
+            "date": day,
+            "entries": items,
+            "total_minutes": sum(e.duration_minutes for e in items),
+        })
+    return days
+
+
 @router.get("/", response_class=HTMLResponse)
-def index(request: Request, db: Session = Depends(get_db)):
+def index(
+    request: Request,
+    db: Session = Depends(get_db),
+    date_from: str | None = None,
+    date_to: str | None = None,
+    project_id: int | None = None,
+):
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    recent = list(
-        db.execute(
-            select(TimeEntry)
-            .where(TimeEntry.user_id == user.id)
-            .order_by(TimeEntry.entry_date.desc(), TimeEntry.id.desc())
-            .limit(20)
-        ).scalars()
+
+    df = _parse_date(date_from)
+    dt = _parse_date(date_to)
+    # Default filter window: this month, so the list is bounded but still useful.
+    if df is None and dt is None and project_id is None:
+        today = date.today()
+        df = today.replace(day=1)
+        dt = today
+
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.user_id == user.id)
+        .order_by(TimeEntry.entry_date.desc(), TimeEntry.id.desc())
     )
+    if df is not None:
+        stmt = stmt.where(TimeEntry.entry_date >= df)
+    if dt is not None:
+        stmt = stmt.where(TimeEntry.entry_date <= dt)
+    if project_id:
+        stmt = stmt.where(TimeEntry.project_id == project_id)
+
+    entries = list(db.execute(stmt).scalars())
+    days = _group_by_day(entries)
+
     projects = list(
         db.execute(select(Project).where(Project.status == "active").order_by(Project.code)).scalars()
     )
     projects_by_id = {p.id: p for p in projects}
-    total_minutes = sum(e.duration_minutes for e in recent)
+    total_minutes = sum(e.duration_minutes for e in entries)
+
+    formats = _visible_formats(db, user) if entries else []
+
     return templates.TemplateResponse(
         "dashboard.html",
         _ctx(
             request,
             user,
-            recent=recent,
+            days=days,
             projects=projects,
             projects_by_id=projects_by_id,
             total_hours=round(total_minutes / 60, 2),
+            entry_count=len(entries),
+            today=date.today().isoformat(),
+            date_from=df.isoformat() if df else "",
+            date_to=dt.isoformat() if dt else "",
+            project_id=project_id or "",
+            formats=formats,
         ),
+    )
+
+
+@router.get("/entries/export", response_class=Response)
+def entries_export(
+    request: Request,
+    db: Session = Depends(get_db),
+    format_id: int = 0,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    project_id: int | None = None,
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+
+    fmt = db.get(ImportFormat, format_id) if format_id else None
+    if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
+        raise HTTPException(status_code=404, detail="format not found")
+
+    df = _parse_date(date_from)
+    dt = _parse_date(date_to)
+    stmt = (
+        select(TimeEntry, Project, User)
+        .join(Project, Project.id == TimeEntry.project_id)
+        .join(User, User.id == TimeEntry.user_id)
+        .where(TimeEntry.user_id == user.id)
+        .order_by(TimeEntry.entry_date, TimeEntry.id)
+    )
+    if df is not None:
+        stmt = stmt.where(TimeEntry.entry_date >= df)
+    if dt is not None:
+        stmt = stmt.where(TimeEntry.entry_date <= dt)
+    if project_id:
+        stmt = stmt.where(TimeEntry.project_id == project_id)
+    rows = list(db.execute(stmt).all())
+
+    try:
+        body, encoding = report_svc.export_via_import_format(
+            rows,
+            fmt.column_map,
+            separator=fmt.separator,
+            encoding=fmt.encoding,
+            date_format=fmt.date_format,
+            time_format=fmt.time_format,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    today = date.today().isoformat()
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in fmt.name)
+    filename = f"timehub-{safe_name}-{today}.csv"
+    return Response(
+        content=body.encode(encoding),
+        media_type=f"text/csv; charset={encoding}",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -288,6 +402,14 @@ async def formats_new_submit(
             status_code=400,
         )
 
+    sep = suggestion.separator if suggestion.separator != "\\t" else "\t"
+    source_rows, target_rows = report_svc.preview_via_import_format(
+        text,
+        suggestion.column_map,
+        separator=sep,
+        date_format=suggestion.date_format,
+        time_format=suggestion.time_format,
+    )
     return templates.TemplateResponse(
         "import_format_review.html",
         _ctx(
@@ -295,7 +417,9 @@ async def formats_new_submit(
             user,
             name=name,
             suggestion=suggestion,
-            sample_preview="\n".join(text.splitlines()[:10]),
+            source_rows=source_rows,
+            target_rows=target_rows,
+            target_fields=sorted(SUPPORTED_TARGETS),
             targets=sorted(SUPPORTED_TARGETS),
         ),
     )
@@ -431,9 +555,10 @@ async def import_run(
         return RedirectResponse(
             url=f"/import?error={e}", status_code=status.HTTP_302_FOUND
         )
-    summary = (
-        f"{result['created']}+importiert,+{result['failed']}+Fehler"
-        if isinstance(result, dict)
-        else "fertig"
-    )
+    parts = [f"{result['created']} importiert"]
+    if result.get("created_projects"):
+        parts.append(f"{len(result['created_projects'])} neue Projekte ({', '.join(result['created_projects'])})")
+    if result["failed"]:
+        parts.append(f"{result['failed']} Fehler")
+    summary = ", ".join(parts).replace(" ", "+")
     return RedirectResponse(url=f"/import?result={summary}", status_code=status.HTTP_302_FOUND)

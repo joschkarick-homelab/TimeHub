@@ -2,8 +2,9 @@
 {% block content %}
 <div class="grid md:grid-cols-3 gap-4 mb-6">
   <div class="bg-white border border-slate-200 rounded-lg p-4">
-    <div class="text-sm text-slate-500">Letzte 20 Einträge</div>
+    <div class="text-sm text-slate-500">Gefilterte Einträge</div>
     <div class="text-3xl font-semibold mt-1">{{ total_hours }} h</div>
+    <div class="text-xs text-slate-500">{{ entry_count }} Einträge</div>
   </div>
   <div class="bg-white border border-slate-200 rounded-lg p-4">
     <div class="text-sm text-slate-500">Aktive Projekte</div>
@@ -18,14 +19,17 @@
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Neuer Eintrag</h2>
+  {# Uniform field height (h-10) so the select, inputs and the submit button all match. #}
   <form method="post" action="/entries" class="grid sm:grid-cols-5 gap-3 items-end">
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Datum</label>
-      <input name="entry_date" type="date" required class="w-full border border-slate-300 rounded px-2 py-1.5" />
+      <input name="entry_date" type="date" required value="{{ today }}"
+             class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Projekt</label>
-      <select name="project_id" required class="w-full border border-slate-300 rounded px-2 py-1.5">
+      <select name="project_id" required
+              class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
         {% for p in projects %}
           <option value="{{ p.id }}">{{ p.code }} – {{ p.name }}</option>
         {% endfor %}
@@ -34,21 +38,81 @@
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Dauer (Min, ¼-Std)</label>
       <input name="duration_minutes" type="number" step="15" min="15" value="60" required
-             class="w-full border border-slate-300 rounded px-2 py-1.5" />
+             class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Beschreibung</label>
-      <input name="description" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+      <input name="description" class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
-    <button class="sm:col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded py-2 font-medium">
-      Speichern
-    </button>
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1 invisible">_</label>
+      <button class="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
+        Speichern
+      </button>
+    </div>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-3">Filter</h2>
+  <form method="get" action="/" class="grid sm:grid-cols-5 gap-3 items-end">
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Von</label>
+      <input type="date" name="date_from" value="{{ date_from }}"
+             class="w-full h-10 border border-slate-300 rounded px-2" />
+    </div>
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Bis</label>
+      <input type="date" name="date_to" value="{{ date_to }}"
+             class="w-full h-10 border border-slate-300 rounded px-2" />
+    </div>
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium mb-1">Projekt</label>
+      <select name="project_id" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        <option value="">— alle —</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}" {% if project_id and p.id == project_id %}selected{% endif %}>
+            {{ p.code }} – {{ p.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-1 flex gap-2">
+      <button class="flex-1 h-10 bg-slate-800 hover:bg-slate-900 text-white rounded font-medium">
+        Filtern
+      </button>
+      <a href="/" class="h-10 px-3 inline-flex items-center text-sm text-slate-600 hover:underline">
+        Zurücksetzen
+      </a>
+    </div>
   </form>
 </section>
 
 <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
-  <h2 class="font-semibold p-5 pb-3">Letzte Einträge</h2>
-  {% if recent %}
+  <div class="flex items-center justify-between p-5 pb-3 gap-3 flex-wrap">
+    <h2 class="font-semibold">Einträge (gruppiert nach Tag)</h2>
+    {% if days and formats %}
+      <form method="get" action="/entries/export" class="flex items-center gap-2">
+        <input type="hidden" name="date_from" value="{{ date_from }}" />
+        <input type="hidden" name="date_to" value="{{ date_to }}" />
+        <input type="hidden" name="project_id" value="{{ project_id }}" />
+        <label class="text-xs text-slate-500">Export als</label>
+        <select name="format_id" required
+                class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
+          {% for f in formats %}
+            <option value="{{ f.id }}">
+              {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <button class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">
+          ⬇ Filter exportieren
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  {% if days %}
   <table class="w-full text-sm">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
@@ -61,29 +125,39 @@
       </tr>
     </thead>
     <tbody>
-      {% for e in recent %}
-        {% set p = projects_by_id.get(e.project_id) %}
-        <tr class="border-t border-slate-100">
-          <td class="px-4 py-2">{{ e.entry_date }}</td>
-          <td class="px-4 py-2">
-            {% if p %}
-              <span class="inline-block w-2 h-2 rounded-full align-middle"
-                    style="background: {{ p.color }}"></span>
-              {{ p.code }} – {{ p.name }}
-            {% else %}
-              #{{ e.project_id }}
-            {% endif %}
+      {% for day in days %}
+        {% for e in day.entries %}
+          {% set p = projects_by_id.get(e.project_id) %}
+          <tr class="border-t border-slate-100">
+            <td class="px-4 py-2">{{ e.entry_date }}</td>
+            <td class="px-4 py-2">
+              {% if p %}
+                <span class="inline-block w-2 h-2 rounded-full align-middle"
+                      style="background: {{ p.color }}"></span>
+                {{ p.code }} – {{ p.name }}
+              {% else %}
+                #{{ e.project_id }}
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
+            <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
+            <td class="px-4 py-2">{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</td>
+            <td class="px-4 py-2">{{ e.sync_status }}</td>
+          </tr>
+        {% endfor %}
+        <tr class="bg-slate-50 border-t border-slate-200 text-slate-700 text-xs">
+          <td class="px-4 py-1.5 font-medium">Σ {{ day.date }}</td>
+          <td class="px-4 py-1.5">{{ day.entries|length }} Einträge</td>
+          <td class="px-4 py-1.5 tabular-nums font-semibold">
+            {{ '%.2f'|format(day.total_minutes / 60) }} h
           </td>
-          <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
-          <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
-          <td class="px-4 py-2">{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</td>
-          <td class="px-4 py-2">{{ e.sync_status }}</td>
+          <td colspan="3"></td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="px-5 pb-5 text-slate-500">Noch keine Einträge — leg den ersten oben an.</p>
+  <p class="px-5 pb-5 text-slate-500">Keine Einträge im gewählten Zeitraum.</p>
   {% endif %}
 </section>
 {% endblock %}

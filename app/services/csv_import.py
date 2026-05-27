@@ -1,8 +1,9 @@
 import csv
 import io
+import re
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Project, TimeEntry
@@ -16,6 +17,12 @@ SUPPORTED_TARGETS = {
 }
 
 
+def _normalize_code(code: str) -> str:
+    """Loose key for matching project codes: strip, upper, collapse whitespace
+    and dashes/underscores."""
+    return re.sub(r"[\s_-]+", "", code.strip().upper())
+
+
 def import_csv(
     db: Session,
     user_id: int,
@@ -27,6 +34,7 @@ def import_csv(
     encoding: str = "utf-8",
     date_format: str = "%Y-%m-%d",
     time_format: str = "%H:%M",
+    auto_create_projects: bool = True,
 ) -> dict:
     bad_targets = set(column_map.values()) - SUPPORTED_TARGETS
     if bad_targets:
@@ -37,16 +45,39 @@ def import_csv(
 
     created_ids: list[int] = []
     errors: list[dict] = []
-    project_cache: dict[str, Project | None] = {}
+    created_projects: list[str] = []
+    project_cache: dict[str, Project] = {}
+    # Map of normalized code -> existing Project, so "ACME 1" matches "acme-1"
+    norm_index: dict[str, Project] = {
+        _normalize_code(p.code): p
+        for p in db.execute(select(Project)).scalars()
+    }
 
-    def get_project(code: str | None) -> Project | None:
+    def get_or_create_project(code: str | None) -> Project | None:
+        if not code:
+            return None
+        code = code.strip()
         if not code:
             return None
         if code in project_cache:
             return project_cache[code]
-        proj = db.execute(select(Project).where(Project.code == code)).scalar_one_or_none()
-        project_cache[code] = proj
-        return proj
+        normalized = _normalize_code(code)
+        existing = norm_index.get(normalized)
+        if existing is None:
+            # exact lookup as a final guard (case where index missed because the
+            # DB has a row created after import started)
+            existing = db.execute(
+                select(Project).where(func.upper(Project.code) == code.upper())
+            ).scalar_one_or_none()
+        if existing is None and auto_create_projects:
+            existing = Project(code=code, name=code)
+            db.add(existing)
+            db.flush()
+            norm_index[normalized] = existing
+            created_projects.append(code)
+        if existing is not None:
+            project_cache[code] = existing
+        return existing
 
     for row_no, raw_row in enumerate(reader, start=2):
         try:
@@ -80,7 +111,7 @@ def import_csv(
                 raise ValueError("could not derive a positive duration")
 
             code = mapped.get("project_code") or default_project_code
-            project = get_project(code)
+            project = get_or_create_project(code)
             if project is None:
                 raise ValueError(f"unknown project_code '{code}'")
 
@@ -107,4 +138,10 @@ def import_csv(
             errors.append({"row": row_no, "error": str(e), "data": raw_row})
 
     db.commit()
-    return {"created": len(created_ids), "failed": len(errors), "ids": created_ids, "errors": errors}
+    return {
+        "created": len(created_ids),
+        "failed": len(errors),
+        "ids": created_ids,
+        "errors": errors,
+        "created_projects": created_projects,
+    }

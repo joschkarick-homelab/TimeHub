@@ -2,7 +2,7 @@ import csv
 import io
 import json
 from collections.abc import Iterable
-from datetime import time
+from datetime import datetime, time
 
 from app.models import CsvTemplate, Project, TimeEntry, User
 
@@ -102,6 +102,129 @@ def to_csv(rows: Iterable[Row], template: CsvTemplate | None = None) -> tuple[st
 
 def total_hours(rows: Iterable[Row]) -> float:
     return round(sum(e.duration_minutes for e, _, _ in rows) / 60, 2)
+
+
+def _format_value(field: str, entry: TimeEntry, project: Project, user: User,
+                  date_fmt: str, time_fmt: str) -> str:
+    """Render a TimeHub target field as a string for CSV export."""
+    if field == "entry_date":
+        return entry.entry_date.strftime(date_fmt)
+    if field == "start_time":
+        return entry.start_time.strftime(time_fmt) if entry.start_time else ""
+    if field == "end_time":
+        return entry.end_time.strftime(time_fmt) if entry.end_time else ""
+    if field == "duration_minutes":
+        return str(entry.duration_minutes)
+    if field == "duration_hours":
+        return f"{entry.duration_minutes / 60:.2f}".replace(".", ",")
+    if field == "project_code":
+        return project.code
+    if field == "description":
+        return entry.description or ""
+    if field == "tags":
+        return ",".join(entry.tags or [])
+    if field == "sync_target":
+        return entry.sync_target_override or project.default_sync_target
+    if field == "external_ref":
+        return entry.external_ref or ""
+    return ""
+
+
+def export_via_import_format(
+    rows: Iterable[Row],
+    column_map: dict[str, str],
+    *,
+    separator: str = ",",
+    encoding: str = "utf-8",
+    date_format: str = "%Y-%m-%d",
+    time_format: str = "%H:%M",
+) -> tuple[str, str]:
+    """Emit the same shape of CSV that the ImportFormat would consume.
+
+    The ImportFormat's column_map is `source_header -> target_field`. To
+    export, we walk the same mapping in reverse and emit a CSV with the
+    original headers, filled from each entry's target_field value. This
+    makes formats round-trippable: export A, re-import with the same format,
+    end up with the same entries.
+
+    If multiple source headers map to the same target field, only the first
+    is emitted (the rest would be redundant duplicates).
+    """
+    if not column_map:
+        raise ValueError("Format has no column mapping — cannot export")
+
+    seen_targets: set[str] = set()
+    columns: list[tuple[str, str]] = []  # (source_header, target_field)
+    for src, target in column_map.items():
+        if target in seen_targets:
+            continue
+        seen_targets.add(target)
+        columns.append((src, target))
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=separator, quoting=csv.QUOTE_MINIMAL,
+                        lineterminator="\n")
+    writer.writerow([src for src, _ in columns])
+    for entry, project, user in rows:
+        writer.writerow([
+            _format_value(target, entry, project, user, date_format, time_format)
+            for _src, target in columns
+        ])
+    return buf.getvalue(), encoding
+
+
+def preview_via_import_format(
+    raw_text: str,
+    column_map: dict[str, str],
+    *,
+    separator: str = ",",
+    date_format: str = "%Y-%m-%d",
+    time_format: str = "%H:%M",
+    max_rows: int = 5,
+) -> tuple[list[dict], list[dict]]:
+    """For the format-review screen: parse the first N rows of the user's
+    sample and produce two parallel lists — the raw source row and what
+    TimeHub would store after the column_map is applied. Used purely to
+    show "source -> target" side-by-side so the user can sanity-check
+    the mapping before saving."""
+    reader = csv.DictReader(io.StringIO(raw_text), delimiter=separator)
+    source_rows: list[dict] = []
+    target_rows: list[dict] = []
+    for raw_row in reader:
+        if len(source_rows) >= max_rows:
+            break
+        source_rows.append({k: (v or "") for k, v in raw_row.items()})
+        target: dict[str, str] = {}
+        for src, field in column_map.items():
+            val = (raw_row.get(src) or "").strip()
+            if not val:
+                continue
+            if field == "entry_date":
+                try:
+                    target[field] = datetime.strptime(val, date_format).date().isoformat()
+                except ValueError:
+                    target[field] = f"⚠ {val} (Format?)"
+            elif field in {"start_time", "end_time"}:
+                try:
+                    target[field] = datetime.strptime(val, time_format).time().isoformat(
+                        timespec="minutes"
+                    )
+                except ValueError:
+                    target[field] = f"⚠ {val} (Format?)"
+            elif field == "duration_minutes":
+                try:
+                    target[field] = f"{int(float(val.replace(',', '.')))} min"
+                except ValueError:
+                    target[field] = f"⚠ {val}"
+            elif field == "duration_hours":
+                try:
+                    target[field] = f"{float(val.replace(',', '.')):.2f} h"
+                except ValueError:
+                    target[field] = f"⚠ {val}"
+            else:
+                target[field] = val
+        target_rows.append(target)
+    return source_rows, target_rows
 
 
 def parse_time_str(value: str) -> time | None:

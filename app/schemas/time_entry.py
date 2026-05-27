@@ -80,3 +80,4 @@ class BulkResult(BaseModel):
     failed: int
     errors: list[dict] = Field(default_factory=list)
     ids: list[int] = Field(default_factory=list)
+    created_projects: list[str] = Field(default_factory=list)

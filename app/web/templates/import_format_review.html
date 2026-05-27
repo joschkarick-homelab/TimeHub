@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">Neues Importformat – Schritt 2: Vorschlag prüfen</h1>
+<h1 class="text-xl font-semibold mb-1">Neues Importformat – Schritt 2: Vorschlag prüfen</h1>
+<p class="text-sm text-slate-600 mb-4">
+  Claude hat das Mapping unten vorausgefüllt. Wenn alles passt, einfach speichern —
+  Anpassungen sind nur nötig, wenn eine Zuordnung falsch ist.
+</p>
 
 <div class="grid lg:grid-cols-2 gap-6">
   <section class="bg-white border border-slate-200 rounded-lg p-5">
@@ -16,49 +20,56 @@
         <label class="text-sm">
           <span class="block font-medium mb-1">Quelle</span>
           <input name="source_hint" value="{{ suggestion.source_hint }}"
-                 class="w-full border border-slate-300 rounded px-2 py-1.5" />
+                 class="w-full h-9 border border-slate-300 rounded px-2" />
         </label>
         <label class="text-sm">
           <span class="block font-medium mb-1">Trennzeichen</span>
           <input name="separator" value="{{ suggestion.separator }}" required
-                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+                 class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
         </label>
         <label class="text-sm">
           <span class="block font-medium mb-1">Encoding</span>
           <input name="encoding" value="{{ suggestion.encoding }}"
-                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+                 class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
         </label>
         <label class="text-sm">
           <span class="block font-medium mb-1">Datumsformat</span>
           <input name="date_format" value="{{ suggestion.date_format }}"
-                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+                 class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
         </label>
         <label class="text-sm">
           <span class="block font-medium mb-1">Zeitformat</span>
           <input name="time_format" value="{{ suggestion.time_format }}"
-                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+                 class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
         </label>
         <label class="text-sm">
           <span class="block font-medium mb-1">Default-Projekt-Code (optional)</span>
           <input name="default_project_code" value="{{ suggestion.default_project_code or '' }}"
-                 class="w-full border border-slate-300 rounded px-2 py-1.5" />
+                 class="w-full h-9 border border-slate-300 rounded px-2" />
         </label>
       </div>
 
       <div>
         <span class="block text-sm font-medium mb-1">Spalten-Mapping</span>
         <p class="text-xs text-slate-500 mb-2">
-          Pro erkannter Quell-Spalte ein Zielfeld wählen — „(ignorieren)" lässt die Spalte aus.
+          Eine Zuordnung wurde automatisch vorgeschlagen. Bei Bedarf hier korrigieren —
+          „(ignorieren)" lässt die Spalte aus.
         </p>
         <div class="border border-slate-200 rounded">
           {% if suggestion.detected_headers %}
             {% for header in suggestion.detected_headers %}
-              <div class="grid grid-cols-2 gap-2 px-3 py-1.5 border-b border-slate-100 last:border-0 text-sm">
-                <div class="font-mono truncate" title="{{ header }}">{{ header }}</div>
-                <select data-source="{{ header }}" class="border border-slate-300 rounded px-2 py-1 map-select">
+              {% set suggested = suggestion.column_map.get(header) %}
+              <div class="grid grid-cols-2 gap-2 px-3 py-1.5 border-b border-slate-100 last:border-0 text-sm items-center">
+                <div class="font-mono truncate flex items-center gap-2" title="{{ header }}">
+                  {{ header }}
+                  {% if suggested %}
+                    <span class="text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">KI</span>
+                  {% endif %}
+                </div>
+                <select data-source="{{ header }}" class="h-9 border border-slate-300 rounded px-2 map-select bg-white">
                   <option value="">(ignorieren)</option>
                   {% for t in targets %}
-                    <option value="{{ t }}" {% if suggestion.column_map.get(header) == t %}selected{% endif %}>{{ t }}</option>
+                    <option value="{{ t }}" {% if suggested == t %}selected{% endif %}>{{ t }}</option>
                   {% endfor %}
                 </select>
               </div>
@@ -84,7 +95,7 @@
       {% endif %}
 
       <div class="flex gap-2">
-        <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-2 font-medium">
+        <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
           Speichern
         </button>
         <a href="/import-formats/new" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
@@ -93,8 +104,44 @@
   </section>
 
   <section class="bg-white border border-slate-200 rounded-lg p-5">
-    <h2 class="font-semibold mb-3">Beispiel-Vorschau</h2>
-    <pre class="bg-slate-900 text-slate-100 rounded p-3 text-xs overflow-auto max-h-[28rem]"><code>{{ sample_preview }}</code></pre>
+    <h2 class="font-semibold mb-1">Vorschau: Quelle → Ziel</h2>
+    <p class="text-xs text-slate-500 mb-3">
+      Was beim Import aus den ersten {{ source_rows|length }} Zeilen entsteht.
+      Stimmt das nicht, im Mapping links korrigieren.
+    </p>
+
+    {% if not source_rows %}
+      <p class="text-sm text-slate-500">Keine Daten zum Auswerten — die CSV scheint leer zu sein.</p>
+    {% else %}
+      <div class="space-y-4">
+        {% for i in range(source_rows|length) %}
+          <div class="border border-slate-200 rounded p-3 text-xs">
+            <div class="font-medium text-slate-500 uppercase tracking-wide text-[10px] mb-1">Zeile {{ i + 1 }} (Quelle)</div>
+            <div class="space-y-0.5 mb-3">
+              {% for k, v in source_rows[i].items() %}
+                <div class="flex gap-2">
+                  <span class="font-mono text-slate-400 min-w-32 truncate" title="{{ k }}">{{ k }}</span>
+                  <span class="text-slate-700">{{ v or '—' }}</span>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="font-medium text-emerald-600 uppercase tracking-wide text-[10px] mb-1">→ TimeHub-Eintrag</div>
+            {% if target_rows[i] %}
+              <div class="space-y-0.5">
+                {% for field in target_fields if target_rows[i].get(field) %}
+                  <div class="flex gap-2">
+                    <span class="font-mono text-emerald-700 min-w-32">{{ field }}</span>
+                    <span class="text-slate-900">{{ target_rows[i][field] }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-rose-600">⚠ Keine Felder gemappt — der Eintrag würde nicht importiert.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
   </section>
 </div>
 
