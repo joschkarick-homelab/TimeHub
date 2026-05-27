@@ -33,3 +33,13 @@ class Project(Base):
     )
 
     time_entries: Mapped[list["TimeEntry"]] = relationship(back_populates="project")  # noqa: F821
+
+    @property
+    def display_label(self) -> str:
+        """Human label for dropdowns. Avoids "X – X" when code and name are
+        identical (typical for auto-created projects from CSV imports)."""
+        name = (self.name or "").strip()
+        code = (self.code or "").strip()
+        if not name or name.casefold() == code.casefold():
+            return code
+        return f"{code} – {name}"

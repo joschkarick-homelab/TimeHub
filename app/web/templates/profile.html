@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Mein Profil</h1>
+
+{% if flash %}
+  <div class="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{{ flash }}</div>
+{% endif %}
+{% if error %}
+  <div class="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
+{% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl mb-6">
+  <form method="post" action="/profile" class="space-y-4">
+    <div class="grid sm:grid-cols-2 gap-3">
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Anzeigename</span>
+        <input name="full_name" value="{{ user.full_name }}"
+               class="w-full h-10 border border-slate-300 rounded px-2" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">E-Mail</span>
+        <input value="{{ user.email }}" disabled
+               class="w-full h-10 border border-slate-300 rounded px-2 bg-slate-100 text-slate-500" />
+      </label>
+    </div>
+
+    <fieldset class="border border-slate-200 rounded p-4">
+      <legend class="text-sm font-medium px-1">Salesforce-Anbindung</legend>
+      <p class="text-xs text-slate-500 mb-3">
+        Optional. Wird gebraucht, sobald TimeHub Zeiten in Salesforce/Certinia PSA
+        wegschiebt — siehe <code>docs/salesforce-integration.md</code>. Die
+        Resource im PSA-Datenmodell ist ein <em>Contact</em>, daher die zwei
+        getrennten Felder; sind beide gefüllt, gewinnt die Contact-ID.
+      </p>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Salesforce-User-ID</span>
+          <input name="salesforce_user_id" value="{{ user.salesforce_user_id or '' }}"
+                 placeholder="005..." pattern="[a-zA-Z0-9]{0,18}"
+                 class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
+        </label>
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Salesforce-Contact-ID</span>
+          <input name="salesforce_contact_id" value="{{ user.salesforce_contact_id or '' }}"
+                 placeholder="003..." pattern="[a-zA-Z0-9]{0,18}"
+                 class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
+        </label>
+      </div>
+    </fieldset>
+
+    <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
+      Speichern
+    </button>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+  <h2 class="font-semibold mb-2">Rolle &amp; Status</h2>
+  <dl class="text-sm grid grid-cols-2 gap-y-1">
+    <dt class="text-slate-500">Rolle</dt><dd>{{ 'Admin' if user.is_admin else 'Consultant' }}</dd>
+    <dt class="text-slate-500">Aktiv</dt><dd>{{ 'Ja' if user.is_active else 'Nein' }}</dd>
+    <dt class="text-slate-500">Mitglied seit</dt><dd>{{ user.created_at.date() }}</dd>
+  </dl>
+  <p class="text-xs text-slate-500 mt-3">
+    Rolle und Aktiv-Flag setzt der Admin im
+    <a href="/users" class="text-indigo-600 hover:underline">Nutzer-Reiter</a>.
+  </p>
+</section>
+{% endblock %}

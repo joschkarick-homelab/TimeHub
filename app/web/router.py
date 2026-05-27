@@ -38,8 +38,20 @@ def _maybe_user(request: Request, db: Session) -> User | None:
     return db.get(User, int(payload["sub"]))
 
 
-def _ctx(request: Request, user: User, **extra) -> dict:
-    return {"request": request, "user": user, "ai_enabled": bool(get_settings().anthropic_api_key), **extra}
+_THEMES = {"indigo", "mindsquare", "dark"}
+
+
+def _ctx(request: Request, user: User | None, **extra) -> dict:
+    theme = request.cookies.get("theme")
+    if theme not in _THEMES:
+        theme = "indigo"
+    return {
+        "request": request,
+        "user": user,
+        "theme": theme,
+        "ai_enabled": bool(get_settings().anthropic_api_key),
+        **extra,
+    }
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -242,19 +254,78 @@ def create_entry(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from datetime import date as _date
-
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=400, detail="project not found")
     entry = TimeEntry(
         user_id=user.id,
         project_id=project_id,
-        entry_date=_date.fromisoformat(entry_date),
+        entry_date=date.fromisoformat(entry_date),
         duration_minutes=duration_minutes,
         description=description,
     )
     db.add(entry)
+    db.commit()
+    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
+
+def _owned_entry_or_404(db: Session, entry_id: int, user: User) -> TimeEntry:
+    entry = db.get(TimeEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="entry not found")
+    if entry.user_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail="not your entry")
+    return entry
+
+
+@router.get("/entries/{entry_id}/edit", response_class=HTMLResponse)
+def edit_entry_form(request: Request, entry_id: int, db: Session = Depends(get_db)):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    entry = _owned_entry_or_404(db, entry_id, user)
+    projects = list(
+        db.execute(select(Project).order_by(Project.code)).scalars()
+    )
+    return templates.TemplateResponse(
+        "entry_edit.html",
+        _ctx(request, user, entry=entry, projects=projects),
+    )
+
+
+@router.post("/entries/{entry_id}/edit", response_class=HTMLResponse)
+def edit_entry_submit(
+    request: Request,
+    entry_id: int,
+    entry_date: str = Form(...),
+    project_id: int = Form(...),
+    duration_minutes: int = Form(...),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    entry = _owned_entry_or_404(db, entry_id, user)
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=400, detail="project not found")
+    entry.entry_date = date.fromisoformat(entry_date)
+    entry.project_id = project_id
+    entry.duration_minutes = duration_minutes
+    entry.description = description
+    db.add(entry)
+    db.commit()
+    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/entries/{entry_id}/delete", response_class=HTMLResponse)
+def delete_entry(request: Request, entry_id: int, db: Session = Depends(get_db)):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    entry = _owned_entry_or_404(db, entry_id, user)
+    db.delete(entry)
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -823,3 +894,54 @@ def projects_delete(request: Request, project_id: int, db: Session = Depends(get
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(url="/projects", status_code=status.HTTP_302_FOUND)
+
+
+# -------------------- Settings & profile --------------------
+
+
+@router.post("/settings/theme")
+def set_theme(request: Request, theme: str = Form(...)):
+    if theme not in _THEMES:
+        theme = "indigo"
+    referer = request.headers.get("referer") or "/"
+    resp = RedirectResponse(url=referer, status_code=status.HTTP_302_FOUND)
+    # 1 year cookie; SameSite=lax so it survives the inline form POST.
+    resp.set_cookie("theme", theme, max_age=365 * 24 * 3600, samesite="lax")
+    return resp
+
+
+@router.get("/profile", response_class=HTMLResponse)
+def profile_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    flash: str | None = None,
+    error: str | None = None,
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    return templates.TemplateResponse(
+        "profile.html",
+        _ctx(request, user, flash=flash, error=error),
+    )
+
+
+@router.post("/profile", response_class=HTMLResponse)
+def profile_save(
+    request: Request,
+    full_name: str = Form(""),
+    salesforce_user_id: str = Form(""),
+    salesforce_contact_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user.full_name = full_name.strip()
+    user.salesforce_user_id = salesforce_user_id.strip() or None
+    user.salesforce_contact_id = salesforce_contact_id.strip() or None
+    db.add(user)
+    db.commit()
+    return RedirectResponse(
+        url="/profile?flash=Profil+gespeichert", status_code=status.HTTP_302_FOUND
+    )

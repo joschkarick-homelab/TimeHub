@@ -15,6 +15,12 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # External system mappings for future sync targets. Salesforce PSA needs
+    # a Contact ID (Resource = Contact, not User in the PSA data model);
+    # the User ID is captured too so admins can resolve Contact via the
+    # User->Contact link in SF if they prefer.
+    salesforce_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    salesforce_contact_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -1,11 +1,52 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="{{ theme or 'indigo' }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ title or "TimeHub" }}</title>
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Theme overrides. The base CSS is the default (indigo). The other
+       themes just remap indigo Tailwind utilities to their own palette
+       and, for dark, swap the slate background tones. Keeps the templates
+       free of theme branching. */
+
+    /* --- mindsquare (warm orange) --- exact hex values are a placeholder ---
+       wait for the user's brand-manual to confirm. */
+    [data-theme="mindsquare"] .bg-indigo-500 { background-color: #ff6e1c !important; }
+    [data-theme="mindsquare"] .bg-indigo-600 { background-color: #f06616 !important; }
+    [data-theme="mindsquare"] .hover\:bg-indigo-700:hover { background-color: #d65612 !important; }
+    [data-theme="mindsquare"] .text-indigo-600 { color: #d65612 !important; }
+    [data-theme="mindsquare"] .hover\:text-indigo-600:hover { color: #d65612 !important; }
+    [data-theme="mindsquare"] .border-indigo-200 { border-color: #ffd6b8 !important; }
+
+    /* --- dark --- */
+    html[data-theme="dark"] body { background-color: #0f172a; color: #e2e8f0; }
+    [data-theme="dark"] .bg-white { background-color: #1e293b !important; }
+    [data-theme="dark"] .bg-slate-50 { background-color: #18202f !important; }
+    [data-theme="dark"] .bg-emerald-50 { background-color: #064e3b !important; color: #d1fae5 !important; }
+    [data-theme="dark"] .bg-amber-50 { background-color: #422006 !important; color: #fde68a !important; }
+    [data-theme="dark"] .bg-rose-50 { background-color: #450a0a !important; color: #fecaca !important; }
+    [data-theme="dark"] .border-slate-100 { border-color: #1e293b !important; }
+    [data-theme="dark"] .border-slate-200 { border-color: #334155 !important; }
+    [data-theme="dark"] .border-slate-300 { border-color: #475569 !important; }
+    [data-theme="dark"] .border-emerald-200 { border-color: #047857 !important; }
+    [data-theme="dark"] .border-amber-200 { border-color: #92400e !important; }
+    [data-theme="dark"] .border-rose-200 { border-color: #991b1b !important; }
+    [data-theme="dark"] .text-slate-400 { color: #94a3b8 !important; }
+    [data-theme="dark"] .text-slate-500 { color: #94a3b8 !important; }
+    [data-theme="dark"] .text-slate-600 { color: #cbd5e1 !important; }
+    [data-theme="dark"] .text-slate-700 { color: #e2e8f0 !important; }
+    [data-theme="dark"] .text-slate-900 { color: #f1f5f9 !important; }
+    [data-theme="dark"] .text-emerald-700 { color: #6ee7b7 !important; }
+    [data-theme="dark"] .text-emerald-900 { color: #d1fae5 !important; }
+    [data-theme="dark"] .text-amber-700, [data-theme="dark"] .text-amber-800, [data-theme="dark"] .text-amber-900 { color: #fde68a !important; }
+    [data-theme="dark"] .text-rose-600, [data-theme="dark"] .text-rose-700 { color: #fda4af !important; }
+    [data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+      background-color: #0f172a !important; color: #e2e8f0 !important;
+    }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
   <header class="bg-white border-b border-slate-200">
@@ -23,8 +64,19 @@
           {% if user.is_admin %}
             <a href="/users" class="hover:text-indigo-600">Nutzer</a>
           {% endif %}
+          <a href="/profile" class="hover:text-indigo-600">Profil</a>
           <a href="/docs" class="hover:text-indigo-600">API</a>
-          <span class="text-slate-500">{{ user.email }}</span>
+          <span class="text-slate-500 hidden md:inline">{{ user.email }}</span>
+          {# Theme switcher — POSTs via the small inline form so the
+             selection persists across pages via cookie. #}
+          <form action="/settings/theme" method="post" class="inline">
+            <select name="theme" onchange="this.form.submit()"
+                    class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white">
+              {% for t, label in [('indigo', 'Indigo (default)'), ('mindsquare', 'mindsquare'), ('dark', 'Dark')] %}
+                <option value="{{ t }}" {% if (theme or 'indigo') == t %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </form>
           <form action="/logout" method="post">
             <button class="text-rose-600 hover:underline" type="submit">Logout</button>
           </form>

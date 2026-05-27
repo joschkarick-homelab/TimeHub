@@ -8,6 +8,8 @@ class UserBase(BaseModel):
     full_name: str = ""
     is_admin: bool = False
     is_active: bool = True
+    salesforce_user_id: str | None = None
+    salesforce_contact_id: str | None = None
 
 
 class UserCreate(UserBase):
@@ -19,6 +21,8 @@ class UserUpdate(BaseModel):
     is_admin: bool | None = None
     is_active: bool | None = None
     password: str | None = None
+    salesforce_user_id: str | None = None
+    salesforce_contact_id: str | None = None
 
 
 class UserOut(UserBase):
