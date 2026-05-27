@@ -86,6 +86,14 @@ def _extract_json(text: str) -> dict:
         return json.loads(match.group(0))
 
 
+def _clean_header(h: str) -> str:
+    # Mirror app.services.csv_import._normalize_header so the keys we save in
+    # column_map are byte-for-byte the same as what the importer will see in
+    # row.keys() at import time (utf-8-sig strips BOM at decode anyway, but
+    # the AI itself can return a BOM-prefixed first column).
+    return h.lstrip("﻿").strip()
+
+
 def _sanitize(raw: dict, raw_sample: str) -> ImportFormatSuggestion:
     column_map = raw.get("column_map") or {}
     cleaned: dict[str, str] = {}
@@ -93,7 +101,7 @@ def _sanitize(raw: dict, raw_sample: str) -> ImportFormatSuggestion:
         if not isinstance(src, str) or not isinstance(target, str):
             continue
         if target in SUPPORTED_TARGETS:
-            cleaned[src.strip()] = target
+            cleaned[_clean_header(src)] = target
 
     separator = str(raw.get("separator") or ",")[:4]
     # Re-detect headers using the separator the model chose, so quoted commas
@@ -134,7 +142,7 @@ def _peek_headers(sample: str, separator: str | None = None) -> list[str]:
             return [first.strip()]
     reader = csv.reader(io.StringIO(sample), delimiter=separator)
     try:
-        return [h.strip() for h in next(reader)]
+        return [_clean_header(h) for h in next(reader)]
     except StopIteration:
         return []
 

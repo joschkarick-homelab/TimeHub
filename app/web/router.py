@@ -73,7 +73,7 @@ def index(
     db: Session = Depends(get_db),
     date_from: str | None = None,
     date_to: str | None = None,
-    project_id: int | None = None,
+    project_id: str | None = None,
 ):
     user = _maybe_user(request, db)
     if user is None:
@@ -81,8 +81,14 @@ def index(
 
     df = _parse_date(date_from)
     dt = _parse_date(date_to)
+    project_id_int: int | None = None
+    if project_id:
+        try:
+            project_id_int = int(project_id)
+        except ValueError:
+            project_id_int = None
     # Default filter window: this month, so the list is bounded but still useful.
-    if df is None and dt is None and project_id is None:
+    if df is None and dt is None and project_id_int is None:
         today = date.today()
         df = today.replace(day=1)
         dt = today
@@ -96,8 +102,8 @@ def index(
         stmt = stmt.where(TimeEntry.entry_date >= df)
     if dt is not None:
         stmt = stmt.where(TimeEntry.entry_date <= dt)
-    if project_id:
-        stmt = stmt.where(TimeEntry.project_id == project_id)
+    if project_id_int is not None:
+        stmt = stmt.where(TimeEntry.project_id == project_id_int)
 
     entries = list(db.execute(stmt).scalars())
     days = _group_by_day(entries)
@@ -123,7 +129,7 @@ def index(
             today=date.today().isoformat(),
             date_from=df.isoformat() if df else "",
             date_to=dt.isoformat() if dt else "",
-            project_id=project_id or "",
+            project_id=project_id_int or "",
             formats=formats,
         ),
     )
@@ -133,16 +139,29 @@ def index(
 def entries_export(
     request: Request,
     db: Session = Depends(get_db),
-    format_id: int = 0,
+    # Querystring values come as strings; empty-string "no filter" needs to be
+    # tolerated rather than raising 422. We parse manually.
+    format_id: str = "",
     date_from: str | None = None,
     date_to: str | None = None,
-    project_id: int | None = None,
+    project_id: str | None = None,
 ):
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
 
-    fmt = db.get(ImportFormat, format_id) if format_id else None
+    try:
+        fmt_id_int = int(format_id) if format_id else 0
+    except ValueError:
+        raise HTTPException(status_code=400, detail="format_id must be an integer") from None
+    project_id_int: int | None = None
+    if project_id:
+        try:
+            project_id_int = int(project_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="project_id must be an integer") from None
+
+    fmt = db.get(ImportFormat, fmt_id_int) if fmt_id_int else None
     if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
         raise HTTPException(status_code=404, detail="format not found")
 
@@ -159,8 +178,8 @@ def entries_export(
         stmt = stmt.where(TimeEntry.entry_date >= df)
     if dt is not None:
         stmt = stmt.where(TimeEntry.entry_date <= dt)
-    if project_id:
-        stmt = stmt.where(TimeEntry.project_id == project_id)
+    if project_id_int is not None:
+        stmt = stmt.where(TimeEntry.project_id == project_id_int)
     rows = list(db.execute(stmt).all())
 
     try:

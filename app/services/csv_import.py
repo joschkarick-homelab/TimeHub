@@ -17,6 +17,14 @@ SUPPORTED_TARGETS = {
 }
 
 
+def _normalize_header(h: str) -> str:
+    """Strip BOM and surrounding whitespace from a CSV header. The UTF-8 BOM
+    sneaks into headers when a tool like Toggl exports with byte-order-mark
+    and the first column is quoted — the csv module then yields the literal
+    `\\ufeff"Description"` as the first key, and our mapping lookup misses."""
+    return h.lstrip("﻿").strip()
+
+
 def _normalize_code(code: str) -> str:
     """Loose key for matching project codes: strip, upper, collapse whitespace
     and dashes/underscores."""
@@ -40,8 +48,20 @@ def import_csv(
     if bad_targets:
         raise ValueError(f"Unsupported target fields: {sorted(bad_targets)}")
 
-    text = raw_bytes.decode(encoding)
+    # utf-8-sig transparently strips a leading BOM if present, and is harmless
+    # if it's not — so we upgrade plain "utf-8" to handle exports from tools
+    # that always emit one (Excel, Toggl on Windows, ...).
+    effective_encoding = "utf-8-sig" if encoding.lower() in {"utf-8", "utf8"} else encoding
+    text = raw_bytes.decode(effective_encoding)
     reader = csv.DictReader(io.StringIO(text), delimiter=separator)
+    # Even with utf-8-sig some files still contain a literal BOM mid-stream or
+    # have leading whitespace on headers; normalize defensively.
+    if reader.fieldnames:
+        reader.fieldnames = [_normalize_header(h) for h in reader.fieldnames]
+
+    # Same normalization on the mapping side, so headers and mapping keys
+    # compare apples to apples regardless of where the noise came from.
+    column_map = {_normalize_header(src): target for src, target in column_map.items()}
 
     created_ids: list[int] = []
     errors: list[dict] = []
