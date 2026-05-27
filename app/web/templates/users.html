@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Nutzerverwaltung</h1>
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-600">{{ error }}</div>
+{% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-3">Neuen Nutzer anlegen</h2>
+  <form method="post" action="/users" class="grid sm:grid-cols-6 gap-3 items-end">
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium mb-1">E-Mail</label>
+      <input name="email" type="email" required class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium mb-1">Name</label>
+      <input name="full_name" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div>
+      <label class="block text-xs font-medium mb-1">Passwort</label>
+      <input name="password" type="password" required minlength="6"
+             class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div class="flex items-center gap-2">
+      <input id="is_admin" type="checkbox" name="is_admin" value="true" />
+      <label for="is_admin" class="text-sm">Admin</label>
+    </div>
+    <button class="sm:col-span-6 sm:col-start-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded py-2 font-medium">
+      Anlegen
+    </button>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+  <h2 class="font-semibold p-5 pb-3">Vorhandene Nutzer</h2>
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-left text-slate-600">
+      <tr>
+        <th class="px-4 py-2">E-Mail</th>
+        <th class="px-4 py-2">Name</th>
+        <th class="px-4 py-2">Rolle</th>
+        <th class="px-4 py-2">Status</th>
+        <th class="px-4 py-2">Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr class="border-t border-slate-100">
+          <td class="px-4 py-2">{{ u.email }}</td>
+          <td class="px-4 py-2">{{ u.full_name }}</td>
+          <td class="px-4 py-2">
+            {% if u.is_admin %}<span class="text-indigo-600 font-medium">Admin</span>
+            {% else %}Consultant{% endif %}
+          </td>
+          <td class="px-4 py-2">
+            {% if u.is_active %}<span class="text-emerald-600">aktiv</span>
+            {% else %}<span class="text-slate-400">inaktiv</span>{% endif %}
+          </td>
+          <td class="px-4 py-2 space-x-2">
+            <form action="/users/{{ u.id }}/toggle-active" method="post" class="inline">
+              <button class="text-xs text-slate-600 hover:underline">
+                {{ 'deaktivieren' if u.is_active else 'aktivieren' }}
+              </button>
+            </form>
+            <form action="/users/{{ u.id }}/toggle-admin" method="post" class="inline">
+              <button class="text-xs text-slate-600 hover:underline">
+                {{ 'Admin-Rechte entziehen' if u.is_admin else 'zum Admin machen' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -113,7 +113,10 @@ bzw. `/redoc`. OpenAPI-JSON unter `/openapi.json`.
 | Intake          | `POST /intake/time-entries`                           | externes Tool drückt Einträge rein |
 |                 | `POST /intake/csv` (multipart: file + mapping JSON)   | CSV-Import mit flexiblem Mapping   |
 | Reporting       | `GET /reports/timesheet?format=json\|csv\|markdown`   | Filterbarer Timesheet-Export       |
-| CSV-Templates   | `GET/POST /csv-templates`, `GET/PATCH/DELETE /csv-templates/{id}` | Wiederverwendbare Export-Profile |
+| CSV-Templates   | `GET/POST /csv-templates`, `GET/PATCH/DELETE /csv-templates/{id}` | Wiederverwendbare CSV-Export-Profile |
+| Import-Formate  | `GET/POST /import-formats`, `GET/PATCH/DELETE /import-formats/{id}` | Wiederverwendbare CSV-Input-Profile (Toggl, Clockify, …) |
+|                 | `POST /import-formats/suggest` (multipart: file)      | One-Shot KI-Mapping über Claude    |
+|                 | `POST /import-formats/{id}/run` (multipart: file)     | Gespeichertes Format auf CSV anwenden |
 | System          | `GET /healthz`, `GET /readyz`                         | Liveness/Readiness                 |
 
 Auth-Schemata, die alle geschützten Routen akzeptieren:
@@ -185,7 +188,36 @@ sichern; Migrationen sind versioniert.
 
 ---
 
-## 7. Roadmap (bewusst out of scope für v1)
+## 7. KI-gestütztes Import-Mapping
+
+Verschiedene Consultants bringen CSV-Exports aus unterschiedlichen Tools mit
+(Toggl, Clockify, Excel-Templates eines Kunden, …). Statt für jedes Format
+ein Mapping manuell zu bauen, legt TimeHub eine zentrale Bibliothek von
+Importformaten an und nutzt Claude für den ersten Vorschlag.
+
+**Flow:**
+
+1. `/import-formats/new` → Name + Beispiel-CSV hochladen
+2. App schickt die ersten ~15 Zeilen an Claude (`claude-sonnet-4-6`,
+   zentraler `ANTHROPIC_API_KEY` aus `.env`, kein User-eigener Key nötig)
+3. Modell liefert ein JSON-Mapping (Trennzeichen, Datumsformat, Spalten →
+   TimeHub-Felder) → wird im UI vorgeblendet
+4. Nutzer prüft/korrigiert per Dropdown und speichert
+5. `/import` → Format aus Liste wählen + CSV hochladen → Einträge importiert
+
+**Sichtbarkeit:**
+
+- Standardmäßig privat (nur Ersteller sieht es)
+- Admins können ein Format global schalten (für alle sichtbar)
+- Globale Formate stehen oben in der Liste
+
+**KI optional:** Ohne `ANTHROPIC_API_KEY` läuft alles weiter, nur der
+„Vorschlag erzeugen"-Button meldet, dass die KI-Hilfe deaktiviert ist; das
+Mapping kann manuell oder via API gepflegt werden.
+
+---
+
+## 8. Roadmap (bewusst out of scope für v1)
 
 - OAuth (Microsoft Entra ID, Authentik) zusätzlich zur lokalen Auth
 - Echte Push-Sync nach Jira (Worklogs), Salesforce, BCS

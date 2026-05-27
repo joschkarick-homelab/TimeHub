@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Neues Importformat – Schritt 2: Vorschlag prüfen</h1>
+
+<div class="grid lg:grid-cols-2 gap-6">
+  <section class="bg-white border border-slate-200 rounded-lg p-5">
+    <h2 class="font-semibold mb-3">KI-Vorschlag</h2>
+    {% if suggestion.notes %}
+      <p class="text-sm text-slate-600 italic mb-3">„{{ suggestion.notes }}"</p>
+    {% endif %}
+
+    <form method="post" action="/import-formats" class="space-y-4">
+      <input type="hidden" name="name" value="{{ name }}" />
+
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Quelle</span>
+          <input name="source_hint" value="{{ suggestion.source_hint }}"
+                 class="w-full border border-slate-300 rounded px-2 py-1.5" />
+        </label>
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Trennzeichen</span>
+          <input name="separator" value="{{ suggestion.separator }}" required
+                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+        </label>
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Encoding</span>
+          <input name="encoding" value="{{ suggestion.encoding }}"
+                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+        </label>
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Datumsformat</span>
+          <input name="date_format" value="{{ suggestion.date_format }}"
+                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+        </label>
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Zeitformat</span>
+          <input name="time_format" value="{{ suggestion.time_format }}"
+                 class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono" />
+        </label>
+        <label class="text-sm">
+          <span class="block font-medium mb-1">Default-Projekt-Code (optional)</span>
+          <input name="default_project_code" value="{{ suggestion.default_project_code or '' }}"
+                 class="w-full border border-slate-300 rounded px-2 py-1.5" />
+        </label>
+      </div>
+
+      <div>
+        <span class="block text-sm font-medium mb-1">Spalten-Mapping</span>
+        <p class="text-xs text-slate-500 mb-2">
+          Pro erkannter Quell-Spalte ein Zielfeld wählen — „(ignorieren)" lässt die Spalte aus.
+        </p>
+        <div class="border border-slate-200 rounded">
+          {% if suggestion.detected_headers %}
+            {% for header in suggestion.detected_headers %}
+              <div class="grid grid-cols-2 gap-2 px-3 py-1.5 border-b border-slate-100 last:border-0 text-sm">
+                <div class="font-mono truncate" title="{{ header }}">{{ header }}</div>
+                <select data-source="{{ header }}" class="border border-slate-300 rounded px-2 py-1 map-select">
+                  <option value="">(ignorieren)</option>
+                  {% for t in targets %}
+                    <option value="{{ t }}" {% if suggestion.column_map.get(header) == t %}selected{% endif %}>{{ t }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-xs text-slate-500 p-3">Keine Header erkannt — du kannst das Mapping als JSON unten manuell setzen.</p>
+          {% endif %}
+        </div>
+        <input type="hidden" name="column_map_json" id="column_map_json"
+               value='{{ suggestion.column_map | tojson }}' />
+      </div>
+
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Notizen</span>
+        <textarea name="notes" rows="2" class="w-full border border-slate-300 rounded px-2 py-1.5">{{ suggestion.notes }}</textarea>
+      </label>
+
+      {% if user.is_admin %}
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="is_global" value="true" />
+        Als globales Format speichern (für alle sichtbar)
+      </label>
+      {% endif %}
+
+      <div class="flex gap-2">
+        <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-2 font-medium">
+          Speichern
+        </button>
+        <a href="/import-formats/new" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="bg-white border border-slate-200 rounded-lg p-5">
+    <h2 class="font-semibold mb-3">Beispiel-Vorschau</h2>
+    <pre class="bg-slate-900 text-slate-100 rounded p-3 text-xs overflow-auto max-h-[28rem]"><code>{{ sample_preview }}</code></pre>
+  </section>
+</div>
+
+<script>
+  // Keep the hidden column_map JSON in sync with the dropdowns.
+  const hidden = document.getElementById("column_map_json");
+  function sync() {
+    const out = {};
+    document.querySelectorAll(".map-select").forEach(sel => {
+      const src = sel.dataset.source;
+      const val = sel.value;
+      if (src && val) out[src] = val;
+    });
+    hidden.value = JSON.stringify(out);
+  }
+  document.querySelectorAll(".map-select").forEach(sel => sel.addEventListener("change", sync));
+  sync();
+</script>
+{% endblock %}

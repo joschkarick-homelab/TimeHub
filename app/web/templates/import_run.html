@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">CSV importieren</h1>
+
+{% if result %}
+  <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+    {{ result | replace('+', ' ') }}
+  </div>
+{% endif %}
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error | replace('+', ' ') }}
+  </div>
+{% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+  {% if formats %}
+    <form method="post" action="/import" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Importformat</label>
+        <select name="format_id" required class="w-full border border-slate-300 rounded px-2 py-1.5">
+          {% for f in formats %}
+            <option value="{{ f.id }}">
+              {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">CSV-Datei</label>
+        <input name="file" type="file" accept=".csv,text/csv,text/plain" required
+               class="w-full border border-slate-300 rounded px-3 py-2 bg-white" />
+      </div>
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-2 font-medium">
+        Importieren
+      </button>
+    </form>
+  {% else %}
+    <p class="text-slate-600">
+      Noch keine Importformate verfügbar — leg über
+      <a href="/import-formats/new" class="text-indigo-600 hover:underline">Neues Format</a>
+      eines an.
+    </p>
+  {% endif %}
+</section>
+{% endblock %}

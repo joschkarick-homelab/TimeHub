@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Neues Importformat – Schritt 1: Beispiel hochladen</h1>
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
+{% endif %}
+
+{% if not ai_enabled %}
+  <div class="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+    Aktuell ist kein <code>ANTHROPIC_API_KEY</code> hinterlegt — der KI-Vorschlag
+    funktioniert nicht. Den Admin bitten, den Schlüssel in der <code>.env</code> zu setzen,
+    danach hier neu probieren.
+  </div>
+{% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+  <p class="text-sm text-slate-600 mb-4">
+    Lade einen kleinen CSV-Auszug (Header-Zeile + ein paar Beispiel-Zeilen) hoch.
+    Claude analysiert das Format und schlägt ein Mapping vor, das du anschließend
+    in Ruhe anpassen kannst, bevor es gespeichert wird.
+  </p>
+  <form method="post" action="/import-formats/new" enctype="multipart/form-data" class="space-y-3">
+    <div>
+      <label class="block text-sm font-medium mb-1">Name des Formats</label>
+      <input name="name" required value="{{ prefill_name or '' }}"
+             placeholder="z.B. Toggl Export (DE)" class="w-full border border-slate-300 rounded px-3 py-2" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Beispiel-CSV</label>
+      <input name="sample" type="file" accept=".csv,text/csv,text/plain" required
+             class="w-full border border-slate-300 rounded px-3 py-2 bg-white" />
+      <p class="text-xs text-slate-500 mt-1">Nur die ersten ~{{ 15 }} Zeilen werden an das Modell geschickt.</p>
+    </div>
+    <div class="text-xs text-slate-500">
+      Unterstützte Zielfelder:
+      {% for t in targets %}<code class="bg-slate-100 px-1 rounded">{{ t }}</code>{% if not loop.last %} {% endif %}{% endfor %}
+    </div>
+    <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-2 font-medium">
+      Vorschlag erzeugen
+    </button>
+  </form>
+</section>
+{% endblock %}

@@ -16,6 +16,11 @@
       <nav class="text-sm flex items-center gap-4">
         {% if user %}
           <a href="/" class="hover:text-indigo-600">Dashboard</a>
+          <a href="/import" class="hover:text-indigo-600">Import</a>
+          <a href="/import-formats" class="hover:text-indigo-600">Formate</a>
+          {% if user.is_admin %}
+            <a href="/users" class="hover:text-indigo-600">Nutzer</a>
+          {% endif %}
           <a href="/docs" class="hover:text-indigo-600">API</a>
           <span class="text-slate-500">{{ user.email }}</span>
           <form action="/logout" method="post">

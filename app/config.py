@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     cors_origins: str = "*"
 
+    # --- AI-assisted CSV mapping ---
+    anthropic_api_key: str | None = None
+    ai_mapping_model: str = "claude-sonnet-4-6"
+    ai_mapping_max_sample_lines: int = 15
+
     @property
     def cors_origin_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":
