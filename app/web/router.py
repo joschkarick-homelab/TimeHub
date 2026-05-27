@@ -478,6 +478,90 @@ async def formats_save(
     )
 
 
+@router.get("/import-formats/{fmt_id}/edit", response_class=HTMLResponse)
+def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_db)):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    fmt = db.get(ImportFormat, fmt_id)
+    if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
+        raise HTTPException(status_code=404, detail="format not found")
+    # writable check — same rule as the delete handler so we don't render an
+    # edit form the user can't actually submit.
+    if fmt.owner_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail="not allowed to edit this format")
+    return templates.TemplateResponse(
+        "import_format_edit.html",
+        _ctx(
+            request,
+            user,
+            fmt=fmt,
+            targets=sorted(SUPPORTED_TARGETS),
+            # All currently-mapped headers + the keys from column_map, so the
+            # user always sees every assignment they made.
+            headers=list(fmt.column_map.keys()),
+        ),
+    )
+
+
+@router.post("/import-formats/{fmt_id}/edit", response_class=HTMLResponse)
+async def formats_edit_submit(
+    request: Request,
+    fmt_id: int,
+    name: str = Form(...),
+    source_hint: str = Form("custom"),
+    separator: str = Form(","),
+    encoding: str = Form("utf-8"),
+    date_format: str = Form("%Y-%m-%d"),
+    time_format: str = Form("%H:%M"),
+    default_project_code: str = Form(""),
+    notes: str = Form(""),
+    column_map_json: str = Form("{}"),
+    is_global: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    fmt = db.get(ImportFormat, fmt_id)
+    if fmt is None:
+        raise HTTPException(status_code=404, detail="format not found")
+    if fmt.owner_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail="not allowed")
+
+    try:
+        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
+        if not isinstance(column_map, dict):
+            raise ValueError("column_map must be an object")
+        column_map = {
+            str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS
+        }
+    except (json.JSONDecodeError, ValueError) as e:
+        return RedirectResponse(
+            url=f"/import-formats?error=Mapping+ungültig:+{e}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    fmt.name = name
+    fmt.source_hint = source_hint or "custom"
+    fmt.separator = separator or ","
+    fmt.encoding = encoding or "utf-8"
+    fmt.date_format = date_format or "%Y-%m-%d"
+    fmt.time_format = time_format or "%H:%M"
+    fmt.column_map = column_map
+    fmt.default_project_code = default_project_code.strip() or None
+    fmt.notes = notes
+    # only admins may flip the global flag
+    if user.is_admin:
+        fmt.is_global = bool(is_global)
+    db.add(fmt)
+    db.commit()
+    return RedirectResponse(
+        url=f"/import-formats?flash=Format+'{name}'+aktualisiert",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
 @router.post("/import-formats/{fmt_id}/delete", response_class=HTMLResponse)
 def formats_delete(request: Request, fmt_id: int, db: Session = Depends(get_db)):
     user = _maybe_user(request, db)
@@ -552,13 +636,171 @@ async def import_run(
             time_format=fmt.time_format,
         )
     except ValueError as e:
-        return RedirectResponse(
-            url=f"/import?error={e}", status_code=status.HTTP_302_FOUND
+        formats = _visible_formats(db, user)
+        return templates.TemplateResponse(
+            "import_run.html",
+            _ctx(request, user, formats=formats, result=None, error=str(e), fmt=fmt),
+            status_code=400,
         )
-    parts = [f"{result['created']} importiert"]
-    if result.get("created_projects"):
-        parts.append(f"{len(result['created_projects'])} neue Projekte ({', '.join(result['created_projects'])})")
-    if result["failed"]:
-        parts.append(f"{result['failed']} Fehler")
-    summary = ", ".join(parts).replace(" ", "+")
-    return RedirectResponse(url=f"/import?result={summary}", status_code=status.HTTP_302_FOUND)
+
+    formats = _visible_formats(db, user)
+    return templates.TemplateResponse(
+        "import_run.html",
+        _ctx(request, user, formats=formats, result=result, error=None, fmt=fmt),
+    )
+
+
+# -------------------- Projects --------------------
+
+
+_KNOWN_SYNC_TARGETS = ["intern", "jira", "salesforce", "bcs", "none"]
+_KNOWN_STATUSES = ["active", "inactive"]
+
+
+@router.get("/projects", response_class=HTMLResponse)
+def projects_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    flash: str | None = None,
+    error: str | None = None,
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    projects = list(db.execute(select(Project).order_by(Project.code)).scalars())
+    return templates.TemplateResponse(
+        "projects.html",
+        _ctx(
+            request,
+            user,
+            projects=projects,
+            sync_targets=_KNOWN_SYNC_TARGETS,
+            statuses=_KNOWN_STATUSES,
+            flash=flash,
+            error=error,
+        ),
+    )
+
+
+@router.post("/projects", response_class=HTMLResponse)
+def projects_create(
+    request: Request,
+    name: str = Form(...),
+    code: str = Form(...),
+    customer: str = Form(""),
+    color: str = Form("#6366f1"),
+    default_sync_target: str = Form("intern"),
+    status_: str = Form("active", alias="status"),
+    db: Session = Depends(get_db),
+):
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    p = Project(
+        name=name.strip(),
+        code=code.strip(),
+        customer=(customer.strip() or None),
+        color=color or "#6366f1",
+        default_sync_target=(
+            default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
+        ),
+        status=(status_ if status_ in _KNOWN_STATUSES else "active"),
+    )
+    db.add(p)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return RedirectResponse(
+            url="/projects?error=Projekt-Code+bereits+vergeben",
+            status_code=status.HTTP_302_FOUND,
+        )
+    return RedirectResponse(
+        url=f"/projects?flash=Projekt+'{p.code}'+angelegt",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.get("/projects/{project_id}/edit", response_class=HTMLResponse)
+def projects_edit_form(request: Request, project_id: int, db: Session = Depends(get_db)):
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return templates.TemplateResponse(
+        "project_edit.html",
+        _ctx(
+            request,
+            user,
+            project=project,
+            sync_targets=_KNOWN_SYNC_TARGETS,
+            statuses=_KNOWN_STATUSES,
+        ),
+    )
+
+
+@router.post("/projects/{project_id}/edit", response_class=HTMLResponse)
+def projects_update(
+    request: Request,
+    project_id: int,
+    name: str = Form(...),
+    code: str = Form(...),
+    customer: str = Form(""),
+    color: str = Form("#6366f1"),
+    default_sync_target: str = Form("intern"),
+    status_: str = Form("active", alias="status"),
+    db: Session = Depends(get_db),
+):
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    project.name = name.strip()
+    project.code = code.strip()
+    project.customer = customer.strip() or None
+    project.color = color or "#6366f1"
+    project.default_sync_target = (
+        default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
+    )
+    project.status = status_ if status_ in _KNOWN_STATUSES else "active"
+    db.add(project)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return RedirectResponse(
+            url=f"/projects/{project_id}/edit?error=Projekt-Code+bereits+vergeben",
+            status_code=status.HTTP_302_FOUND,
+        )
+    return RedirectResponse(
+        url=f"/projects?flash=Projekt+'{project.code}'+gespeichert",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/projects/{project_id}/delete", response_class=HTMLResponse)
+def projects_delete(request: Request, project_id: int, db: Session = Depends(get_db)):
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        db.delete(project)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return RedirectResponse(
+            url=f"/projects?error=Projekt+'{project.code}'+hat+Zeiteinträge+und+kann+nicht+gelöscht+werden",
+            status_code=status.HTTP_302_FOUND,
+        )
+    return RedirectResponse(url="/projects", status_code=status.HTTP_302_FOUND)
