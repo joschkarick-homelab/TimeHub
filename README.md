@@ -192,23 +192,41 @@ Compose-Dateien:
 
 ### Einmalige Einrichtung
 
-**LXC vorbereiten:**
+**LXC vorbereiten** (einmalig pro Host, eine einzige SSH-Session):
 
-1. LXC anlegen (Debian/Ubuntu, `nesting=1`, `keyctl=1`), Docker installieren.
-2. Tailscale installieren, mit `tailscale up --ssh` ans Tailnet hängen.
-3. Tailscale-ACL anpassen, sodass `tag:ci` als `${DEPLOY_USER}` per SSH auf
-   den LXC darf. Beispiel:
-   ```jsonc
-   {
-     "ssh": [
-       {"action": "accept", "src": ["tag:ci"], "dst": ["tag:server"], "users": ["timehub"]}
-     ]
-   }
-   ```
-4. Deploy-User mit Docker-Rechten anlegen (z.B. `timehub`), Zielverzeichnis
-   `/opt/timehub` erstellen und ihm gehören lassen.
-5. Falls das GHCR-Package privat ist: einmalig `docker login ghcr.io` auf
-   dem LXC ausführen (PAT mit `read:packages`).
+```bash
+# 1. Docker
+curl -fsSL https://get.docker.com | sh
+
+# 2. Tailscale mit SSH, Host taggen
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --ssh --advertise-tags=tag:server
+
+# 3. Geteilter Deploy-User mit Docker-Rechten; bekommt /opt, damit der
+#    Workflow per-App-Verzeichnisse ohne sudo anlegen darf
+sudo useradd -m -G docker deploy
+sudo chown deploy:deploy /opt
+```
+
+In der Tailscale-Admin-Console einmalig die ACL-Regel ergänzen:
+
+```jsonc
+{
+  "ssh": [
+    {"action": "accept", "src": ["tag:ci"], "dst": ["tag:server"], "users": ["deploy"]}
+  ]
+}
+```
+
+Damit ist der LXC fertig für *alle* zukünftigen Apps — jede neue App
+braucht danach nur noch GitHub-Secrets, kein weiteres SSH.
+
+**GHCR-Package nach dem ersten Build auf Public stellen**: auf
+github.com unter dem Repo → Packages → `timehub` → Package settings →
+Change visibility → Public. Spart den `docker login` auf jedem LXC; die
+Image-Layer enthalten App-Code, aber keine Runtime-Secrets. Wenn du das
+Package privat halten willst, brauchst du einmal pro LXC ein
+`docker login ghcr.io` mit einem PAT (Scope `read:packages`).
 
 **GitHub-Secrets** (alle im Repo unter Settings → Secrets and variables → Actions):
 
@@ -217,9 +235,9 @@ Infrastruktur (zwingend):
 | Name | Inhalt |
 | --- | --- |
 | `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | Tailscale OAuth-Client mit `tag:ci` |
-| `DEPLOY_USER` | SSH-User auf dem LXC (z.B. `timehub`) |
+| `DEPLOY_USER` | SSH-User auf dem LXC, z.B. `deploy` (geteilt über alle Apps) |
 | `DEPLOY_HOST` | Tailscale-DNS-Name oder IP des LXC |
-| `DEPLOY_PATH` | Zielordner, z.B. `/opt/timehub` |
+| `DEPLOY_PATH` | Zielordner, z.B. `/opt/timehub` — wird vom Workflow angelegt |
 
 App-Konfiguration (werden 1:1 in `stack.env` geschrieben — leere Secrets
 werden übersprungen, die Defaults aus dem Compose greifen):
