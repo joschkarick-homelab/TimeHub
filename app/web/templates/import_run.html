@@ -2,25 +2,97 @@
 {% block content %}
 <h1 class="text-xl font-semibold mb-4">CSV importieren</h1>
 
-{% if result %}
-  <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
-    {{ result | replace('+', ' ') }}
-  </div>
-{% endif %}
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
-    {{ error | replace('+', ' ') }}
+    {{ error }}
   </div>
 {% endif %}
 
+{% if result %}
+  <section class="mb-6 border rounded-lg overflow-hidden
+    {% if result.failed %}border-amber-300 bg-amber-50{% else %}border-emerald-300 bg-emerald-50{% endif %}">
+    <div class="p-4 flex items-center gap-3">
+      {% if result.failed %}
+        <span class="text-2xl">⚠</span>
+        <div>
+          <div class="font-semibold text-amber-900">
+            {{ result.created }} importiert, {{ result.failed }} fehlgeschlagen
+          </div>
+          <div class="text-xs text-amber-800">
+            Details zu jeder fehlerhaften Zeile stehen unten — die übrigen
+            Einträge wurden gespeichert.
+          </div>
+        </div>
+      {% else %}
+        <span class="text-2xl">✓</span>
+        <div>
+          <div class="font-semibold text-emerald-900">
+            {{ result.created }} Einträge importiert
+          </div>
+          <div class="text-xs text-emerald-800">Alles fehlerfrei durchgelaufen.</div>
+        </div>
+      {% endif %}
+    </div>
+    {% if result.created_projects %}
+      <div class="px-4 pb-3 text-xs text-slate-700">
+        <span class="font-medium">Neu angelegte Projekte:</span>
+        {% for p in result.created_projects %}
+          <code class="bg-white border border-slate-300 rounded px-1 mr-1">{{ p }}</code>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  {% if result.errors %}
+    <section class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+        <h2 class="font-semibold">Fehlgeschlagene Zeilen ({{ result.errors|length }})</h2>
+        <details class="text-xs text-slate-500">
+          <summary class="cursor-pointer hover:text-slate-700">Tipps</summary>
+          <div class="mt-2 max-w-md text-right">
+            Häufige Ursachen: Datumsformat passt nicht zum Format ({{ fmt.date_format }}),
+            Dauer-Spalte ist leer oder keine Zahl, oder das Mapping zeigt auf eine
+            Spalte die in der CSV anders heißt.
+          </div>
+        </details>
+      </div>
+      <table class="w-full text-xs">
+        <thead class="bg-slate-50 text-left text-slate-600">
+          <tr>
+            <th class="px-4 py-2 w-16">Zeile</th>
+            <th class="px-4 py-2 w-72">Fehler</th>
+            <th class="px-4 py-2">Roh-Daten</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for err in result.errors %}
+            <tr class="border-t border-slate-100 align-top">
+              <td class="px-4 py-2 font-mono">{{ err.row }}</td>
+              <td class="px-4 py-2 text-rose-700">{{ err.error }}</td>
+              <td class="px-4 py-2 font-mono text-slate-600 break-all">
+                {% for k, v in err.data.items() %}
+                  <div><span class="text-slate-400">{{ k }}:</span> {{ v }}</div>
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+{% endif %}
+
 <section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+  <h2 class="font-semibold mb-3">
+    {% if result %}Weiteren Import starten{% else %}Import{% endif %}
+  </h2>
   {% if formats %}
     <form method="post" action="/import" enctype="multipart/form-data" class="space-y-4">
       <div>
         <label class="block text-sm font-medium mb-1">Importformat</label>
-        <select name="format_id" required class="w-full border border-slate-300 rounded px-2 py-1.5">
+        <select name="format_id" required class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
           {% for f in formats %}
-            <option value="{{ f.id }}">
+            <option value="{{ f.id }}" {% if fmt and fmt.id == f.id %}selected{% endif %}>
               {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
             </option>
           {% endfor %}
@@ -29,9 +101,9 @@
       <div>
         <label class="block text-sm font-medium mb-1">CSV-Datei</label>
         <input name="file" type="file" accept=".csv,text/csv,text/plain" required
-               class="w-full border border-slate-300 rounded px-3 py-2 bg-white" />
+               class="w-full h-10 border border-slate-300 rounded px-3 bg-white" />
       </div>
-      <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-2 font-medium">
+      <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
         Importieren
       </button>
     </form>

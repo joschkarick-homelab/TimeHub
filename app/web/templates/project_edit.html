@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">Projekt bearbeiten</h1>
+  <a href="/projects" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
+</div>
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+  <form method="post" action="/projects/{{ project.id }}/edit" class="space-y-4">
+    <div class="grid sm:grid-cols-2 gap-3">
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Name</span>
+        <input name="name" required value="{{ project.name }}"
+               class="w-full h-10 border border-slate-300 rounded px-2" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Code (eindeutig)</span>
+        <input name="code" required pattern="[A-Za-z0-9_\-]+" value="{{ project.code }}"
+               class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Kunde</span>
+        <input name="customer" value="{{ project.customer or '' }}"
+               class="w-full h-10 border border-slate-300 rounded px-2" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Farbe</span>
+        <input type="color" name="color" value="{{ project.color }}"
+               class="w-full h-10 border border-slate-300 rounded px-1 bg-white" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Default-Sync-Ziel</span>
+        <select name="default_sync_target" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+          {% for t in sync_targets %}
+            <option value="{{ t }}" {% if project.default_sync_target == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Status</span>
+        <select name="status" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+          {% for s in statuses %}
+            <option value="{{ s }}" {% if project.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
+        Speichern
+      </button>
+      <a href="/projects" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

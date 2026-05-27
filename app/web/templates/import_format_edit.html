@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">Importformat bearbeiten</h1>
+  <a href="/import-formats" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
+</div>
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-3xl">
+  <form method="post" action="/import-formats/{{ fmt.id }}/edit" class="space-y-4">
+    <label class="block text-sm">
+      <span class="block font-medium mb-1">Name</span>
+      <input name="name" required value="{{ fmt.name }}"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+
+    <div class="grid grid-cols-2 gap-3">
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Quelle</span>
+        <input name="source_hint" value="{{ fmt.source_hint }}"
+               class="w-full h-9 border border-slate-300 rounded px-2" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Trennzeichen</span>
+        <input name="separator" value="{{ fmt.separator }}" required
+               class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Encoding</span>
+        <input name="encoding" value="{{ fmt.encoding }}"
+               class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Datumsformat</span>
+        <input name="date_format" value="{{ fmt.date_format }}"
+               class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Zeitformat</span>
+        <input name="time_format" value="{{ fmt.time_format }}"
+               class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+      </label>
+      <label class="text-sm">
+        <span class="block font-medium mb-1">Default-Projekt-Code (optional)</span>
+        <input name="default_project_code" value="{{ fmt.default_project_code or '' }}"
+               class="w-full h-9 border border-slate-300 rounded px-2" />
+      </label>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <span class="block text-sm font-medium">Spalten-Mapping</span>
+        <button type="button" id="add-row" class="text-xs text-indigo-600 hover:underline">
+          + Spalte hinzufügen
+        </button>
+      </div>
+      <p class="text-xs text-slate-500 mb-2">
+        Quell-Spalte (CSV-Header) → TimeHub-Zielfeld. „(ignorieren)" entfernt das Mapping.
+      </p>
+      <div id="map-rows" class="border border-slate-200 rounded divide-y divide-slate-100">
+        {% for header in headers %}
+          <div class="grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-1.5 text-sm items-center map-row">
+            <input class="h-9 border border-slate-300 rounded px-2 font-mono map-src"
+                   value="{{ header }}" placeholder="CSV-Header" />
+            <select class="h-9 border border-slate-300 rounded px-2 bg-white map-target">
+              <option value="">(ignorieren)</option>
+              {% for t in targets %}
+                <option value="{{ t }}" {% if fmt.column_map.get(header) == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+            <button type="button" class="text-rose-600 hover:underline text-xs map-del">entfernen</button>
+          </div>
+        {% endfor %}
+      </div>
+      <input type="hidden" name="column_map_json" id="column_map_json" value="{}" />
+    </div>
+
+    <label class="text-sm block">
+      <span class="block font-medium mb-1">Notizen</span>
+      <textarea name="notes" rows="2" class="w-full border border-slate-300 rounded px-2 py-1.5">{{ fmt.notes }}</textarea>
+    </label>
+
+    {% if user.is_admin %}
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" name="is_global" value="true" {% if fmt.is_global %}checked{% endif %} />
+      Globales Format (für alle sichtbar)
+    </label>
+    {% endif %}
+
+    <div class="flex gap-2">
+      <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
+        Speichern
+      </button>
+      <a href="/import-formats" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
+    </div>
+  </form>
+</section>
+
+<script>
+  const TARGETS = {{ targets | tojson }};
+  const rowsEl = document.getElementById("map-rows");
+  const hidden = document.getElementById("column_map_json");
+
+  function sync() {
+    const out = {};
+    rowsEl.querySelectorAll(".map-row").forEach(row => {
+      const src = row.querySelector(".map-src").value.trim();
+      const tgt = row.querySelector(".map-target").value;
+      if (src && tgt) out[src] = tgt;
+    });
+    hidden.value = JSON.stringify(out);
+  }
+
+  function bind(row) {
+    row.querySelector(".map-src").addEventListener("input", sync);
+    row.querySelector(".map-target").addEventListener("change", sync);
+    row.querySelector(".map-del").addEventListener("click", () => {
+      row.remove();
+      sync();
+    });
+  }
+
+  rowsEl.querySelectorAll(".map-row").forEach(bind);
+
+  document.getElementById("add-row").addEventListener("click", () => {
+    const row = document.createElement("div");
+    row.className = "grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-1.5 text-sm items-center map-row";
+    row.innerHTML = `
+      <input class="h-9 border border-slate-300 rounded px-2 font-mono map-src" placeholder="CSV-Header" />
+      <select class="h-9 border border-slate-300 rounded px-2 bg-white map-target">
+        <option value="">(ignorieren)</option>
+        ${TARGETS.map(t => `<option value="${t}">${t}</option>`).join("")}
+      </select>
+      <button type="button" class="text-rose-600 hover:underline text-xs map-del">entfernen</button>
+    `;
+    rowsEl.appendChild(row);
+    bind(row);
+    row.querySelector(".map-src").focus();
+  });
+
+  sync();
+</script>
+{% endblock %}

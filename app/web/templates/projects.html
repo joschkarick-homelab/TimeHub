@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Projekte</h1>
+
+{% if flash %}
+  <div class="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{{ flash }}</div>
+{% endif %}
+{% if error %}
+  <div class="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
+{% endif %}
+
+{% if user.is_admin %}
+<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-3">Neues Projekt</h2>
+  <form method="post" action="/projects" class="grid sm:grid-cols-6 gap-3 items-end">
+    <label class="sm:col-span-2 text-sm">
+      <span class="block font-medium mb-1 text-xs">Name</span>
+      <input name="name" required class="w-full h-10 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="sm:col-span-1 text-sm">
+      <span class="block font-medium mb-1 text-xs">Code (eindeutig)</span>
+      <input name="code" required pattern="[A-Za-z0-9_\-]+"
+             class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="sm:col-span-1 text-sm">
+      <span class="block font-medium mb-1 text-xs">Kunde</span>
+      <input name="customer" class="w-full h-10 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="sm:col-span-1 text-sm">
+      <span class="block font-medium mb-1 text-xs">Ziel</span>
+      <select name="default_sync_target" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        {% for t in sync_targets %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="sm:col-span-1">
+      <label class="text-xs block font-medium mb-1 invisible">_</label>
+      <button class="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
+        Anlegen
+      </button>
+    </div>
+    <label class="sm:col-span-1 text-sm">
+      <span class="block font-medium mb-1 text-xs">Farbe</span>
+      <input type="color" name="color" value="#6366f1"
+             class="w-full h-10 border border-slate-300 rounded px-1 bg-white" />
+    </label>
+  </form>
+</section>
+{% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+  {% if projects %}
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-600 text-left">
+      <tr>
+        <th class="px-4 py-2">Code</th>
+        <th class="px-4 py-2">Name</th>
+        <th class="px-4 py-2">Kunde</th>
+        <th class="px-4 py-2">Ziel</th>
+        <th class="px-4 py-2">Status</th>
+        {% if user.is_admin %}<th class="px-4 py-2">Aktionen</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+        <tr class="border-t border-slate-100">
+          <td class="px-4 py-2 font-mono">
+            <span class="inline-block w-2 h-2 rounded-full align-middle mr-1"
+                  style="background: {{ p.color }}"></span>
+            {{ p.code }}
+          </td>
+          <td class="px-4 py-2">{{ p.name }}</td>
+          <td class="px-4 py-2 text-slate-600">{{ p.customer or '—' }}</td>
+          <td class="px-4 py-2">{{ p.default_sync_target }}</td>
+          <td class="px-4 py-2">
+            {% if p.status == 'active' %}
+              <span class="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5 text-xs">aktiv</span>
+            {% else %}
+              <span class="text-slate-600 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 text-xs">{{ p.status }}</span>
+            {% endif %}
+          </td>
+          {% if user.is_admin %}
+            <td class="px-4 py-2 space-x-3 whitespace-nowrap">
+              <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+              <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
+                    onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
+                <button class="text-xs text-rose-600 hover:underline">löschen</button>
+              </form>
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="px-5 py-6 text-slate-500">
+      Noch keine Projekte.{% if user.is_admin %} Leg oben das erste an.{% endif %}
+    </p>
+  {% endif %}
+</section>
+{% endblock %}

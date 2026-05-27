@@ -56,6 +56,9 @@
             {% endfor %}
           </td>
           <td class="px-4 py-2 space-x-2 whitespace-nowrap">
+            {% if user.is_admin or f.owner_id == user.id %}
+              <a href="/import-formats/{{ f.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+            {% endif %}
             {% if user.is_admin %}
               <form action="/import-formats/{{ f.id }}/promote" method="post" class="inline">
                 <button class="text-xs text-indigo-600 hover:underline">
