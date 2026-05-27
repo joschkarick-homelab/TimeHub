@@ -245,7 +245,7 @@ werden übersprungen, die Defaults aus dem Compose greifen):
 | Name | Pflicht? | Hinweis |
 | --- | --- | --- |
 | `SECRET_KEY` | ja | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
-| `POSTGRES_PASSWORD` | ja | langes Random-Passwort |
+| `POSTGRES_PASSWORD` | ja | beliebige Zeichen erlaubt — die App baut die DB-URL aus diskreten Fields, nicht via String-Interpolation |
 | `INITIAL_ADMIN_EMAIL` | ja | wird nur beim Erststart benutzt |
 | `INITIAL_ADMIN_PASSWORD` | ja | s.o. |
 | `INITIAL_ADMIN_NAME` | nein | Default: `Admin` |
