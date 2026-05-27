@@ -23,7 +23,11 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg://timehub:timehub@db:5432/timehub
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: timehub
+      POSTGRES_USER: timehub
+      POSTGRES_PASSWORD: timehub
     ports:
       - "8000:8000"
     volumes:
