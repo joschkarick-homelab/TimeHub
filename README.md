@@ -174,63 +174,88 @@ pytest -q
 
 ## 6. Deployment auf Proxmox-LXC
 
-Für die Produktion wird das Image nicht im LXC gebaut, sondern per
-GitHub Actions vorgebaut und aus GHCR gezogen
-(`ghcr.io/joschkarick-homelab/timehub:latest`). Dazu existieren zwei
+Ablauf:
+
+1. Push auf `main` → **build**-Workflow baut das Image und pushed nach
+   `ghcr.io/joschkarick-homelab/timehub` (Tags: `latest`, `sha-<commit>`).
+2. Nach erfolgreichem Build feuert **deploy**-Workflow automatisch:
+   verbindet sich über die [Tailscale GitHub Action](https://github.com/tailscale/github-action)
+   ins Homelab, rendert eine `stack.env` aus den GitHub-Secrets, kopiert
+   `docker-compose.prod.yml` + `stack.env` per Tailscale SSH auf den LXC
+   und führt `docker compose pull && up -d` aus.
+
 Compose-Dateien:
 
 - `docker-compose.yml` — baut lokal, für Entwicklung
 - `docker-compose.prod.yml` — pullt `ghcr.io/...:${TIMEHUB_TAG:-latest}`
+  und liest seine Werte aus `stack.env`
 
-### Einmalig auf dem LXC
+### Einmalige Einrichtung
+
+**LXC vorbereiten:**
 
 1. LXC anlegen (Debian/Ubuntu, `nesting=1`, `keyctl=1`), Docker installieren.
-2. Auf dem LXC nur diese drei Dateien benötigt:
-   - `docker-compose.prod.yml`
-   - `.env` (von `.env.example` abgeleitet — mindestens `SECRET_KEY`,
-     `POSTGRES_PASSWORD`, `INITIAL_ADMIN_*` setzen)
-   - optional `ANTHROPIC_API_KEY` für die KI-Mapping-Hilfe
-3. Sicheren `SECRET_KEY` generieren:
-   ```bash
-   docker run --rm python:3.12-slim \
-     python -c "import secrets; print(secrets.token_urlsafe(48))"
+2. Tailscale installieren, mit `tailscale up --ssh` ans Tailnet hängen.
+3. Tailscale-ACL anpassen, sodass `tag:ci` als `${DEPLOY_USER}` per SSH auf
+   den LXC darf. Beispiel:
+   ```jsonc
+   {
+     "ssh": [
+       {"action": "accept", "src": ["tag:ci"], "dst": ["tag:server"], "users": ["timehub"]}
+     ]
+   }
    ```
-4. Falls das GHCR-Paket privat ist, vorher anmelden (mit einem PAT, das
-   `read:packages` darf):
-   ```bash
-   echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
-   ```
-5. Erststart:
-   ```bash
-   docker compose -f docker-compose.prod.yml pull
-   docker compose -f docker-compose.prod.yml up -d
-   docker compose -f docker-compose.prod.yml logs -f app
-   ```
+4. Deploy-User mit Docker-Rechten anlegen (z.B. `timehub`), Zielverzeichnis
+   `/opt/timehub` erstellen und ihm gehören lassen.
+5. Falls das GHCR-Package privat ist: einmalig `docker login ghcr.io` auf
+   dem LXC ausführen (PAT mit `read:packages`).
 
-Beim ersten Start legt die App den Admin gemäß `INITIAL_ADMIN_*` an,
-Migrationen (Alembic) laufen aus dem `entrypoint.sh`.
+**GitHub-Secrets** (alle im Repo unter Settings → Secrets and variables → Actions):
 
-### Updates
+Infrastruktur (zwingend):
 
-Push auf `main` → GitHub Action baut + pusht das Image als
-`ghcr.io/joschkarick-homelab/timehub:latest` (zusätzlich `sha-<commit>`
-für Pin-Updates). Auf dem LXC:
+| Name | Inhalt |
+| --- | --- |
+| `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | Tailscale OAuth-Client mit `tag:ci` |
+| `DEPLOY_USER` | SSH-User auf dem LXC (z.B. `timehub`) |
+| `DEPLOY_HOST` | Tailscale-DNS-Name oder IP des LXC |
+| `DEPLOY_PATH` | Zielordner, z.B. `/opt/timehub` |
+
+App-Konfiguration (werden 1:1 in `stack.env` geschrieben — leere Secrets
+werden übersprungen, die Defaults aus dem Compose greifen):
+
+| Name | Pflicht? | Hinweis |
+| --- | --- | --- |
+| `SECRET_KEY` | ja | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `POSTGRES_PASSWORD` | ja | langes Random-Passwort |
+| `INITIAL_ADMIN_EMAIL` | ja | wird nur beim Erststart benutzt |
+| `INITIAL_ADMIN_PASSWORD` | ja | s.o. |
+| `INITIAL_ADMIN_NAME` | nein | Default: `Admin` |
+| `APP_PORT` | nein | Default: `8000` |
+| `TIMEHUB_TAG` | nein | Default: `latest` — z.B. auf `sha-abc1234` pinnen |
+| `CORS_ORIGINS` | nein | Default: `*` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | nein | Default: 30 Tage |
+| `ANTHROPIC_API_KEY` | nein | aktiviert KI-Mapping-Vorschläge |
+| `AI_MAPPING_MODEL` | nein | Default: `claude-sonnet-4-6` |
+
+### Erster Deploy
+
+`workflow_dispatch` der `Deploy to Homelab`-Action in GitHub auslösen
+(oder einen Dummy-Commit auf `main` machen). Danach läuft jedes spätere
+Push auf `main` automatisch durch.
+
+### Manueller Deploy auf dem LXC (Fallback)
+
+Wenn der Tailscale-Pfad mal nicht geht, lassen sich die gleichen Dateien
+manuell verteilen:
 
 ```bash
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
+scp docker-compose.prod.yml stack.env timehub@lxc:/opt/timehub/
+ssh timehub@lxc 'cd /opt/timehub && docker compose -f docker-compose.prod.yml --env-file stack.env pull && docker compose -f docker-compose.prod.yml --env-file stack.env up -d'
 ```
 
-Optional via [Watchtower](https://containrrr.dev/watchtower/) automatisch:
-
-```yaml
-  watchtower:
-    image: containrrr/watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --cleanup --schedule "0 0 3 * * *"
-```
+`stack.env` ist dann eine normale `KEY=value`-Datei mit den oben gelisteten
+Variablen.
 
 ### Reverse-Proxy
 
@@ -243,7 +268,7 @@ Volumes `timehub_db` und `timehub_uploads` sichern. Beispiel für einen
 nightly DB-Dump auf den Host:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T db \
+docker compose -f docker-compose.prod.yml --env-file stack.env exec -T db \
   pg_dump -U timehub timehub | gzip > /backup/timehub-$(date +%F).sql.gz
 ```
 
