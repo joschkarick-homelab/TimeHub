@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or "TimeHub" }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 font-semibold text-lg">
+        <span class="inline-block w-6 h-6 rounded bg-indigo-500"></span>
+        TimeHub
+      </a>
+      <nav class="text-sm flex items-center gap-4">
+        {% if user %}
+          <a href="/" class="hover:text-indigo-600">Dashboard</a>
+          <a href="/docs" class="hover:text-indigo-600">API</a>
+          <span class="text-slate-500">{{ user.email }}</span>
+          <form action="/logout" method="post">
+            <button class="text-rose-600 hover:underline" type="submit">Logout</button>
+          </form>
+        {% else %}
+          <a href="/login" class="hover:text-indigo-600">Login</a>
+          <a href="/docs" class="hover:text-indigo-600">API</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

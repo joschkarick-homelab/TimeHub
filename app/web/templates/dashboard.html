@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid md:grid-cols-3 gap-4 mb-6">
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-sm text-slate-500">Letzte 20 Einträge</div>
+    <div class="text-3xl font-semibold mt-1">{{ total_hours }} h</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-sm text-slate-500">Aktive Projekte</div>
+    <div class="text-3xl font-semibold mt-1">{{ projects|length }}</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-sm text-slate-500">Angemeldet als</div>
+    <div class="text-lg font-medium mt-1">{{ user.full_name or user.email }}</div>
+    <div class="text-xs text-slate-500">{{ 'Admin' if user.is_admin else 'Consultant' }}</div>
+  </div>
+</div>
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-3">Neuer Eintrag</h2>
+  <form method="post" action="/entries" class="grid sm:grid-cols-5 gap-3 items-end">
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Datum</label>
+      <input name="entry_date" type="date" required class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Projekt</label>
+      <select name="project_id" required class="w-full border border-slate-300 rounded px-2 py-1.5">
+        {% for p in projects %}
+          <option value="{{ p.id }}">{{ p.code }} – {{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Dauer (Min, ¼-Std)</label>
+      <input name="duration_minutes" type="number" step="15" min="15" value="60" required
+             class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Beschreibung</label>
+      <input name="description" class="w-full border border-slate-300 rounded px-2 py-1.5" />
+    </div>
+    <button class="sm:col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded py-2 font-medium">
+      Speichern
+    </button>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+  <h2 class="font-semibold p-5 pb-3">Letzte Einträge</h2>
+  {% if recent %}
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-600 text-left">
+      <tr>
+        <th class="px-4 py-2">Datum</th>
+        <th class="px-4 py-2">Projekt</th>
+        <th class="px-4 py-2">Dauer</th>
+        <th class="px-4 py-2">Beschreibung</th>
+        <th class="px-4 py-2">Ziel</th>
+        <th class="px-4 py-2">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in recent %}
+        {% set p = projects_by_id.get(e.project_id) %}
+        <tr class="border-t border-slate-100">
+          <td class="px-4 py-2">{{ e.entry_date }}</td>
+          <td class="px-4 py-2">
+            {% if p %}
+              <span class="inline-block w-2 h-2 rounded-full align-middle"
+                    style="background: {{ p.color }}"></span>
+              {{ p.code }} – {{ p.name }}
+            {% else %}
+              #{{ e.project_id }}
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
+          <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
+          <td class="px-4 py-2">{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</td>
+          <td class="px-4 py-2">{{ e.sync_status }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="px-5 pb-5 text-slate-500">Noch keine Einträge — leg den ersten oben an.</p>
+  {% endif %}
+</section>
+{% endblock %}

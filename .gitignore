@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.local
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data
+*.sqlite
+*.sqlite3
+*.db
+data/
+uploads/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp

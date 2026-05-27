@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: timehub
+      POSTGRES_USER: timehub
+      POSTGRES_PASSWORD: timehub
+    volumes:
+      - timehub_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timehub -d timehub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://timehub:timehub@db:5432/timehub
+    ports:
+      - "8000:8000"
+    volumes:
+      - timehub_uploads:/app/uploads
+
+volumes:
+  timehub_db:
+  timehub_uploads:

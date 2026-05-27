@@ -1,0 +1,33 @@
+import os
+import tempfile
+
+import pytest
+
+os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("INITIAL_ADMIN_EMAIL", "admin@example.com")
+os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "testpass")
+
+_TMP_DB = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB.name}"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _migrate():
+    from app import models  # noqa: F401 — register models on metadata
+    from app.db import Base, engine
+
+    Base.metadata.create_all(engine)
+    from app.services.bootstrap import ensure_initial_admin
+
+    ensure_initial_admin()
+    yield
+
+
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        yield c
