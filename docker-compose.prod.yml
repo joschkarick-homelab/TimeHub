@@ -1,0 +1,44 @@
+# Production compose file for LXC / single-host deployments.
+# Pulls a pre-built image from GHCR (built by .github/workflows/build.yml)
+# instead of building locally. Environment values are read from stack.env
+# (rendered by .github/workflows/deploy.yml from GitHub secrets, or written
+# by hand on the host for manual deploys):
+#
+#   docker compose -f docker-compose.prod.yml --env-file stack.env pull
+#   docker compose -f docker-compose.prod.yml --env-file stack.env up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: timehub
+      POSTGRES_USER: timehub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - timehub_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timehub -d timehub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/joschkarick-homelab/timehub:${TIMEHUB_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - stack.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://timehub:${POSTGRES_PASSWORD}@db:5432/timehub
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - timehub_uploads:/app/uploads
+
+volumes:
+  timehub_db:
+  timehub_uploads:
