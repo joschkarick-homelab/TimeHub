@@ -62,6 +62,10 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile=/dev/null \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "mkdir -p ${DEPLOY_PATH}"
           scp -o StrictHostKeyChecking=accept-new \
               -o UserKnownHostsFile=/dev/null \
               docker-compose.prod.yml stack.env \
