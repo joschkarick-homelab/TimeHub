@@ -174,17 +174,78 @@ pytest -q
 
 ## 6. Deployment auf Proxmox-LXC
 
-1. LXC mit Docker-Support anlegen (Debian/Ubuntu, `nesting=1`, `keyctl=1`).
-2. Repo klonen, `.env` aus `.env.example` ableiten — mindestens
-   `SECRET_KEY`, `INITIAL_ADMIN_*`, ggf. `DATABASE_URL` setzen.
-3. `docker compose up -d --build` – das Image wird gebaut, Migrationen
-   laufen beim Start (`entrypoint.sh`), Daten landen in den Compose-Volumes
-   `timehub_db` und `timehub_uploads`.
-4. Reverse-Proxy (Traefik / Caddy / Nginx) vorschalten und auf
-   `app:8000` proxen. Healthcheck-Endpoint `/healthz`.
+Für die Produktion wird das Image nicht im LXC gebaut, sondern per
+GitHub Actions vorgebaut und aus GHCR gezogen
+(`ghcr.io/joschkarick-homelab/timehub:latest`). Dazu existieren zwei
+Compose-Dateien:
 
-Backup: das Volume `timehub_db` plus den Inhalt von `timehub_uploads`
-sichern; Migrationen sind versioniert.
+- `docker-compose.yml` — baut lokal, für Entwicklung
+- `docker-compose.prod.yml` — pullt `ghcr.io/...:${TIMEHUB_TAG:-latest}`
+
+### Einmalig auf dem LXC
+
+1. LXC anlegen (Debian/Ubuntu, `nesting=1`, `keyctl=1`), Docker installieren.
+2. Auf dem LXC nur diese drei Dateien benötigt:
+   - `docker-compose.prod.yml`
+   - `.env` (von `.env.example` abgeleitet — mindestens `SECRET_KEY`,
+     `POSTGRES_PASSWORD`, `INITIAL_ADMIN_*` setzen)
+   - optional `ANTHROPIC_API_KEY` für die KI-Mapping-Hilfe
+3. Sicheren `SECRET_KEY` generieren:
+   ```bash
+   docker run --rm python:3.12-slim \
+     python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+4. Falls das GHCR-Paket privat ist, vorher anmelden (mit einem PAT, das
+   `read:packages` darf):
+   ```bash
+   echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
+   ```
+5. Erststart:
+   ```bash
+   docker compose -f docker-compose.prod.yml pull
+   docker compose -f docker-compose.prod.yml up -d
+   docker compose -f docker-compose.prod.yml logs -f app
+   ```
+
+Beim ersten Start legt die App den Admin gemäß `INITIAL_ADMIN_*` an,
+Migrationen (Alembic) laufen aus dem `entrypoint.sh`.
+
+### Updates
+
+Push auf `main` → GitHub Action baut + pusht das Image als
+`ghcr.io/joschkarick-homelab/timehub:latest` (zusätzlich `sha-<commit>`
+für Pin-Updates). Auf dem LXC:
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Optional via [Watchtower](https://containrrr.dev/watchtower/) automatisch:
+
+```yaml
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --schedule "0 0 3 * * *"
+```
+
+### Reverse-Proxy
+
+Traefik / Caddy / Nginx vor `:${APP_PORT:-8000}` schalten, TLS dort
+terminieren. Healthcheck-Endpoint: `/healthz`.
+
+### Backup
+
+Volumes `timehub_db` und `timehub_uploads` sichern. Beispiel für einen
+nightly DB-Dump auf den Host:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U timehub timehub | gzip > /backup/timehub-$(date +%F).sql.gz
+```
 
 ---
 
