@@ -1,9 +1,11 @@
 # Production compose file for LXC / single-host deployments.
 # Pulls a pre-built image from GHCR (built by .github/workflows/build.yml)
-# instead of building locally.
+# instead of building locally. Environment values are read from stack.env
+# (rendered by .github/workflows/deploy.yml from GitHub secrets, or written
+# by hand on the host for manual deploys):
 #
-#   docker compose -f docker-compose.prod.yml pull
-#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml --env-file stack.env pull
+#   docker compose -f docker-compose.prod.yml --env-file stack.env up -d
 
 services:
   db:
@@ -29,7 +31,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - .env
+      - stack.env
     environment:
       DATABASE_URL: postgresql+psycopg://timehub:${POSTGRES_PASSWORD}@db:5432/timehub
     ports:
