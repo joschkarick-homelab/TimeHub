@@ -34,7 +34,7 @@
     </div>
     <div class="sm:col-span-2">
       <label class="block text-xs font-medium mb-1">Projekt</label>
-      <select name="project_id" required
+      <select name="project_id" id="dash-project" required
               class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
         {% for p in projects %}
           <option value="{{ p.id }}">{{ p.display_label }}</option>
@@ -66,12 +66,29 @@
         Speichern
       </button>
     </div>
+    <div id="dash-sync-fields" class="hidden sm:col-span-6 grid sm:grid-cols-3 gap-3 border-t border-slate-100 pt-3"></div>
     <p class="sm:col-span-6 text-xs text-slate-500 -mt-1">
       Entweder <strong>Von + Bis</strong> ausfüllen (Dauer wird berechnet) oder direkt die
       <strong>Dauer</strong> in Minuten eintragen.
     </p>
   </form>
 </section>
+
+{% include "_sync_fields_js.html" %}
+<script>
+  (function () {
+    var REGISTRY = {{ sync_field_registry | tojson }};
+    var PROJECT_TARGETS = {{ project_targets | tojson }};
+    var proj = document.getElementById("dash-project");
+    var box = document.getElementById("dash-sync-fields");
+    if (!proj || !box) return;
+    function update() {
+      window.renderSyncFields(box, REGISTRY, PROJECT_TARGETS[proj.value] || "intern", {});
+    }
+    proj.addEventListener("change", update);
+    update();
+  })();
+</script>
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Filter</h2>
@@ -164,7 +181,15 @@
             <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
             <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
             <td class="px-4 py-2">{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</td>
-            <td class="px-4 py-2">{{ e.sync_status }}</td>
+            <td class="px-4 py-2">
+              {% set st = entry_status.get(e.id) %}
+              {% if st and st.needs_sync and not st.ready %}
+                <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
+                      title="Fehlt: {{ st.missing | join(', ') }}">⚠ {{ st.missing | join(', ') }}</span>
+              {% else %}
+                {{ e.sync_status }}
+              {% endif %}
+            </td>
             <td class="px-4 py-2 space-x-2 whitespace-nowrap text-right">
               <a href="/entries/{{ e.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
               <form action="/entries/{{ e.id }}/delete" method="post" class="inline"

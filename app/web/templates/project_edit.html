@@ -30,7 +30,8 @@
       </label>
       <label class="text-sm">
         <span class="block font-medium mb-1">Default-Sync-Ziel</span>
-        <select name="default_sync_target" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        <select name="default_sync_target" id="sync-target"
+                class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
           {% for t in sync_targets %}
             <option value="{{ t }}" {% if project.default_sync_target == t %}selected{% endif %}>{{ t }}</option>
           {% endfor %}
@@ -46,6 +47,8 @@
       </label>
     </div>
 
+    <div id="sync-fields" class="hidden grid sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3"></div>
+
     <div class="flex gap-2 pt-2">
       <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
         Speichern
@@ -54,4 +57,17 @@
     </div>
   </form>
 </section>
+
+{% include "_sync_fields_js.html" %}
+<script>
+  (function () {
+    var REGISTRY = {{ sync_field_registry | tojson }};
+    var CURRENT = {{ current_meta | tojson }};
+    var sel = document.getElementById("sync-target");
+    var box = document.getElementById("sync-fields");
+    function update() { window.renderSyncFields(box, REGISTRY, sel.value, CURRENT); }
+    sel.addEventListener("change", update);
+    update();
+  })();
+</script>
 {% endblock %}

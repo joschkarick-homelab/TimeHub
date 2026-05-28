@@ -1,0 +1,32 @@
+<script>
+  // Shared renderer for target-dependent sync fields. Builds inputs named
+  // meta__<target>__<key> so the server can pick them up generically. Only the
+  // active target's fields are rendered (and thus submitted).
+  window.renderSyncFields = function (container, registry, target, current) {
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+    if (!container) return;
+    container.innerHTML = "";
+    var fields = (registry || {})[target] || [];
+    if (!fields.length) { container.classList.add("hidden"); return; }
+    container.classList.remove("hidden");
+    fields.forEach(function (f) {
+      var cur = ((current || {})[target] || {})[f.key] || "";
+      var id = "meta_" + target + "_" + f.key;
+      var name = "meta__" + target + "__" + f.key;
+      var wrap = document.createElement("div");
+      wrap.innerHTML =
+        '<label class="block text-xs font-medium mb-1" for="' + id + '">' +
+          esc(f.label) + (f.required ? ' <span class="text-rose-500">*</span>' : "") +
+        "</label>" +
+        '<input id="' + id + '" name="' + name + '" value="' + esc(cur) + '"' +
+          ' placeholder="' + esc(f.placeholder || "") + '"' +
+          ' class="w-full h-10 border border-slate-300 rounded px-2" />' +
+        (f.help ? '<p class="text-[11px] text-slate-500 mt-0.5">' + esc(f.help) + "</p>" : "");
+      container.appendChild(wrap);
+    });
+  };
+</script>

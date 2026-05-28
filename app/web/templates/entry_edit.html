@@ -20,7 +20,7 @@
     </div>
     <div class="sm:col-span-4">
       <label class="block text-xs font-medium mb-1">Projekt</label>
-      <select name="project_id" required
+      <select name="project_id" id="entry-project" required
               class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
         {% for p in projects %}
           <option value="{{ p.id }}" {% if p.id == entry.project_id %}selected{% endif %}>
@@ -54,6 +54,17 @@
       <input name="description" value="{{ entry.description }}"
              class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium mb-1">Sync-Ziel</label>
+      <select name="sync_target_override" id="entry-target"
+              class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        <option value="">Projekt-Standard</option>
+        {% for t in sync_targets %}
+          <option value="{{ t }}" {% if entry.sync_target_override == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="entry-sync-fields" class="hidden sm:col-span-6 grid sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3"></div>
     <p class="sm:col-span-6 text-xs text-slate-500 -mt-1">
       Von + Bis überschreiben die Dauer. Sind beide leer, gilt die eingetragene Dauer.
     </p>
@@ -72,4 +83,23 @@
     </button>
   </form>
 </section>
+
+{% include "_sync_fields_js.html" %}
+<script>
+  (function () {
+    var REGISTRY = {{ sync_field_registry | tojson }};
+    var CURRENT = {{ current_meta | tojson }};
+    var PROJECT_TARGETS = {{ project_targets | tojson }};
+    var proj = document.getElementById("entry-project");
+    var override = document.getElementById("entry-target");
+    var box = document.getElementById("entry-sync-fields");
+    function effectiveTarget() {
+      return override.value || PROJECT_TARGETS[proj.value] || "intern";
+    }
+    function update() { window.renderSyncFields(box, REGISTRY, effectiveTarget(), CURRENT); }
+    proj.addEventListener("change", update);
+    override.addEventListener("change", update);
+    update();
+  })();
+</script>
 {% endblock %}

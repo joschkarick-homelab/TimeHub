@@ -16,6 +16,7 @@ from app.models import ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
 from app.services import reports as report_svc
+from app.services import sync_fields as sf
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
 
@@ -124,8 +125,16 @@ def index(
     projects = list(
         db.execute(select(Project).where(Project.status == "active").order_by(Project.code)).scalars()
     )
+    # All projects (incl. inactive) so we can resolve sync status for every entry.
+    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
     projects_by_id = {p.id: p for p in projects}
     total_minutes = sum(e.duration_minutes for e in entries)
+
+    entry_status = {
+        e.id: sf.entry_sync_status(e, proj_lookup[e.project_id])
+        for e in entries
+        if e.project_id in proj_lookup
+    }
 
     formats = _visible_formats(db, user) if entries else []
 
@@ -137,6 +146,9 @@ def index(
             days=days,
             projects=projects,
             projects_by_id=projects_by_id,
+            entry_status=entry_status,
+            sync_field_registry=sf.registry_json("entry"),
+            project_targets={p.id: p.default_sync_target for p in projects},
             total_hours=round(total_minutes / 60, 2),
             entry_count=len(entries),
             today=date.today().isoformat(),
@@ -274,7 +286,7 @@ def _resolve_duration(start, end, duration_minutes: int | None) -> int:
 
 
 @router.post("/entries", response_class=HTMLResponse)
-def create_entry(
+async def create_entry(
     request: Request,
     entry_date: str = Form(...),
     project_id: int = Form(...),
@@ -305,6 +317,15 @@ def create_entry(
         duration_minutes=duration,
         description=description,
     )
+    # Target-specific fields follow the project's default target on the quick form.
+    target = project.default_sync_target
+    fields = sf.entry_fields(target)
+    if fields:
+        form = await request.form()
+        values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
+        entry.sync_metadata_override, _ = sf.apply_fields(
+            entry.sync_metadata_override, target, fields, values
+        )
     db.add(entry)
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
@@ -332,12 +353,22 @@ def edit_entry_form(
     )
     return templates.TemplateResponse(
         "entry_edit.html",
-        _ctx(request, user, entry=entry, projects=projects, error=error),
+        _ctx(
+            request,
+            user,
+            entry=entry,
+            projects=projects,
+            sync_targets=_KNOWN_SYNC_TARGETS,
+            sync_field_registry=sf.registry_json("entry"),
+            project_targets={p.id: p.default_sync_target for p in projects},
+            current_meta=entry.sync_metadata_override or {},
+            error=error,
+        ),
     )
 
 
 @router.post("/entries/{entry_id}/edit", response_class=HTMLResponse)
-def edit_entry_submit(
+async def edit_entry_submit(
     request: Request,
     entry_id: int,
     entry_date: str = Form(...),
@@ -346,6 +377,7 @@ def edit_entry_submit(
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
+    sync_target_override: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _maybe_user(request, db)
@@ -370,6 +402,17 @@ def edit_entry_submit(
     entry.end_time = end
     entry.duration_minutes = duration
     entry.description = description
+
+    override = sync_target_override if sync_target_override in _KNOWN_SYNC_TARGETS else ""
+    entry.sync_target_override = override or None
+    target = override or project.default_sync_target
+    fields = sf.entry_fields(target)
+    if fields:
+        form = await request.form()
+        values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
+        entry.sync_metadata_override, _ = sf.apply_fields(
+            entry.sync_metadata_override, target, fields, values
+        )
     db.add(entry)
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
@@ -399,6 +442,11 @@ def _minutes(t) -> int | None:
 
 
 def _cal_entry(e: TimeEntry, project: Project | None) -> dict:
+    status = (
+        sf.entry_sync_status(e, project)
+        if project is not None
+        else {"ready": True, "needs_sync": False, "missing": []}
+    )
     return {
         "id": e.id,
         "project_id": e.project_id,
@@ -408,6 +456,9 @@ def _cal_entry(e: TimeEntry, project: Project | None) -> dict:
         "start": _minutes(e.start_time),
         "end": _minutes(e.end_time),
         "duration_minutes": e.duration_minutes,
+        "ready": status["ready"],
+        "needs_sync": status["needs_sync"],
+        "missing": status.get("missing", []),
     }
 
 
@@ -450,7 +501,8 @@ def calendar_page(
     projects = list(
         db.execute(select(Project).where(Project.status == "active").order_by(Project.code)).scalars()
     )
-    projects_by_id = {p.id: p for p in projects}
+    # All projects (incl. inactive) so sync status resolves for every entry.
+    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
 
     today = date.today()
     columns = []
@@ -459,7 +511,7 @@ def calendar_page(
         day_entries = [e for e in entries if e.entry_date == d]
         timed, untimed = [], []
         for e in day_entries:
-            payload = _cal_entry(e, projects_by_id.get(e.project_id))
+            payload = _cal_entry(e, proj_lookup.get(e.project_id))
             (timed if payload["start"] is not None and payload["end"] is not None else untimed).append(payload)
         columns.append({
             "date": d.isoformat(),
@@ -472,7 +524,9 @@ def calendar_page(
         })
 
     projects_json = [
-        {"id": p.id, "label": p.display_label, "color": p.color} for p in projects
+        {"id": p.id, "label": p.display_label, "color": p.color,
+         "target": p.default_sync_target}
+        for p in projects
     ]
 
     return templates.TemplateResponse(
@@ -483,6 +537,7 @@ def calendar_page(
             columns=columns,
             projects=projects,
             projects_json=projects_json,
+            sync_field_registry=sf.registry_json("entry"),
             px_per_hour=CAL_PX_PER_HOUR,
             days_n=days_n,
             start=start_d.isoformat(),
@@ -542,6 +597,13 @@ async def calendar_create(request: Request, db: Session = Depends(get_db)):
         duration_minutes=duration,
         description=(data.get("description") or "").strip(),
     )
+    target = project.default_sync_target
+    fields = sf.entry_fields(target)
+    if fields:
+        meta_values = data.get("meta") or {}
+        entry.sync_metadata_override, _ = sf.apply_fields(
+            entry.sync_metadata_override, target, fields, meta_values
+        )
     db.add(entry)
     db.commit()
     db.refresh(entry)
@@ -1008,13 +1070,16 @@ def projects_page(
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     projects = list(db.execute(select(Project).order_by(Project.code)).scalars())
+    project_status = {p.id: sf.project_sync_status(p) for p in projects}
     return templates.TemplateResponse(
         "projects.html",
         _ctx(
             request,
             user,
             projects=projects,
+            project_status=project_status,
             sync_targets=_KNOWN_SYNC_TARGETS,
+            sync_field_registry=sf.registry_json("project"),
             statuses=_KNOWN_STATUSES,
             flash=flash,
             error=error,
@@ -1023,7 +1088,7 @@ def projects_page(
 
 
 @router.post("/projects", response_class=HTMLResponse)
-def projects_create(
+async def projects_create(
     request: Request,
     name: str = Form(...),
     code: str = Form(...),
@@ -1037,16 +1102,20 @@ def projects_create(
     redir = _require_admin_or_redirect(user)
     if redir is not None:
         return redir
+    target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
     p = Project(
         name=name.strip(),
         code=code.strip(),
         customer=(customer.strip() or None),
         color=color or "#6366f1",
-        default_sync_target=(
-            default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
-        ),
+        default_sync_target=target,
         status=(status_ if status_ in _KNOWN_STATUSES else "active"),
     )
+    fields = sf.project_fields(target)
+    if fields:
+        form = await request.form()
+        values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
+        p.sync_metadata, _ = sf.apply_fields(p.sync_metadata, target, fields, values)
     db.add(p)
     try:
         db.commit()
@@ -1078,13 +1147,15 @@ def projects_edit_form(request: Request, project_id: int, db: Session = Depends(
             user,
             project=project,
             sync_targets=_KNOWN_SYNC_TARGETS,
+            sync_field_registry=sf.registry_json("project"),
+            current_meta=project.sync_metadata or {},
             statuses=_KNOWN_STATUSES,
         ),
     )
 
 
 @router.post("/projects/{project_id}/edit", response_class=HTMLResponse)
-def projects_update(
+async def projects_update(
     request: Request,
     project_id: int,
     name: str = Form(...),
@@ -1106,10 +1177,14 @@ def projects_update(
     project.code = code.strip()
     project.customer = customer.strip() or None
     project.color = color or "#6366f1"
-    project.default_sync_target = (
-        default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
-    )
+    target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
+    project.default_sync_target = target
     project.status = status_ if status_ in _KNOWN_STATUSES else "active"
+    fields = sf.project_fields(target)
+    if fields:
+        form = await request.form()
+        values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
+        project.sync_metadata, _ = sf.apply_fields(project.sync_metadata, target, fields, values)
     db.add(project)
     try:
         db.commit()

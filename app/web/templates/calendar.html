@@ -58,9 +58,10 @@
             {% for e in col.untimed %}
               <a href="/entries/{{ e.id }}/edit"
                  class="flex items-center gap-1 text-[10px] text-slate-600 hover:text-indigo-600 truncate py-0.5"
-                 title="Ohne Uhrzeit – {{ e.project_label }}">
+                 title="Ohne Uhrzeit – {{ e.project_label }}{% if e.needs_sync and not e.ready %} · fehlt: {{ e.missing | join(', ') }}{% endif %}">
                 <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0" style="background: {{ e.color }};"></span>
                 <span class="truncate">{{ e.project_label }} · {{ '%.2f'|format(e.duration_minutes / 60) }}h</span>
+                {% if e.needs_sync and not e.ready %}<span class="text-amber-600 shrink-0">⚠</span>{% endif %}
               </a>
             {% endfor %}
           </div>
@@ -92,6 +93,9 @@
             <div class="text-[10px] text-slate-500 tabular-nums leading-tight">
               {{ '%02d:%02d'|format(e.start // 60, e.start % 60) }}–{{ '%02d:%02d'|format(e.end // 60, e.end % 60) }}
             </div>
+            {% if e.needs_sync and not e.ready %}
+              <div class="text-[10px] text-amber-700 leading-tight truncate" title="Fehlt: {{ e.missing | join(', ') }}">⚠ {{ e.missing | join(', ') }}</div>
+            {% endif %}
             {% if e.description %}
               <div class="text-[10px] text-slate-500 leading-tight truncate">{{ e.description }}</div>
             {% endif %}
@@ -104,12 +108,14 @@
   </div>
 </div>
 
-<script id="cal-data" type="application/json">{{ {"px_per_hour": px_per_hour, "projects": projects_json}|tojson }}</script>
+<script id="cal-data" type="application/json">{{ {"px_per_hour": px_per_hour, "projects": projects_json, "registry": sync_field_registry}|tojson }}</script>
+{% include "_sync_fields_js.html" %}
 <script>
 (function () {
   var cfg = JSON.parse(document.getElementById("cal-data").textContent);
   var PX_PER_HOUR = cfg.px_per_hour;
   var PROJECTS = cfg.projects || [];
+  var REGISTRY = cfg.registry || {};
   var PX_PER_MIN = PX_PER_HOUR / 60;
   var SNAP = 15;
   var container = document.getElementById("cal-scroll");
@@ -281,6 +287,7 @@
       "</div>" +
       '<label class="block text-xs font-medium mb-1">Beschreibung</label>' +
       '<input type="text" class="cal-pop-desc w-full h-9 border border-slate-300 rounded px-2 mb-3" placeholder="optional">' +
+      '<div class="cal-pop-meta space-y-2 mb-3"></div>' +
       '<div class="flex justify-end gap-2">' +
         '<button type="button" class="cal-pop-cancel h-9 px-3 text-slate-600 hover:underline">Abbrechen</button>' +
         '<button type="button" class="cal-pop-save h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">Speichern</button>' +
@@ -295,16 +302,31 @@
     pop.style.left = left + "px";
     pop.style.top = top + "px";
 
-    pop.querySelector(".cal-pop-project").focus();
+    var projSel = pop.querySelector(".cal-pop-project");
+    var metaBox = pop.querySelector(".cal-pop-meta");
+    function targetFor(pid) {
+      var p = PROJECTS.find(function (x) { return String(x.id) === String(pid); });
+      return p ? p.target : "intern";
+    }
+    function renderMeta() { window.renderSyncFields(metaBox, REGISTRY, targetFor(projSel.value), {}); }
+    projSel.addEventListener("change", renderMeta);
+    renderMeta();
+
+    projSel.focus();
     pop.querySelector(".cal-pop-cancel").addEventListener("click", closePopover);
     pop.querySelector(".cal-pop-save").addEventListener("click", function () {
-      var pid = pop.querySelector(".cal-pop-project").value;
+      var pid = projSel.value;
       var stv = pop.querySelector(".cal-pop-start").value;
       var env = pop.querySelector(".cal-pop-end").value;
       var desc = pop.querySelector(".cal-pop-desc").value;
+      var meta = {};
+      metaBox.querySelectorAll("input").forEach(function (inp) {
+        var parts = (inp.name || "").split("__");
+        if (parts.length === 3 && inp.value.trim()) meta[parts[2]] = inp.value.trim();
+      });
       fetch("/calendar/entries", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: pid, entry_date: date, start_time: stv, end_time: env, description: desc }),
+        body: JSON.stringify({ project_id: pid, entry_date: date, start_time: stv, end_time: env, description: desc, meta: meta }),
       }).then(function (r) {
         return r.json().then(function (d) {
           if (!r.ok) { alert(d.error || "Fehler beim Speichern"); return; }
