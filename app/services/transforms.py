@@ -24,6 +24,49 @@ from datetime import datetime
 _MAX_REGEX_INPUT = 2000
 _PATTERN_CACHE: dict[str, re.Pattern] = {}
 
+VALID_OPS = {"copy", "regex", "date", "split", "constant"}
+_RULE_KEYS = ("source", "pattern", "group", "sep", "index", "value", "date_from", "default")
+
+
+def clean_transforms(items: list | None, supported: set[str]) -> list[dict]:
+    """Validate/normalize a list of transform rules, dropping anything that
+    references an unknown target or operation. Shared by the web router (parsing
+    the editor's hidden JSON) and the AI sanitizer."""
+    out: list[dict] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        target = item.get("target")
+        op = (item.get("op") or "copy").lower()
+        if target not in supported or op not in VALID_OPS:
+            continue
+        rule = {"target": target, "op": op}
+        for k in _RULE_KEYS:
+            if item.get(k) not in (None, ""):
+                rule[k] = item[k]
+        out.append(rule)
+    return out
+
+
+def clean_target_rules(items: list | None, known_targets: set[str]) -> list[dict]:
+    """Validate/normalize conditional target rules."""
+    out: list[dict] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        set_target = item.get("set_target")
+        if set_target not in known_targets:
+            continue
+        if item.get("when"):
+            out.append({"when": item["when"], "set_target": set_target})
+        elif item.get("when_source") and item.get("pattern"):
+            out.append({
+                "when_source": item["when_source"],
+                "pattern": item["pattern"],
+                "set_target": set_target,
+            })
+    return out
+
 
 def _compiled(pattern: str) -> re.Pattern | None:
     rx = _PATTERN_CACHE.get(pattern)

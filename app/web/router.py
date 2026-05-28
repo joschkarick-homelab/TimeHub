@@ -17,6 +17,7 @@ from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
 from app.services import reports as report_svc
 from app.services import sync_fields as sf
+from app.services.transforms import clean_target_rules, clean_transforms
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
 
@@ -748,9 +749,6 @@ def _visible_formats(db: Session, user: User) -> list[ImportFormat]:
     return list(db.execute(stmt).scalars())
 
 
-_TRANSFORM_OPS = {"copy", "regex", "date", "split", "constant"}
-
-
 def _target_options() -> list[dict]:
     """Mapping targets for the format UI: plain fields first, then sync fields,
     each with a human label."""
@@ -766,22 +764,7 @@ def _parse_transforms(raw: str) -> list[dict]:
         data = json.loads(raw) if raw.strip() else []
     except (json.JSONDecodeError, ValueError):
         return []
-    if not isinstance(data, list):
-        return []
-    out: list[dict] = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        target = item.get("target")
-        op = (item.get("op") or "copy").lower()
-        if target not in SUPPORTED_TARGETS or op not in _TRANSFORM_OPS:
-            continue
-        rule = {"target": target, "op": op}
-        for k in ("source", "pattern", "group", "sep", "index", "value", "date_from", "default"):
-            if item.get(k) not in (None, ""):
-                rule[k] = item[k]
-        out.append(rule)
-    return out
+    return clean_transforms(data, SUPPORTED_TARGETS)
 
 
 def _parse_target_rules(raw: str) -> list[dict]:
@@ -789,25 +772,7 @@ def _parse_target_rules(raw: str) -> list[dict]:
         data = json.loads(raw) if raw.strip() else []
     except (json.JSONDecodeError, ValueError):
         return []
-    if not isinstance(data, list):
-        return []
-    out: list[dict] = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        set_target = item.get("set_target")
-        if set_target not in _KNOWN_SYNC_TARGETS:
-            continue
-        rule: dict = {"set_target": set_target}
-        if item.get("when"):
-            rule["when"] = item["when"]
-        elif item.get("when_source") and item.get("pattern"):
-            rule["when_source"] = item["when_source"]
-            rule["pattern"] = item["pattern"]
-        else:
-            continue
-        out.append(rule)
-    return out
+    return clean_target_rules(data, set(_KNOWN_SYNC_TARGETS))
 
 
 @router.get("/import-formats", response_class=HTMLResponse)
@@ -886,8 +851,119 @@ async def formats_new_submit(
             target_fields=sorted(SUPPORTED_TARGETS),
             target_options=_target_options(),
             headers=suggestion.detected_headers,
-            transforms=[],
-            target_rules=[],
+            transforms=suggestion.transforms,
+            target_rules=suggestion.target_rules,
+            sample_text=text,
+            error=None,
+        ),
+    )
+
+
+@router.post("/import-formats/refine", response_class=HTMLResponse)
+def formats_refine(
+    request: Request,
+    name: str = Form(...),
+    sample_text: str = Form(""),
+    instruction: str = Form(""),
+    source_hint: str = Form("custom"),
+    separator: str = Form(","),
+    encoding: str = Form("utf-8"),
+    date_format: str = Form("%Y-%m-%d"),
+    time_format: str = Form("%H:%M"),
+    default_project_code: str = Form(""),
+    notes: str = Form(""),
+    column_map_json: str = Form("{}"),
+    transforms_json: str = Form("[]"),
+    target_rules_json: str = Form("[]"),
+    db: Session = Depends(get_db),
+):
+    """Refinement turn for the format wizard: re-run the AI with the current
+    state as 'previous' plus the user's instruction, and re-render the review."""
+    from app.schemas.import_format import ImportFormatSuggestion
+
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+
+    try:
+        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
+        if not isinstance(column_map, dict):
+            column_map = {}
+    except (json.JSONDecodeError, ValueError):
+        column_map = {}
+    column_map = {str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS}
+
+    previous = {
+        "source_hint": source_hint or "custom",
+        "separator": separator or ",",
+        "encoding": encoding or "utf-8",
+        "date_format": date_format or "%Y-%m-%d",
+        "time_format": time_format or "%H:%M",
+        "column_map": column_map,
+        "transforms": _parse_transforms(transforms_json),
+        "target_rules": _parse_target_rules(target_rules_json),
+        "default_project_code": default_project_code.strip() or None,
+        "notes": notes,
+    }
+
+    def _from_previous() -> "ImportFormatSuggestion":
+        return ImportFormatSuggestion(
+            source_hint=previous["source_hint"],
+            separator=previous["separator"],
+            encoding=previous["encoding"],
+            date_format=previous["date_format"],
+            time_format=previous["time_format"],
+            column_map=previous["column_map"],
+            transforms=previous["transforms"],
+            target_rules=previous["target_rules"],
+            default_project_code=previous["default_project_code"],
+            notes=previous["notes"],
+            detected_headers=list(previous["column_map"].keys()),
+        )
+
+    error = None
+    if not instruction.strip():
+        suggestion = _from_previous()
+        error = "Bitte eine Anweisung eingeben, was die KI anpassen soll."
+    else:
+        try:
+            suggestion = suggest_mapping(sample_text, instruction=instruction, previous=previous)
+        except AiMappingError as e:
+            suggestion = _from_previous()
+            error = str(e)
+
+    sep = suggestion.separator if suggestion.separator != "\\t" else "\t"
+    source_rows, target_rows = report_svc.preview_via_import_format(
+        sample_text,
+        suggestion.column_map,
+        separator=sep,
+        date_format=suggestion.date_format,
+        time_format=suggestion.time_format,
+    )
+    # Show every sample column (plus any the suggestion references) in the UI.
+    if source_rows:
+        headers = list(source_rows[0].keys())
+        for k in suggestion.column_map:
+            if k not in headers:
+                headers.append(k)
+        suggestion.detected_headers = headers
+
+    return templates.TemplateResponse(
+        "import_format_review.html",
+        _ctx(
+            request,
+            user,
+            name=name,
+            suggestion=suggestion,
+            source_rows=source_rows,
+            target_rows=target_rows,
+            target_fields=sorted(SUPPORTED_TARGETS),
+            target_options=_target_options(),
+            headers=suggestion.detected_headers,
+            transforms=suggestion.transforms,
+            target_rules=suggestion.target_rules,
+            sample_text=sample_text,
+            error=error,
         ),
     )
 

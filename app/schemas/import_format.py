@@ -72,6 +72,8 @@ class ImportFormatSuggestion(BaseModel):
     date_format: str
     time_format: str
     column_map: dict[str, str]
+    transforms: list[dict] = Field(default_factory=list)
+    target_rules: list[dict] = Field(default_factory=list)
     default_project_code: str | None = None
     notes: str = ""
     detected_headers: list[str] = Field(default_factory=list)

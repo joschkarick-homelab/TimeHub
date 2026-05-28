@@ -14,9 +14,14 @@ import logging
 import re
 
 from app.config import get_settings
+from app.models._enums import SyncTarget
 from app.schemas.import_format import SUPPORTED_TARGETS, ImportFormatSuggestion
+from app.services import sync_fields as sf
+from app.services.transforms import clean_target_rules, clean_transforms
 
 log = logging.getLogger(__name__)
+
+_KNOWN_SYNC_TARGETS = {t.value for t in SyncTarget}
 
 
 class AiMappingError(RuntimeError):
@@ -40,11 +45,13 @@ this shape:
   "date_format": "<Python strptime format for the date column, e.g. '%Y-%m-%d' or '%d.%m.%Y'>",
   "time_format": "<Python strptime format for time-of-day, e.g. '%H:%M' or '%H:%M:%S'>",
   "column_map":  { "<source CSV header exactly as written>": "<target field>", ... },
+  "transforms":  [ <transform>, ... ],
+  "target_rules":[ <target rule>, ... ],
   "default_project_code": null,
   "notes": "<one short German sentence explaining notable choices, may be empty>"
 }
 
-Target fields (use these names ONLY in column_map values, skip columns that don't fit):
+Target fields (use these names ONLY as mapping/transform targets, skip columns that don't fit):
   entry_date          required — the date of the work (calendar day)
   start_time          optional — wall-clock start, HH:MM
   end_time            optional — wall-clock end, HH:MM
@@ -56,13 +63,44 @@ Target fields (use these names ONLY in column_map values, skip columns that don'
   sync_target         override sync target per row (jira / salesforce / bcs / intern / none)
   external_ref        any external reference id
 
+A "transform" derives ONE target value from a source column (use when a plain
+column_map copy is not enough — e.g. a ticket id buried in free text, or a date
+in an unusual format). Shape:
+  {
+    "target": "<target field above OR a sync field below>",
+    "source": "<source CSV header>",
+    "op": "copy" | "regex" | "date" | "split" | "constant",
+    "pattern": "<regex with ONE capture group>",   // op=regex
+    "group": 1,
+    "date_from": "<strptime format of the source value>",  // op=date
+    "sep": ",", "index": 0,                        // op=split (0-based)
+    "value": "<fixed value>",                      // op=constant
+    "default": "<fallback when the result is empty>"  // any op
+  }
+Example — pull "ABC-123" out of a Description like "Ticket ABC-123: did things":
+  {"target":"sync:jira.issue_key","source":"Description","op":"regex","pattern":"([A-Z]+-\\d+)","group":1}
+
+A "target rule" sets an entry's sync target automatically when info is present:
+  { "when": "<a target field that, once filled, should trigger this>", "set_target": "jira|salesforce|bcs|intern|none" }
+Example: { "when": "sync:jira.issue_key", "set_target": "jira" }
+
 Rules:
-- Map AT MOST ONE source column to each target field.
+- Map AT MOST ONE source column to each plain target field via column_map.
 - Prefer duration_minutes/duration_hours over start_time+end_time only if the source has
   a single duration column.
-- If a column doesn't have a clean mapping, omit it from column_map.
+- If a column doesn't have a clean mapping, omit it.
+- Leave transforms/target_rules as empty arrays unless they clearly help.
+- When the user sends a follow-up instruction, revise your PREVIOUS JSON to honor it and
+  output the COMPLETE updated JSON again (same shape) — never a diff or prose.
 - Output a single JSON object, nothing else.
 """
+
+
+def _full_system_prompt() -> str:
+    """Static prompt + the concrete entry-level sync-field tokens (stable across
+    calls, so prompt caching still hits)."""
+    lines = [f"  {tok}   ({sf.target_label(tok)})" for tok in sorted(sf.entry_field_targets())]
+    return SYSTEM_PROMPT + "\nEntry-level sync field targets you may use:\n" + "\n".join(lines) + "\n"
 
 
 def _ensure_sample(raw_text: str, max_lines: int) -> str:
@@ -122,6 +160,8 @@ def _sanitize(raw: dict, raw_sample: str) -> ImportFormatSuggestion:
         date_format=str(raw.get("date_format") or "%Y-%m-%d")[:32],
         time_format=str(raw.get("time_format") or "%H:%M")[:32],
         column_map=cleaned,
+        transforms=clean_transforms(raw.get("transforms"), SUPPORTED_TARGETS),
+        target_rules=clean_target_rules(raw.get("target_rules"), _KNOWN_SYNC_TARGETS),
         default_project_code=(raw.get("default_project_code") or None),
         notes=str(raw.get("notes") or "")[:1024],
         detected_headers=detected,
@@ -147,7 +187,40 @@ def _peek_headers(sample: str, separator: str | None = None) -> list[str]:
         return []
 
 
-def suggest_mapping(raw_text: str) -> ImportFormatSuggestion:
+def _build_messages(sample: str, max_lines: int, instruction: str | None, previous: dict | None) -> list[dict]:
+    """Conversation for the model: always the CSV sample, then (for refinement)
+    the previous JSON as the assistant turn and the user's new instruction."""
+    messages: list[dict] = [
+        {
+            "role": "user",
+            "content": (
+                f"Hier ist der Anfang der CSV (bis zu {max_lines} Zeilen):\n\n"
+                f"```\n{sample}\n```\n\n"
+                "Gib jetzt das JSON-Mapping aus."
+            ),
+        }
+    ]
+    if previous is not None:
+        messages.append({"role": "assistant", "content": json.dumps(previous, ensure_ascii=False)})
+    if instruction:
+        messages.append({
+            "role": "user",
+            "content": (
+                f"Zusätzliche Anweisung des Nutzers:\n{instruction}\n\n"
+                "Aktualisiere das Mapping entsprechend und gib das vollständige JSON erneut aus."
+            ),
+        })
+    return messages
+
+
+def suggest_mapping(
+    raw_text: str,
+    *,
+    instruction: str | None = None,
+    previous: dict | None = None,
+) -> ImportFormatSuggestion:
+    """One-shot mapping suggestion, or a refinement when `instruction` + `previous`
+    are given (the model revises its prior JSON to honor the instruction)."""
     settings = get_settings()
     if not settings.anthropic_api_key:
         raise AiMappingError(
@@ -168,21 +241,13 @@ def suggest_mapping(raw_text: str) -> ImportFormatSuggestion:
             system=[
                 {
                     "type": "text",
-                    "text": SYSTEM_PROMPT,
+                    "text": _full_system_prompt(),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Hier ist der Anfang der CSV (bis zu "
-                        f"{settings.ai_mapping_max_sample_lines} Zeilen):\n\n"
-                        f"```\n{sample}\n```\n\n"
-                        "Gib jetzt das JSON-Mapping aus."
-                    ),
-                }
-            ],
+            messages=_build_messages(
+                sample, settings.ai_mapping_max_sample_lines, instruction, previous
+            ),
         )
     except Exception as e:  # noqa: BLE001
         log.exception("anthropic call failed")

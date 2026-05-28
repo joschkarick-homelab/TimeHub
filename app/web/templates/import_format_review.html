@@ -6,6 +6,12 @@
   Anpassungen sind nur nötig, wenn eine Zuordnung falsch ist.
 </p>
 
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error }}
+  </div>
+{% endif %}
+
 <div class="grid lg:grid-cols-2 gap-6">
   <section class="bg-white border border-slate-200 rounded-lg p-5">
     <h2 class="font-semibold mb-3">KI-Vorschlag</h2>
@@ -15,6 +21,24 @@
 
     <form method="post" action="/import-formats" class="space-y-4">
       <input type="hidden" name="name" value="{{ name }}" />
+      <textarea name="sample_text" class="hidden">{{ sample_text or '' }}</textarea>
+
+      {% if ai_enabled %}
+      <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+        <label class="block text-sm font-medium mb-1">Mit KI nachschärfen</label>
+        <p class="text-xs text-slate-500 mb-2">
+          Beschreibe in Worten, was noch fehlt — z. B. „Jira-Tickets stehen in der
+          Beschreibung als ‚Ticket 123: …', bitte als Jira-Ticket extrahieren und
+          das Ziel auf Jira setzen". Deine bisherigen Anpassungen bleiben erhalten.
+        </p>
+        <textarea name="instruction" rows="2" placeholder="Anweisung an die KI …"
+                  class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm"></textarea>
+        <button type="submit" formaction="/import-formats/refine"
+                class="mt-2 h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+          ↻ Nachschärfen
+        </button>
+      </div>
+      {% endif %}
 
       <div class="grid grid-cols-2 gap-3">
         <label class="text-sm">
