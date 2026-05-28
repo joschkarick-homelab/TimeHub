@@ -50,45 +50,97 @@
 </head>
 <body class="bg-slate-50 text-slate-900">
   <header class="bg-white border-b border-slate-200">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <a href="/" class="flex items-center gap-2 font-semibold text-lg">
-        <img src="/static/icon.svg" alt="" class="w-7 h-7" />
-        TimeHub
-      </a>
-      <nav class="text-sm flex items-center gap-4">
+    <div class="max-w-5xl mx-auto px-4 py-3">
+      <div class="flex items-center justify-between gap-2">
+        <a href="/" class="flex items-center gap-2 font-semibold text-lg">
+          <img src="/static/icon.svg" alt="" class="w-7 h-7" />
+          TimeHub
+        </a>
         {% if user %}
-          <a href="/" class="hover:text-indigo-600">Dashboard</a>
-          <a href="/projects" class="hover:text-indigo-600">Projekte</a>
-          <a href="/import" class="hover:text-indigo-600">Import</a>
-          <a href="/import-formats" class="hover:text-indigo-600">Formate</a>
-          {% if user.is_admin %}
-            <a href="/users" class="hover:text-indigo-600">Nutzer</a>
-          {% endif %}
-          <a href="/profile" class="hover:text-indigo-600">Profil</a>
-          <a href="/docs" class="hover:text-indigo-600">API</a>
-          <span class="text-slate-500 hidden md:inline">{{ user.email }}</span>
-          {# Theme switcher — POSTs via the small inline form so the
-             selection persists across pages via cookie. #}
-          <form action="/settings/theme" method="post" class="inline">
-            <select name="theme" onchange="this.form.submit()"
-                    class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white">
-              {% for t, label in [('indigo', 'Indigo (default)'), ('mindsquare', 'mindsquare'), ('dark', 'Dark')] %}
-                <option value="{{ t }}" {% if (theme or 'indigo') == t %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </form>
-          <form action="/logout" method="post">
-            <button class="text-rose-600 hover:underline" type="submit">Logout</button>
-          </form>
-        {% else %}
-          <a href="/login" class="hover:text-indigo-600">Login</a>
-          <a href="/docs" class="hover:text-indigo-600">API</a>
+          <button type="button" id="nav-toggle" aria-label="Menü"
+                  class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded border border-slate-300">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 5h14M3 10h14M3 15h14" stroke-linecap="round"/>
+            </svg>
+          </button>
         {% endif %}
-      </nav>
+        <nav class="hidden md:flex text-sm items-center gap-4">
+          {% if user %}
+            <a href="/" class="hover:text-indigo-600">Dashboard</a>
+            <a href="/reports" class="hover:text-indigo-600">Reports</a>
+            <a href="/projects" class="hover:text-indigo-600">Projekte</a>
+            <a href="/import" class="hover:text-indigo-600">Import</a>
+            <a href="/import-formats" class="hover:text-indigo-600">Formate</a>
+            {% if user.is_admin %}
+              <a href="/users" class="hover:text-indigo-600">Nutzer</a>
+            {% endif %}
+            <a href="/profile" class="hover:text-indigo-600">Profil</a>
+            <a href="/docs" class="hover:text-indigo-600">API</a>
+            <span class="text-slate-500 hidden lg:inline">{{ user.email }}</span>
+            <form action="/settings/theme" method="post" class="inline">
+              <select name="theme" onchange="this.form.submit()"
+                      class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white">
+                {% for t, label in [('indigo', 'Indigo'), ('mindsquare', 'mindsquare'), ('dark', 'Dark')] %}
+                  <option value="{{ t }}" {% if (theme or 'indigo') == t %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </form>
+            <form action="/logout" method="post">
+              <button class="text-rose-600 hover:underline" type="submit">Logout</button>
+            </form>
+          {% else %}
+            <a href="/login" class="hover:text-indigo-600">Login</a>
+            <a href="/docs" class="hover:text-indigo-600">API</a>
+          {% endif %}
+        </nav>
+      </div>
+
+      {% if user %}
+        {# Mobile menu — toggled by the hamburger, hidden on md+ #}
+        <nav id="nav-mobile" class="hidden md:hidden mt-3 pt-3 border-t border-slate-200 flex-col gap-1 text-sm">
+          <a href="/" class="block py-2 hover:text-indigo-600">Dashboard</a>
+          <a href="/reports" class="block py-2 hover:text-indigo-600">Reports</a>
+          <a href="/projects" class="block py-2 hover:text-indigo-600">Projekte</a>
+          <a href="/import" class="block py-2 hover:text-indigo-600">Import</a>
+          <a href="/import-formats" class="block py-2 hover:text-indigo-600">Formate</a>
+          {% if user.is_admin %}
+            <a href="/users" class="block py-2 hover:text-indigo-600">Nutzer</a>
+          {% endif %}
+          <a href="/profile" class="block py-2 hover:text-indigo-600">Profil</a>
+          <a href="/docs" class="block py-2 hover:text-indigo-600">API</a>
+          <div class="flex items-center justify-between py-2 border-t border-slate-100 mt-1">
+            <form action="/settings/theme" method="post">
+              <select name="theme" onchange="this.form.submit()"
+                      class="text-xs border border-slate-300 rounded px-2 py-1 bg-white">
+                {% for t, label in [('indigo', 'Indigo'), ('mindsquare', 'mindsquare'), ('dark', 'Dark')] %}
+                  <option value="{{ t }}" {% if (theme or 'indigo') == t %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </form>
+            <span class="text-slate-500 text-xs truncate ml-2">{{ user.email }}</span>
+            <form action="/logout" method="post" class="ml-2">
+              <button class="text-rose-600 hover:underline" type="submit">Logout</button>
+            </form>
+          </div>
+        </nav>
+      {% endif %}
     </div>
   </header>
   <main class="max-w-5xl mx-auto px-4 py-6">
     {% block content %}{% endblock %}
   </main>
+  <script>
+    (function () {
+      var btn = document.getElementById("nav-toggle");
+      var menu = document.getElementById("nav-mobile");
+      if (btn && menu) {
+        btn.addEventListener("click", function () {
+          var open = !menu.classList.contains("hidden");
+          menu.classList.toggle("hidden", open);
+          menu.classList.toggle("flex", !open);
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

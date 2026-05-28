@@ -1,16 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid md:grid-cols-3 gap-4 mb-6">
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error | replace('+', ' ') }}
+  </div>
+{% endif %}
+<div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-6">
   <div class="bg-white border border-slate-200 rounded-lg p-4">
     <div class="text-sm text-slate-500">Gefilterte Einträge</div>
-    <div class="text-3xl font-semibold mt-1">{{ total_hours }} h</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1">{{ total_hours }} h</div>
     <div class="text-xs text-slate-500">{{ entry_count }} Einträge</div>
   </div>
   <div class="bg-white border border-slate-200 rounded-lg p-4">
     <div class="text-sm text-slate-500">Aktive Projekte</div>
-    <div class="text-3xl font-semibold mt-1">{{ projects|length }}</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1">{{ projects|length }}</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-4">
+  <div class="bg-white border border-slate-200 rounded-lg p-4 col-span-2 md:col-span-1">
     <div class="text-sm text-slate-500">Angemeldet als</div>
     <div class="text-lg font-medium mt-1">{{ user.full_name or user.email }}</div>
     <div class="text-xs text-slate-500">{{ 'Admin' if user.is_admin else 'Consultant' }}</div>
@@ -19,14 +24,15 @@
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Neuer Eintrag</h2>
-  {# Uniform field height (h-10) so the select, inputs and the submit button all match. #}
-  <form method="post" action="/entries" class="grid sm:grid-cols-5 gap-3 items-end">
+  {# Uniform field height (h-10). One column on mobile, six on sm+ so all
+     fields and the button line up. #}
+  <form method="post" action="/entries" class="grid grid-cols-1 sm:grid-cols-6 gap-3 sm:items-end">
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Datum</label>
       <input name="entry_date" type="date" required value="{{ today }}"
              class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
-    <div class="sm:col-span-1">
+    <div class="sm:col-span-2">
       <label class="block text-xs font-medium mb-1">Projekt</label>
       <select name="project_id" required
               class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
@@ -35,27 +41,41 @@
         {% endfor %}
       </select>
     </div>
-    <div class="sm:col-span-1">
-      <label class="block text-xs font-medium mb-1">Dauer (Min, ¼-Std)</label>
-      <input name="duration_minutes" type="number" step="15" min="15" value="60" required
-             class="w-full h-10 border border-slate-300 rounded px-2" />
+    <div class="grid grid-cols-3 gap-2 sm:contents">
+      <div class="sm:col-span-1">
+        <label class="block text-xs font-medium mb-1">Von</label>
+        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 rounded px-2" />
+      </div>
+      <div class="sm:col-span-1">
+        <label class="block text-xs font-medium mb-1">Bis</label>
+        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 rounded px-2" />
+      </div>
+      <div class="sm:col-span-1">
+        <label class="block text-xs font-medium mb-1">Dauer (Min)</label>
+        <input name="duration_minutes" type="number" step="15" min="15" inputmode="numeric"
+               placeholder="60" class="w-full h-10 border border-slate-300 rounded px-2" />
+      </div>
     </div>
-    <div class="sm:col-span-1">
+    <div class="sm:col-span-4">
       <label class="block text-xs font-medium mb-1">Beschreibung</label>
       <input name="description" class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
-    <div class="sm:col-span-1">
-      <label class="block text-xs font-medium mb-1 invisible">_</label>
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium mb-1 invisible sm:not-sr-only">_</label>
       <button class="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
         Speichern
       </button>
     </div>
+    <p class="sm:col-span-6 text-xs text-slate-500 -mt-1">
+      Entweder <strong>Von + Bis</strong> ausfüllen (Dauer wird berechnet) oder direkt die
+      <strong>Dauer</strong> in Minuten eintragen.
+    </p>
   </form>
 </section>
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Filter</h2>
-  <form method="get" action="/" class="grid sm:grid-cols-5 gap-3 items-end">
+  <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Von</label>
       <input type="date" name="date_from" value="{{ date_from }}"
@@ -66,7 +86,7 @@
       <input type="date" name="date_to" value="{{ date_to }}"
              class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
-    <div class="sm:col-span-2">
+    <div class="col-span-2 sm:col-span-2">
       <label class="block text-xs font-medium mb-1">Projekt</label>
       <select name="project_id" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
         <option value="">— alle —</option>
@@ -77,7 +97,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="sm:col-span-1 flex gap-2">
+    <div class="col-span-2 sm:col-span-1 flex gap-2">
       <button class="flex-1 h-10 bg-slate-800 hover:bg-slate-900 text-white rounded font-medium">
         Filtern
       </button>
@@ -113,7 +133,8 @@
   </div>
 
   {% if days %}
-  <table class="w-full text-sm">
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm min-w-[640px]">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
         <th class="px-4 py-2">Datum</th>
@@ -164,6 +185,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="px-5 pb-5 text-slate-500">Keine Einträge im gewählten Zeitraum.</p>
   {% endif %}

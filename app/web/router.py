@@ -2,7 +2,7 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
@@ -86,6 +86,7 @@ def index(
     date_from: str | None = None,
     date_to: str | None = None,
     project_id: str | None = None,
+    error: str | None = None,
 ):
     user = _maybe_user(request, db)
     if user is None:
@@ -143,6 +144,7 @@ def index(
             date_to=dt.isoformat() if dt else "",
             project_id=project_id_int or "",
             formats=formats,
+            error=error,
         ),
     )
 
@@ -245,11 +247,40 @@ def logout(request: Request):
     return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
 
 
+def _parse_time(value: str | None):
+    """Parse an HTML <input type=time> value (HH:MM, sometimes HH:MM:SS)."""
+    if not value or not value.strip():
+        return None
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(value.strip(), fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def _resolve_duration(start, end, duration_minutes: int | None) -> int:
+    """start+end win when both present (derive duration); otherwise use the
+    explicit duration field. Raises ValueError if neither yields a positive
+    duration."""
+    if start is not None and end is not None:
+        delta = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute)
+        if delta <= 0:
+            raise ValueError("Ende muss nach dem Start liegen")
+        return delta
+    if duration_minutes and duration_minutes > 0:
+        return duration_minutes
+    raise ValueError("Dauer angeben oder Start + Ende ausfüllen")
+
+
 @router.post("/entries", response_class=HTMLResponse)
 def create_entry(
+    request: Request,
     entry_date: str = Form(...),
     project_id: int = Form(...),
-    duration_minutes: int = Form(...),
+    duration_minutes: int | None = Form(None),
+    start_time: str = Form(""),
+    end_time: str = Form(""),
     description: str = Form(""),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -257,11 +288,21 @@ def create_entry(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=400, detail="project not found")
+    start = _parse_time(start_time)
+    end = _parse_time(end_time)
+    try:
+        duration = _resolve_duration(start, end, duration_minutes)
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/?error={e}".replace(" ", "+"), status_code=status.HTTP_302_FOUND
+        )
     entry = TimeEntry(
         user_id=user.id,
         project_id=project_id,
         entry_date=date.fromisoformat(entry_date),
-        duration_minutes=duration_minutes,
+        start_time=start,
+        end_time=end,
+        duration_minutes=duration,
         description=description,
     )
     db.add(entry)
@@ -279,7 +320,9 @@ def _owned_entry_or_404(db: Session, entry_id: int, user: User) -> TimeEntry:
 
 
 @router.get("/entries/{entry_id}/edit", response_class=HTMLResponse)
-def edit_entry_form(request: Request, entry_id: int, db: Session = Depends(get_db)):
+def edit_entry_form(
+    request: Request, entry_id: int, db: Session = Depends(get_db), error: str | None = None
+):
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
@@ -289,7 +332,7 @@ def edit_entry_form(request: Request, entry_id: int, db: Session = Depends(get_d
     )
     return templates.TemplateResponse(
         "entry_edit.html",
-        _ctx(request, user, entry=entry, projects=projects),
+        _ctx(request, user, entry=entry, projects=projects, error=error),
     )
 
 
@@ -299,7 +342,9 @@ def edit_entry_submit(
     entry_id: int,
     entry_date: str = Form(...),
     project_id: int = Form(...),
-    duration_minutes: int = Form(...),
+    duration_minutes: int | None = Form(None),
+    start_time: str = Form(""),
+    end_time: str = Form(""),
     description: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -310,9 +355,20 @@ def edit_entry_submit(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=400, detail="project not found")
+    start = _parse_time(start_time)
+    end = _parse_time(end_time)
+    try:
+        duration = _resolve_duration(start, end, duration_minutes)
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/entries/{entry_id}/edit?error={e}".replace(" ", "+"),
+            status_code=status.HTTP_302_FOUND,
+        )
     entry.entry_date = date.fromisoformat(entry_date)
     entry.project_id = project_id
-    entry.duration_minutes = duration_minutes
+    entry.start_time = start
+    entry.end_time = end
+    entry.duration_minutes = duration
     entry.description = description
     db.add(entry)
     db.commit()
@@ -944,4 +1000,113 @@ def profile_save(
     db.commit()
     return RedirectResponse(
         url="/profile?flash=Profil+gespeichert", status_code=status.HTTP_302_FOUND
+    )
+
+
+# -------------------- Reporting --------------------
+
+
+@router.get("/reports", response_class=HTMLResponse)
+def reports_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    preset: str | None = None,
+    group_by: list[str] | None = Query(default=None),
+    detailed: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    project_id: str | None = None,
+    customer: str | None = None,
+    user_id: str | None = None,
+):
+    from app.services import report_builder as rb
+
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+
+    # Resolve grouping: an explicit preset wins; else custom group_by + detailed.
+    if preset and preset in rb.PRESETS:
+        cfg = rb.PRESETS[preset]
+        active_group_by = cfg["group_by"]
+        active_detailed = cfg["detailed"]
+    elif group_by:
+        active_group_by = [g for g in group_by if g in rb.DIMENSIONS]
+        active_detailed = detailed in ("1", "true", "on", "yes")
+        preset = None
+    else:
+        # default landing view
+        preset = "weekly_detailed"
+        cfg = rb.PRESETS[preset]
+        active_group_by = cfg["group_by"]
+        active_detailed = cfg["detailed"]
+    if not active_group_by:
+        active_group_by = ["day"]
+
+    df = _parse_date(date_from)
+    dt = _parse_date(date_to)
+    pid: int | None = None
+    if project_id:
+        try:
+            pid = int(project_id)
+        except ValueError:
+            pid = None
+    uid: int | None = None
+    if user_id and user.is_admin:
+        try:
+            uid = int(user_id)
+        except ValueError:
+            uid = None
+
+    stmt = (
+        select(TimeEntry, Project, User)
+        .join(Project, Project.id == TimeEntry.project_id)
+        .join(User, User.id == TimeEntry.user_id)
+        .order_by(TimeEntry.entry_date, TimeEntry.id)
+    )
+    # Non-admins only ever see their own entries.
+    if not user.is_admin:
+        stmt = stmt.where(TimeEntry.user_id == user.id)
+    elif uid is not None:
+        stmt = stmt.where(TimeEntry.user_id == uid)
+    if df is not None:
+        stmt = stmt.where(TimeEntry.entry_date >= df)
+    if dt is not None:
+        stmt = stmt.where(TimeEntry.entry_date <= dt)
+    if pid is not None:
+        stmt = stmt.where(TimeEntry.project_id == pid)
+    if customer:
+        stmt = stmt.where(Project.customer == customer)
+
+    rows = list(db.execute(stmt).all())
+    report = rb.build_report(rows, active_group_by, detailed=active_detailed)
+
+    projects = list(db.execute(select(Project).order_by(Project.code)).scalars())
+    customers = sorted({p.customer for p in projects if p.customer})
+    users = (
+        list(db.execute(select(User).order_by(User.full_name)).scalars())
+        if user.is_admin
+        else []
+    )
+
+    return templates.TemplateResponse(
+        "reports.html",
+        _ctx(
+            request,
+            user,
+            report=report,
+            presets=rb.PRESETS,
+            active_preset=preset,
+            dimensions=rb.DIMENSION_LABELS,
+            active_group_by=active_group_by,
+            active_detailed=active_detailed,
+            projects=projects,
+            customers=customers,
+            users=users,
+            date_from=df.isoformat() if df else "",
+            date_to=dt.isoformat() if dt else "",
+            project_id=pid or "",
+            customer=customer or "",
+            user_id=uid or "",
+        ),
     )
