@@ -220,3 +220,37 @@ def registry_json(level: str) -> dict[str, list[dict]]:
             if f.level == level
         ]
     return out
+
+
+def entry_field_targets() -> set[str]:
+    """Namespaced import/export targets for every entry-level sync field,
+    e.g. {"sync:jira.issue_key", "sync:bcs.subject", ...}."""
+    return {
+        f"sync:{target}.{f.key}"
+        for target, fields in TARGET_FIELDS.items()
+        for f in fields
+        if f.level == "entry"
+    }
+
+
+def parse_target_token(token: str) -> tuple[str, str] | None:
+    """Split "sync:<target>.<key>" → (target, key); None for plain targets."""
+    if not token.startswith("sync:"):
+        return None
+    rest = token[len("sync:"):]
+    if "." not in rest:
+        return None
+    target, key = rest.split(".", 1)
+    return target, key
+
+
+def target_label(token: str) -> str:
+    """Human label for a mapping target token (used in the format UI)."""
+    parsed = parse_target_token(token)
+    if parsed is None:
+        return token
+    target, key = parsed
+    for f in TARGET_FIELDS.get(target, []):
+        if f.key == key:
+            return f"{target}: {f.label}"
+    return token

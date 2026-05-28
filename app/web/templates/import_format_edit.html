@@ -63,8 +63,8 @@
                    value="{{ header }}" placeholder="CSV-Header" />
             <select class="h-9 border border-slate-300 rounded px-2 bg-white map-target">
               <option value="">(ignorieren)</option>
-              {% for t in targets %}
-                <option value="{{ t }}" {% if fmt.column_map.get(header) == t %}selected{% endif %}>{{ t }}</option>
+              {% for o in target_options %}
+                <option value="{{ o.value }}" {% if fmt.column_map.get(header) == o.value %}selected{% endif %}>{{ o.label }}</option>
               {% endfor %}
             </select>
             <button type="button" class="text-rose-600 hover:underline text-xs map-del">entfernen</button>
@@ -73,6 +73,8 @@
       </div>
       <input type="hidden" name="column_map_json" id="column_map_json" value="{}" />
     </div>
+
+    {% include "_format_advanced.html" %}
 
     <label class="text-sm block">
       <span class="block font-medium mb-1">Notizen</span>
@@ -96,7 +98,7 @@
 </section>
 
 <script>
-  const TARGETS = {{ targets | tojson }};
+  const TARGET_OPTIONS = {{ target_options | tojson }};
   const rowsEl = document.getElementById("map-rows");
   const hidden = document.getElementById("column_map_json");
 
@@ -128,7 +130,7 @@
       <input class="h-9 border border-slate-300 rounded px-2 font-mono map-src" placeholder="CSV-Header" />
       <select class="h-9 border border-slate-300 rounded px-2 bg-white map-target">
         <option value="">(ignorieren)</option>
-        ${TARGETS.map(t => `<option value="${t}">${t}</option>`).join("")}
+        ${TARGET_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join("")}
       </select>
       <button type="button" class="text-rose-600 hover:underline text-xs map-del">entfernen</button>
     `;

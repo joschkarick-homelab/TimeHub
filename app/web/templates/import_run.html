@@ -103,6 +103,15 @@
         <input name="file" type="file" accept=".csv,text/csv,text/plain" required
                class="w-full h-10 border border-slate-300 rounded px-3 bg-white" />
       </div>
+      <label class="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="apply_target_rules" value="true" class="mt-0.5" />
+        <span>
+          <span class="font-medium">Ziel automatisch setzen</span>
+          <span class="block text-xs text-slate-500">
+            Wendet die Ziel-Regeln des Formats an (z. B. erkanntes Jira-Ticket → Ziel Jira).
+          </span>
+        </span>
+      </label>
       <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
         Importieren
       </button>

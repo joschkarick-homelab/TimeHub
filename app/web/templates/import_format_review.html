@@ -68,8 +68,8 @@
                 </div>
                 <select data-source="{{ header }}" class="h-9 border border-slate-300 rounded px-2 map-select bg-white">
                   <option value="">(ignorieren)</option>
-                  {% for t in targets %}
-                    <option value="{{ t }}" {% if suggested == t %}selected{% endif %}>{{ t }}</option>
+                  {% for o in target_options %}
+                    <option value="{{ o.value }}" {% if suggested == o.value %}selected{% endif %}>{{ o.label }}</option>
                   {% endfor %}
                 </select>
               </div>
@@ -81,6 +81,8 @@
         <input type="hidden" name="column_map_json" id="column_map_json"
                value='{{ suggestion.column_map | tojson }}' />
       </div>
+
+      {% include "_format_advanced.html" %}
 
       <label class="text-sm">
         <span class="block font-medium mb-1">Notizen</span>

@@ -138,6 +138,7 @@ async def suggest(
 async def run_import(
     fmt_id: int,
     file: UploadFile = File(...),
+    apply_target_rules: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -158,6 +159,9 @@ async def run_import(
             encoding=fmt.encoding,
             date_format=fmt.date_format,
             time_format=fmt.time_format,
+            transforms=fmt.transforms or [],
+            target_rules=fmt.target_rules or [],
+            apply_target_rules=apply_target_rules,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

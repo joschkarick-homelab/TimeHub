@@ -34,7 +34,7 @@
     </div>
     <div class="text-xs text-slate-500">
       Unterstützte Zielfelder:
-      {% for t in targets %}<code class="bg-slate-100 px-1 rounded">{{ t }}</code>{% if not loop.last %} {% endif %}{% endfor %}
+      {% for o in target_options %}<code class="bg-slate-100 px-1 rounded">{{ o.label }}</code>{% if not loop.last %} {% endif %}{% endfor %}
     </div>
     <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 py-2 font-medium">
       Vorschlag erzeugen

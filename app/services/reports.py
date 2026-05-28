@@ -127,6 +127,9 @@ def _format_value(field: str, entry: TimeEntry, project: Project, user: User,
         return entry.sync_target_override or project.default_sync_target
     if field == "external_ref":
         return entry.external_ref or ""
+    if field.startswith("sync:") and "." in field:
+        target, key = field[len("sync:"):].split(".", 1)
+        return ((entry.sync_metadata_override or {}).get(target) or {}).get(key, "")
     return ""
 
 

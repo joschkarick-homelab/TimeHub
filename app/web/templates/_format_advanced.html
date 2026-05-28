@@ -1,0 +1,179 @@
+{# Advanced format editor: per-column transforms + conditional target rules.
+   Included inside the format <form>; keeps two hidden JSON fields in sync. #}
+<div class="space-y-4 border-t border-slate-100 pt-4">
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-sm font-medium">Transformationen <span class="text-slate-400 font-normal">(optional)</span></span>
+      <button type="button" id="add-transform" class="text-xs text-indigo-600 hover:underline">+ Transformation</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">
+      Wert aus einer Quell-Spalte ableiten — Regex-Teilstring, Datum umwandeln, Split oder Konstante.
+      Überschreibt das einfache Mapping für dasselbe Zielfeld.
+    </p>
+    <div id="transform-rows" class="space-y-2"></div>
+    <input type="hidden" name="transforms_json" id="transforms_json" value="[]" />
+  </div>
+
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-sm font-medium">Ziel automatisch setzen <span class="text-slate-400 font-normal">(optional)</span></span>
+      <button type="button" id="add-rule" class="text-xs text-indigo-600 hover:underline">+ Regel</button>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">
+      Wenn ein Feld befüllt ist (z. B. das Jira-Ticket per Regex oben), das Sync-Ziel der Einträge automatisch setzen.
+      Greift beim Import nur, wenn dort „Ziel automatisch setzen" angehakt ist.
+    </p>
+    <div id="rule-rows" class="space-y-2"></div>
+    <input type="hidden" name="target_rules_json" id="target_rules_json" value="[]" />
+  </div>
+</div>
+
+<script>
+(function () {
+  var TARGET_OPTIONS = {{ target_options | tojson }};
+  var HEADERS = {{ headers | tojson }};
+  var TRANSFORMS = {{ transforms | tojson }};
+  var RULES = {{ target_rules | tojson }};
+  var SYNC_TARGETS = ["jira", "salesforce", "bcs", "intern", "none"];
+  var OPS = [["copy", "Kopieren"], ["regex", "Regex-Teilstring"], ["date", "Datum umwandeln"],
+            ["split", "Split"], ["constant", "Konstante"]];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function optList(pairs, sel) {
+    return pairs.map(function (p) {
+      var v = p[0], label = p[1];
+      return '<option value="' + esc(v) + '"' + (v === sel ? " selected" : "") + ">" + esc(label) + "</option>";
+    }).join("");
+  }
+  function targetOpts(sel) {
+    return TARGET_OPTIONS.map(function (o) {
+      return '<option value="' + esc(o.value) + '"' + (o.value === sel ? " selected" : "") + ">" + esc(o.label) + "</option>";
+    }).join("");
+  }
+  function sourceOpts(sel) {
+    var opts = '<option value="">— Quelle —</option>';
+    return opts + HEADERS.map(function (h) {
+      return '<option value="' + esc(h) + '"' + (h === sel ? " selected" : "") + ">" + esc(h) + "</option>";
+    }).join("");
+  }
+
+  // ---------- transforms ----------
+  var tRows = document.getElementById("transform-rows");
+  var tHidden = document.getElementById("transforms_json");
+  var inputCls = "h-9 border border-slate-300 rounded px-2 text-sm";
+
+  function paramsHtml(op, r) {
+    r = r || {};
+    if (op === "regex") {
+      return '<input class="' + inputCls + ' font-mono p-pattern" placeholder="Muster z. B. ([A-Z]+-\\d+)" value="' + esc(r.pattern) + '" />' +
+             '<input type="number" min="0" class="' + inputCls + ' w-16 p-group" title="Capture-Gruppe" value="' + esc(r.group != null ? r.group : 1) + '" />';
+    }
+    if (op === "date") {
+      return '<input class="' + inputCls + ' font-mono p-datefrom" placeholder="Quell-Format z. B. %d.%m.%Y" value="' + esc(r.date_from) + '" />';
+    }
+    if (op === "split") {
+      return '<input class="' + inputCls + ' w-20 font-mono p-sep" placeholder="Trenner" value="' + esc(r.sep || ",") + '" />' +
+             '<input type="number" class="' + inputCls + ' w-16 p-index" title="Index (0-basiert)" value="' + esc(r.index != null ? r.index : 0) + '" />';
+    }
+    if (op === "constant") {
+      return '<input class="' + inputCls + ' p-value" placeholder="fester Wert" value="' + esc(r.value) + '" />';
+    }
+    return '<span class="text-xs text-slate-400 self-center">übernimmt die Quell-Spalte</span>';
+  }
+
+  function addTransform(r) {
+    r = r || {};
+    var row = document.createElement("div");
+    row.className = "t-row border border-slate-200 rounded p-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-center";
+    row.innerHTML =
+      '<select class="' + inputCls + ' bg-white t-target">' + targetOpts(r.target) + "</select>" +
+      '<select class="' + inputCls + ' bg-white t-source">' + sourceOpts(r.source) + "</select>" +
+      '<button type="button" class="text-rose-600 hover:underline text-xs t-del">entfernen</button>' +
+      '<div class="sm:col-span-3 flex flex-wrap gap-2 items-center">' +
+        '<select class="' + inputCls + ' bg-white t-op">' + optList(OPS, (r.op || "copy")) + "</select>" +
+        '<span class="t-params flex flex-wrap gap-2 items-center"></span>' +
+      "</div>";
+    tRows.appendChild(row);
+    var opSel = row.querySelector(".t-op");
+    var params = row.querySelector(".t-params");
+    function renderParams() { params.innerHTML = paramsHtml(opSel.value, r); bindInputs(); }
+    function bindInputs() {
+      row.querySelectorAll("input, select").forEach(function (el) {
+        el.removeEventListener("input", serializeTransforms);
+        el.addEventListener("input", serializeTransforms);
+        el.addEventListener("change", serializeTransforms);
+      });
+    }
+    opSel.addEventListener("change", function () { r = collectRow(row); renderParams(); serializeTransforms(); });
+    row.querySelector(".t-del").addEventListener("click", function () { row.remove(); serializeTransforms(); });
+    renderParams();
+  }
+
+  function collectRow(row) {
+    var op = row.querySelector(".t-op").value;
+    var o = {
+      target: row.querySelector(".t-target").value,
+      op: op,
+      source: row.querySelector(".t-source").value,
+    };
+    var q = function (c) { var el = row.querySelector(c); return el ? el.value : ""; };
+    if (op === "regex") { o.pattern = q(".p-pattern"); o.group = q(".p-group"); }
+    if (op === "date") { o.date_from = q(".p-datefrom"); }
+    if (op === "split") { o.sep = q(".p-sep"); o.index = q(".p-index"); }
+    if (op === "constant") { o.value = q(".p-value"); }
+    return o;
+  }
+
+  function serializeTransforms() {
+    var out = [];
+    tRows.querySelectorAll(".t-row").forEach(function (row) {
+      var o = collectRow(row);
+      if (o.target) out.push(o);
+    });
+    tHidden.value = JSON.stringify(out);
+  }
+
+  document.getElementById("add-transform").addEventListener("click", function () { addTransform({}); serializeTransforms(); });
+  (TRANSFORMS || []).forEach(addTransform);
+  serializeTransforms();
+
+  // ---------- target rules ----------
+  var rRows = document.getElementById("rule-rows");
+  var rHidden = document.getElementById("target_rules_json");
+
+  function addRule(r) {
+    r = r || {};
+    var row = document.createElement("div");
+    row.className = "r-row border border-slate-200 rounded p-2 flex flex-wrap gap-2 items-center text-sm";
+    row.innerHTML =
+      '<span class="text-slate-500">Wenn</span>' +
+      '<select class="' + inputCls + ' bg-white r-when">' + targetOpts(r.when) + "</select>" +
+      '<span class="text-slate-500">befüllt → Ziel</span>' +
+      '<select class="' + inputCls + ' bg-white r-target">' +
+        SYNC_TARGETS.map(function (t) { return '<option value="' + t + '"' + (t === r.set_target ? " selected" : "") + ">" + t + "</option>"; }).join("") +
+      "</select>" +
+      '<button type="button" class="text-rose-600 hover:underline text-xs r-del ml-auto">entfernen</button>';
+    rRows.appendChild(row);
+    row.querySelectorAll("select").forEach(function (el) { el.addEventListener("change", serializeRules); });
+    row.querySelector(".r-del").addEventListener("click", function () { row.remove(); serializeRules(); });
+  }
+
+  function serializeRules() {
+    var out = [];
+    rRows.querySelectorAll(".r-row").forEach(function (row) {
+      var when = row.querySelector(".r-when").value;
+      var set_target = row.querySelector(".r-target").value;
+      if (when && set_target) out.push({ when: when, set_target: set_target });
+    });
+    rHidden.value = JSON.stringify(out);
+  }
+
+  document.getElementById("add-rule").addEventListener("click", function () { addRule({}); serializeRules(); });
+  (RULES || []).forEach(function (r) { if (r.when) addRule(r); });
+  serializeRules();
+})();
+</script>

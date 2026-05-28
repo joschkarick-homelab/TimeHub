@@ -748,6 +748,68 @@ def _visible_formats(db: Session, user: User) -> list[ImportFormat]:
     return list(db.execute(stmt).scalars())
 
 
+_TRANSFORM_OPS = {"copy", "regex", "date", "split", "constant"}
+
+
+def _target_options() -> list[dict]:
+    """Mapping targets for the format UI: plain fields first, then sync fields,
+    each with a human label."""
+    base = sorted(t for t in SUPPORTED_TARGETS if not t.startswith("sync:"))
+    sync = sorted(t for t in SUPPORTED_TARGETS if t.startswith("sync:"))
+    return [{"value": t, "label": sf.target_label(t)} for t in base + sync]
+
+
+def _parse_transforms(raw: str) -> list[dict]:
+    """Parse the transforms_json hidden field into a clean list of rules.
+    Invalid entries are dropped rather than failing the whole save."""
+    try:
+        data = json.loads(raw) if raw.strip() else []
+    except (json.JSONDecodeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out: list[dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        target = item.get("target")
+        op = (item.get("op") or "copy").lower()
+        if target not in SUPPORTED_TARGETS or op not in _TRANSFORM_OPS:
+            continue
+        rule = {"target": target, "op": op}
+        for k in ("source", "pattern", "group", "sep", "index", "value", "date_from", "default"):
+            if item.get(k) not in (None, ""):
+                rule[k] = item[k]
+        out.append(rule)
+    return out
+
+
+def _parse_target_rules(raw: str) -> list[dict]:
+    try:
+        data = json.loads(raw) if raw.strip() else []
+    except (json.JSONDecodeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out: list[dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        set_target = item.get("set_target")
+        if set_target not in _KNOWN_SYNC_TARGETS:
+            continue
+        rule: dict = {"set_target": set_target}
+        if item.get("when"):
+            rule["when"] = item["when"]
+        elif item.get("when_source") and item.get("pattern"):
+            rule["when_source"] = item["when_source"]
+            rule["pattern"] = item["pattern"]
+        else:
+            continue
+        out.append(rule)
+    return out
+
+
 @router.get("/import-formats", response_class=HTMLResponse)
 def formats_list(
     request: Request,
@@ -772,7 +834,7 @@ def formats_new_form(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     return templates.TemplateResponse(
         "import_format_new.html",
-        _ctx(request, user, error=None, targets=sorted(SUPPORTED_TARGETS)),
+        _ctx(request, user, error=None, target_options=_target_options()),
     )
 
 
@@ -798,7 +860,7 @@ async def formats_new_submit(
                 request,
                 user,
                 error=str(e),
-                targets=sorted(SUPPORTED_TARGETS),
+                target_options=_target_options(),
                 prefill_name=name,
             ),
             status_code=400,
@@ -822,7 +884,10 @@ async def formats_new_submit(
             source_rows=source_rows,
             target_rows=target_rows,
             target_fields=sorted(SUPPORTED_TARGETS),
-            targets=sorted(SUPPORTED_TARGETS),
+            target_options=_target_options(),
+            headers=suggestion.detected_headers,
+            transforms=[],
+            target_rules=[],
         ),
     )
 
@@ -839,6 +904,8 @@ async def formats_save(
     default_project_code: str = Form(""),
     notes: str = Form(""),
     column_map_json: str = Form("{}"),
+    transforms_json: str = Form("[]"),
+    target_rules_json: str = Form("[]"),
     is_global: bool = Form(False),
     db: Session = Depends(get_db),
 ):
@@ -867,6 +934,8 @@ async def formats_save(
         date_format=date_format or "%Y-%m-%d",
         time_format=time_format or "%H:%M",
         column_map=column_map,
+        transforms=_parse_transforms(transforms_json),
+        target_rules=_parse_target_rules(target_rules_json),
         default_project_code=(default_project_code.strip() or None),
         notes=notes,
         owner_id=user.id,
@@ -898,7 +967,9 @@ def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_d
             request,
             user,
             fmt=fmt,
-            targets=sorted(SUPPORTED_TARGETS),
+            target_options=_target_options(),
+            transforms=fmt.transforms or [],
+            target_rules=fmt.target_rules or [],
             # All currently-mapped headers + the keys from column_map, so the
             # user always sees every assignment they made.
             headers=list(fmt.column_map.keys()),
@@ -919,6 +990,8 @@ async def formats_edit_submit(
     default_project_code: str = Form(""),
     notes: str = Form(""),
     column_map_json: str = Form("{}"),
+    transforms_json: str = Form("[]"),
+    target_rules_json: str = Form("[]"),
     is_global: bool = Form(False),
     db: Session = Depends(get_db),
 ):
@@ -951,6 +1024,8 @@ async def formats_edit_submit(
     fmt.date_format = date_format or "%Y-%m-%d"
     fmt.time_format = time_format or "%H:%M"
     fmt.column_map = column_map
+    fmt.transforms = _parse_transforms(transforms_json)
+    fmt.target_rules = _parse_target_rules(target_rules_json)
     fmt.default_project_code = default_project_code.strip() or None
     fmt.notes = notes
     # only admins may flip the global flag
@@ -1016,6 +1091,7 @@ async def import_run(
     request: Request,
     format_id: int = Form(...),
     file: UploadFile = File(...),
+    apply_target_rules: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     user = _maybe_user(request, db)
@@ -1036,6 +1112,9 @@ async def import_run(
             encoding=fmt.encoding,
             date_format=fmt.date_format,
             time_format=fmt.time_format,
+            transforms=fmt.transforms or [],
+            target_rules=fmt.target_rules or [],
+            apply_target_rules=apply_target_rules,
         )
     except ValueError as e:
         formats = _visible_formats(db, user)

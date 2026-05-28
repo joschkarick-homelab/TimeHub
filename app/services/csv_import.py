@@ -7,14 +7,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Project, TimeEntry
-from app.models._enums import EntrySource
+from app.models._enums import EntrySource, SyncTarget
+from app.services import sync_fields as sf
+from app.services.transforms import apply_transforms, eval_target_rules
 
-SUPPORTED_TARGETS = {
+_BASE_TARGETS = {
     "entry_date", "start_time", "end_time",
     "duration_minutes", "duration_hours",
     "project_code", "description", "tags",
     "sync_target", "external_ref",
 }
+# Entry-level sync fields (e.g. sync:jira.issue_key) are valid mapping targets too.
+SUPPORTED_TARGETS = _BASE_TARGETS | sf.entry_field_targets()
+_KNOWN_SYNC_TARGETS = {t.value for t in SyncTarget}
 
 
 def _normalize_header(h: str) -> str:
@@ -43,6 +48,9 @@ def import_csv(
     date_format: str = "%Y-%m-%d",
     time_format: str = "%H:%M",
     auto_create_projects: bool = True,
+    transforms: list[dict] | None = None,
+    target_rules: list[dict] | None = None,
+    apply_target_rules: bool = False,
 ) -> dict:
     bad_targets = set(column_map.values()) - SUPPORTED_TARGETS
     if bad_targets:
@@ -106,6 +114,20 @@ def import_csv(
                 if src in raw_row:
                     mapped[target] = raw_row[src]
 
+            # Per-column transforms override / derive values (regex, date, split, ...).
+            for tgt, val in apply_transforms(
+                transforms, raw_row, date_format=date_format, supported=SUPPORTED_TARGETS
+            ).items():
+                mapped[tgt] = val
+
+            # Route namespaced sync fields into the entry's sync_metadata_override.
+            sync_meta: dict[str, dict] = {}
+            for key in [k for k in mapped if k.startswith("sync:")]:
+                parsed = sf.parse_target_token(key)
+                if parsed:
+                    t, fk = parsed
+                    sync_meta.setdefault(t, {})[fk] = mapped.pop(key)
+
             entry_date_str = mapped.get("entry_date")
             if not entry_date_str:
                 raise ValueError("entry_date missing")
@@ -138,6 +160,17 @@ def import_csv(
             tags_raw = mapped.get("tags") or ""
             tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
+            # Effective sync target: an explicit mapped column wins; otherwise a
+            # matching target rule (when enabled) may set it.
+            explicit = (mapped.get("sync_target") or "").strip() or None
+            rule_target = (
+                eval_target_rules(target_rules, mapped, sync_meta, raw_row)
+                if apply_target_rules
+                else None
+            )
+            candidate = explicit or rule_target
+            sync_target_override = candidate if candidate in _KNOWN_SYNC_TARGETS else None
+
             entry = TimeEntry(
                 user_id=user_id,
                 project_id=project.id,
@@ -147,7 +180,8 @@ def import_csv(
                 duration_minutes=duration,
                 description=(mapped.get("description") or "").strip(),
                 tags=tags,
-                sync_target_override=(mapped.get("sync_target") or None),
+                sync_target_override=sync_target_override,
+                sync_metadata_override=sync_meta,
                 external_ref=(mapped.get("external_ref") or None),
                 source=EntrySource.CSV,
             )
