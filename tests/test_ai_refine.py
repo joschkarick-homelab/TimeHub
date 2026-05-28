@@ -116,7 +116,8 @@ def test_refine_passes_instruction_and_previous(client, monkeypatch):
         "transforms_json": "[]", "target_rules_json": "[]",
     })
     assert r.status_code == 200
-    assert "ABC" in captured["instruction"]
+    assert "sync:jira.issue_key" in captured["instruction"]
+    assert captured["text"] == _SAMPLE
     # previous reflects the current state we submitted
     assert captured["previous"]["column_map"] == {"Description": "description"}
     # the refined suggestion is rendered
