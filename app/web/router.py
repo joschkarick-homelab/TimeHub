@@ -1,9 +1,9 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -384,6 +384,200 @@ def delete_entry(request: Request, entry_id: int, db: Session = Depends(get_db))
     db.delete(entry)
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
+
+# -------------------- Calendar (Toggl/Clockify-style) --------------------
+
+# Vertical scale of the day grid. The template and the drag JS both derive
+# from this single constant so they stay in sync.
+CAL_PX_PER_HOUR = 44
+_WEEKDAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
+
+def _minutes(t) -> int | None:
+    return t.hour * 60 + t.minute if t else None
+
+
+def _cal_entry(e: TimeEntry, project: Project | None) -> dict:
+    return {
+        "id": e.id,
+        "project_id": e.project_id,
+        "project_label": project.display_label if project else f"#{e.project_id}",
+        "color": project.color if project else "#6366f1",
+        "description": e.description or "",
+        "start": _minutes(e.start_time),
+        "end": _minutes(e.end_time),
+        "duration_minutes": e.duration_minutes,
+    }
+
+
+@router.get("/calendar", response_class=HTMLResponse)
+def calendar_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    start: str | None = None,
+    days: str | None = None,
+    error: str | None = None,
+):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+
+    try:
+        days_n = int(days) if days else 7
+    except ValueError:
+        days_n = 7
+    days_n = max(1, min(7, days_n))
+
+    start_d = _parse_date(start)
+    if start_d is None:
+        today = date.today()
+        # Week view aligns to Monday; shorter ranges start on today.
+        start_d = today - timedelta(days=today.weekday()) if days_n == 7 else today
+    end_d = start_d + timedelta(days=days_n - 1)
+
+    stmt = (
+        select(TimeEntry)
+        .where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.entry_date >= start_d,
+            TimeEntry.entry_date <= end_d,
+        )
+        .order_by(TimeEntry.start_time)
+    )
+    entries = list(db.execute(stmt).scalars())
+
+    projects = list(
+        db.execute(select(Project).where(Project.status == "active").order_by(Project.code)).scalars()
+    )
+    projects_by_id = {p.id: p for p in projects}
+
+    today = date.today()
+    columns = []
+    for i in range(days_n):
+        d = start_d + timedelta(days=i)
+        day_entries = [e for e in entries if e.entry_date == d]
+        timed, untimed = [], []
+        for e in day_entries:
+            payload = _cal_entry(e, projects_by_id.get(e.project_id))
+            (timed if payload["start"] is not None and payload["end"] is not None else untimed).append(payload)
+        columns.append({
+            "date": d.isoformat(),
+            "weekday": _WEEKDAYS_DE[d.weekday()],
+            "label": d.strftime("%d.%m."),
+            "is_today": d == today,
+            "timed": timed,
+            "untimed": untimed,
+            "total_minutes": sum(e.duration_minutes for e in day_entries),
+        })
+
+    projects_json = [
+        {"id": p.id, "label": p.display_label, "color": p.color} for p in projects
+    ]
+
+    return templates.TemplateResponse(
+        "calendar.html",
+        _ctx(
+            request,
+            user,
+            columns=columns,
+            projects=projects,
+            projects_json=projects_json,
+            px_per_hour=CAL_PX_PER_HOUR,
+            days_n=days_n,
+            start=start_d.isoformat(),
+            prev_start=(start_d - timedelta(days=days_n)).isoformat(),
+            next_start=(start_d + timedelta(days=days_n)).isoformat(),
+            today=today.isoformat(),
+            range_label=(
+                start_d.strftime("%d.%m.%Y")
+                if days_n == 1
+                else f"{start_d.strftime('%d.%m.')} – {end_d.strftime('%d.%m.%Y')}"
+            ),
+            error=error,
+        ),
+    )
+
+
+def _json_user_or_401(request: Request, db: Session) -> User | JSONResponse:
+    user = _maybe_user(request, db)
+    if user is None:
+        return JSONResponse({"error": "Nicht angemeldet"}, status_code=401)
+    return user
+
+
+@router.post("/calendar/entries")
+async def calendar_create(request: Request, db: Session = Depends(get_db)):
+    user = _json_user_or_401(request, db)
+    if isinstance(user, JSONResponse):
+        return user
+    try:
+        data = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        return JSONResponse({"error": "Ungültige Anfrage"}, status_code=400)
+
+    try:
+        project_id = int(data.get("project_id"))
+        entry_date = date.fromisoformat(data.get("entry_date"))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "Datum oder Projekt fehlt"}, status_code=400)
+
+    project = db.get(Project, project_id)
+    if project is None:
+        return JSONResponse({"error": "Projekt nicht gefunden"}, status_code=400)
+
+    start = _parse_time(data.get("start_time"))
+    end = _parse_time(data.get("end_time"))
+    try:
+        duration = _resolve_duration(start, end, None)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    entry = TimeEntry(
+        user_id=user.id,
+        project_id=project_id,
+        entry_date=entry_date,
+        start_time=start,
+        end_time=end,
+        duration_minutes=duration,
+        description=(data.get("description") or "").strip(),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return JSONResponse(_cal_entry(entry, project), status_code=201)
+
+
+@router.post("/calendar/entries/{entry_id}/move")
+async def calendar_move(entry_id: int, request: Request, db: Session = Depends(get_db)):
+    user = _json_user_or_401(request, db)
+    if isinstance(user, JSONResponse):
+        return user
+    entry = db.get(TimeEntry, entry_id)
+    if entry is None or (entry.user_id != user.id and not user.is_admin):
+        return JSONResponse({"error": "Eintrag nicht gefunden"}, status_code=404)
+    try:
+        data = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        return JSONResponse({"error": "Ungültige Anfrage"}, status_code=400)
+
+    start = _parse_time(data.get("start_time"))
+    end = _parse_time(data.get("end_time"))
+    try:
+        duration = _resolve_duration(start, end, None)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    new_date = _parse_date(data.get("entry_date"))
+    if new_date is not None:
+        entry.entry_date = new_date
+    entry.start_time = start
+    entry.end_time = end
+    entry.duration_minutes = duration
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return JSONResponse(_cal_entry(entry, db.get(Project, entry.project_id)))
 
 
 # -------------------- User management (admin) --------------------

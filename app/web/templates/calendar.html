@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block content %}
+{% set total_h = 24 * px_per_hour %}
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error | replace('+', ' ') }}
+  </div>
+{% endif %}
+
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+  <div class="flex items-center gap-2">
+    <a href="/calendar?start={{ prev_start }}&days={{ days_n }}"
+       class="h-9 w-9 inline-flex items-center justify-center border border-slate-300 rounded hover:bg-slate-50" aria-label="Zurück">‹</a>
+    <a href="/calendar?days={{ days_n }}"
+       class="h-9 px-3 inline-flex items-center border border-slate-300 rounded text-sm hover:bg-slate-50">Heute</a>
+    <a href="/calendar?start={{ next_start }}&days={{ days_n }}"
+       class="h-9 w-9 inline-flex items-center justify-center border border-slate-300 rounded hover:bg-slate-50" aria-label="Vor">›</a>
+    <span class="ml-2 text-sm font-medium text-slate-700 tabular-nums">{{ range_label }}</span>
+  </div>
+  <div class="inline-flex rounded border border-slate-300 overflow-hidden text-sm">
+    {% for n in [1, 3, 5, 7] %}
+      <a href="/calendar?start={{ start }}&days={{ n }}"
+         class="px-3 h-9 inline-flex items-center {% if n == days_n %}bg-indigo-600 text-white{% else %}bg-white hover:bg-slate-50{% endif %} {% if not loop.first %}border-l border-slate-300{% endif %}">
+        {{ n }} {{ 'Tag' if n == 1 else 'Tage' }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<p class="text-xs text-slate-500 mb-2 hidden md:block">
+  Ziehen auf dem Raster legt einen Eintrag an · Block ziehen verschiebt ihn · untere Kante zieht die Dauer · Klick öffnet die Bearbeitung.
+</p>
+
+{% if not projects %}
+  <div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-3">
+    Es gibt noch keine aktiven Projekte. Lege zuerst ein Projekt an, dann kannst du Zeiten erfassen.
+  </div>
+{% endif %}
+
+<div id="cal-scroll" class="overflow-auto border border-slate-200 rounded-lg bg-white" style="max-height: 72vh;">
+  <div class="grid" style="grid-template-columns: 56px repeat({{ days_n }}, minmax(132px, 1fr)); min-width: {{ 56 + days_n * 132 }}px;">
+
+    {# row 1 col 1: corner #}
+    <div class="sticky top-0 left-0 z-30 bg-white border-b border-r border-slate-200"></div>
+
+    {# row 1: day headers #}
+    {% for col in columns %}
+      <div class="sticky top-0 z-20 bg-white border-b border-slate-200 px-2 py-2 {% if not loop.first %}border-l border-slate-100{% endif %} {% if col.is_today %}bg-indigo-50{% endif %}">
+        <div class="flex items-baseline justify-between gap-1">
+          <span class="text-xs font-semibold {% if col.is_today %}text-indigo-600{% else %}text-slate-700{% endif %}">
+            {{ col.weekday }} {{ col.label }}
+          </span>
+          <span class="text-[10px] text-slate-400 tabular-nums">{{ '%.2f'|format(col.total_minutes / 60) }}h</span>
+        </div>
+        {% if col.untimed %}
+          <div class="mt-1 max-h-16 overflow-y-auto">
+            {% for e in col.untimed %}
+              <a href="/entries/{{ e.id }}/edit"
+                 class="flex items-center gap-1 text-[10px] text-slate-600 hover:text-indigo-600 truncate py-0.5"
+                 title="Ohne Uhrzeit – {{ e.project_label }}">
+                <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0" style="background: {{ e.color }};"></span>
+                <span class="truncate">{{ e.project_label }} · {{ '%.2f'|format(e.duration_minutes / 60) }}h</span>
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {# row 2 col 1: time gutter #}
+    <div class="sticky left-0 z-10 bg-white border-r border-slate-200 relative" style="height: {{ total_h }}px;">
+      {% for h in range(1, 24) %}
+        <div class="absolute right-1 text-[10px] text-slate-400 tabular-nums" style="top: {{ h * px_per_hour }}px; transform: translateY(-50%);">
+          {{ '%02d:00'|format(h) }}
+        </div>
+      {% endfor %}
+    </div>
+
+    {# row 2: day bodies #}
+    {% for col in columns %}
+      <div class="cal-body relative {% if not loop.first %}border-l border-slate-100{% endif %}"
+           data-date="{{ col.date }}"
+           style="height: {{ total_h }}px; background-image: repeating-linear-gradient(to bottom, #eef2f7 0, #eef2f7 1px, transparent 1px, transparent {{ px_per_hour }}px);">
+        {% for e in col.timed %}
+          {% set top = e.start * px_per_hour / 60 %}
+          {% set bh = (e.end - e.start) * px_per_hour / 60 %}
+          <div class="cal-block absolute left-1 right-1 rounded-md bg-white border border-slate-200 shadow-sm overflow-hidden px-1.5 py-1 cursor-grab select-none"
+               data-id="{{ e.id }}" data-date="{{ col.date }}" data-start="{{ e.start }}" data-end="{{ e.end }}"
+               style="top: {{ top }}px; height: {{ [bh, 18]|max }}px; border-left: 3px solid {{ e.color }}; touch-action: none;">
+            <div class="text-[11px] font-medium text-slate-900 leading-tight truncate">{{ e.project_label }}</div>
+            <div class="text-[10px] text-slate-500 tabular-nums leading-tight">
+              {{ '%02d:%02d'|format(e.start // 60, e.start % 60) }}–{{ '%02d:%02d'|format(e.end // 60, e.end % 60) }}
+            </div>
+            {% if e.description %}
+              <div class="text-[10px] text-slate-500 leading-tight truncate">{{ e.description }}</div>
+            {% endif %}
+            <div class="cal-resize absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"></div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+
+  </div>
+</div>
+
+<script id="cal-data" type="application/json">{{ {"px_per_hour": px_per_hour, "projects": projects_json}|tojson }}</script>
+<script>
+(function () {
+  var cfg = JSON.parse(document.getElementById("cal-data").textContent);
+  var PX_PER_HOUR = cfg.px_per_hour;
+  var PROJECTS = cfg.projects || [];
+  var PX_PER_MIN = PX_PER_HOUR / 60;
+  var SNAP = 15;
+  var container = document.getElementById("cal-scroll");
+  if (!container) return;
+
+  // Restore scroll after a reload, else jump to the morning.
+  try {
+    var saved = sessionStorage.getItem("calScroll");
+    if (saved) {
+      var s = JSON.parse(saved);
+      container.scrollTop = s.t; container.scrollLeft = s.l;
+      sessionStorage.removeItem("calScroll");
+    } else {
+      container.scrollTop = 7 * PX_PER_HOUR;
+    }
+  } catch (e) { container.scrollTop = 7 * PX_PER_HOUR; }
+
+  function reloadKeepScroll() {
+    try {
+      sessionStorage.setItem("calScroll", JSON.stringify({ t: container.scrollTop, l: container.scrollLeft }));
+    } catch (e) {}
+    location.reload();
+  }
+
+  function snap(m) { return Math.max(0, Math.min(1440, Math.round(m / SNAP) * SNAP)); }
+  function fmt(m) {
+    var h = Math.floor(m / 60), mm = m % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
+  }
+  function bodyAt(x, y) {
+    var el = document.elementFromPoint(x, y);
+    return el ? el.closest(".cal-body") : null;
+  }
+  function minAtY(body, clientY) {
+    var rect = body.getBoundingClientRect();
+    return (clientY - rect.top) / PX_PER_MIN;
+  }
+
+  var state = null; // {mode, body, block, startMin, endMin, ghost, originY, moved, durMin, id}
+
+  function makeGhost(body, startMin, endMin) {
+    var g = document.createElement("div");
+    g.className = "absolute left-1 right-1 rounded-md shadow-sm px-1.5 py-1 pointer-events-none z-40";
+    g.style.background = "rgba(99,102,241,.85)";
+    g.style.color = "#fff";
+    g.style.fontSize = "10px";
+    body.appendChild(g);
+    positionGhost(g, startMin, endMin);
+    return g;
+  }
+  function positionGhost(g, a, b) {
+    var lo = Math.min(a, b), hi = Math.max(a, b);
+    g.style.top = (lo * PX_PER_MIN) + "px";
+    g.style.height = Math.max((hi - lo) * PX_PER_MIN, 14) + "px";
+    g.textContent = fmt(lo) + "–" + fmt(hi);
+  }
+
+  container.addEventListener("pointerdown", function (ev) {
+    if (ev.button !== undefined && ev.button !== 0) return;
+    closePopover();
+    var block = ev.target.closest(".cal-block");
+    if (block) {
+      var isResize = ev.target.classList.contains("cal-resize");
+      var sMin = parseInt(block.dataset.start, 10);
+      var eMin = parseInt(block.dataset.end, 10);
+      state = {
+        mode: isResize ? "resize" : "move",
+        block: block, body: block.parentElement,
+        startMin: sMin, endMin: eMin, durMin: eMin - sMin,
+        originX: ev.clientX, originY: ev.clientY, moved: false, id: block.dataset.id,
+      };
+      block.style.cursor = isResize ? "ns-resize" : "grabbing";
+      block.setPointerCapture && block.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+      return;
+    }
+    // Drag-create — mouse only; touch keeps native scrolling.
+    if (ev.pointerType && ev.pointerType !== "mouse") return;
+    var body = ev.target.closest(".cal-body");
+    if (!body || PROJECTS.length === 0) return;
+    var m = snap(minAtY(body, ev.clientY));
+    state = { mode: "create", body: body, startMin: m, endMin: m + SNAP,
+              ghost: null, moved: false };
+    state.ghost = makeGhost(body, state.startMin, state.endMin);
+    ev.preventDefault();
+  });
+
+  document.addEventListener("pointermove", function (ev) {
+    if (!state) return;
+    if (Math.abs(ev.clientX - (state.originX || ev.clientX)) > 3 ||
+        Math.abs(ev.clientY - (state.originY || ev.clientY)) > 3) state.moved = true;
+
+    if (state.mode === "create") {
+      state.endMin = snap(minAtY(state.body, ev.clientY));
+      positionGhost(state.ghost, state.startMin, state.endMin);
+    } else if (state.mode === "resize") {
+      var end = snap(minAtY(state.body, ev.clientY));
+      if (end < state.startMin + SNAP) end = state.startMin + SNAP;
+      state.endMin = end;
+      state.block.style.height = Math.max((end - state.startMin) * PX_PER_MIN, 18) + "px";
+    } else if (state.mode === "move") {
+      // Vertical shift, keeping duration; allow hopping to another day column.
+      var target = bodyAt(ev.clientX, ev.clientY) || state.body;
+      if (target !== state.body) { target.appendChild(state.block); state.body = target; }
+      var deltaMin = (ev.clientY - state.originY) / PX_PER_MIN;
+      var newStart = snap(state.startMin + deltaMin);
+      if (newStart < 0) newStart = 0;
+      if (newStart + state.durMin > 1440) newStart = 1440 - state.durMin;
+      state.curStart = newStart;
+      state.block.style.top = (newStart * PX_PER_MIN) + "px";
+    }
+  });
+
+  document.addEventListener("pointerup", function () {
+    if (!state) return;
+    var st = state; state = null;
+
+    if (st.mode === "create") {
+      var lo = Math.min(st.startMin, st.endMin), hi = Math.max(st.startMin, st.endMin);
+      if (hi - lo < SNAP) hi = lo + 60; // a click → default 1h
+      openCreatePopover(st.body, st.ghost, lo, hi);
+      return;
+    }
+
+    if (st.block) st.block.style.cursor = "grab";
+
+    if (!st.moved) {
+      // treat as a click → open the edit page
+      window.location.href = "/entries/" + st.id + "/edit";
+      return;
+    }
+
+    var date = st.body.dataset.date;
+    var start = (st.mode === "move") ? (st.curStart != null ? st.curStart : st.startMin) : st.startMin;
+    var end = (st.mode === "move") ? start + st.durMin : st.endMin;
+    fetch("/calendar/entries/" + st.id + "/move", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entry_date: date, start_time: fmt(start), end_time: fmt(end) }),
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { alert(d.error || "Fehler"); reloadKeepScroll(); });
+      reloadKeepScroll();
+    }).catch(function () { reloadKeepScroll(); });
+  });
+
+  // ---- create popover ----
+  var pop = null;
+  function closePopover() {
+    if (pop) { pop.remove(); pop = null; }
+    document.querySelectorAll(".cal-body > .pointer-events-none").forEach(function (g) { g.remove(); });
+  }
+  function openCreatePopover(body, ghost, startMin, endMin) {
+    closePopover();
+    if (ghost) { positionGhost(ghost, startMin, endMin); }
+    var date = body.dataset.date;
+    pop = document.createElement("div");
+    pop.className = "fixed z-50 w-64 bg-white border border-slate-300 rounded-lg shadow-lg p-3 text-sm";
+    var opts = PROJECTS.map(function (p) {
+      return '<option value="' + p.id + '">' + escapeHtml(p.label) + "</option>";
+    }).join("");
+    pop.innerHTML =
+      '<div class="font-medium text-slate-700 mb-2">Neuer Eintrag · ' + date + "</div>" +
+      '<label class="block text-xs font-medium mb-1">Projekt</label>' +
+      '<select class="cal-pop-project w-full h-9 border border-slate-300 rounded px-2 bg-white mb-2">' + opts + "</select>" +
+      '<div class="flex gap-2 mb-2">' +
+        '<div class="flex-1"><label class="block text-xs font-medium mb-1">Von</label>' +
+          '<input type="time" class="cal-pop-start w-full h-9 border border-slate-300 rounded px-2" value="' + fmt(startMin) + '"></div>' +
+        '<div class="flex-1"><label class="block text-xs font-medium mb-1">Bis</label>' +
+          '<input type="time" class="cal-pop-end w-full h-9 border border-slate-300 rounded px-2" value="' + fmt(endMin) + '"></div>' +
+      "</div>" +
+      '<label class="block text-xs font-medium mb-1">Beschreibung</label>' +
+      '<input type="text" class="cal-pop-desc w-full h-9 border border-slate-300 rounded px-2 mb-3" placeholder="optional">' +
+      '<div class="flex justify-end gap-2">' +
+        '<button type="button" class="cal-pop-cancel h-9 px-3 text-slate-600 hover:underline">Abbrechen</button>' +
+        '<button type="button" class="cal-pop-save h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">Speichern</button>' +
+      "</div>";
+    document.body.appendChild(pop);
+
+    var rect = (ghost || body).getBoundingClientRect();
+    var left = Math.min(rect.right + 8, window.innerWidth - pop.offsetWidth - 8);
+    if (left < 8) left = 8;
+    var top = Math.min(rect.top, window.innerHeight - pop.offsetHeight - 8);
+    if (top < 8) top = 8;
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+
+    pop.querySelector(".cal-pop-project").focus();
+    pop.querySelector(".cal-pop-cancel").addEventListener("click", closePopover);
+    pop.querySelector(".cal-pop-save").addEventListener("click", function () {
+      var pid = pop.querySelector(".cal-pop-project").value;
+      var stv = pop.querySelector(".cal-pop-start").value;
+      var env = pop.querySelector(".cal-pop-end").value;
+      var desc = pop.querySelector(".cal-pop-desc").value;
+      fetch("/calendar/entries", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: pid, entry_date: date, start_time: stv, end_time: env, description: desc }),
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) { alert(d.error || "Fehler beim Speichern"); return; }
+          reloadKeepScroll();
+        });
+      }).catch(function () { alert("Netzwerkfehler"); });
+    });
+  }
+
+  document.addEventListener("pointerdown", function (ev) {
+    if (pop && !pop.contains(ev.target) && !ev.target.closest(".cal-body")) closePopover();
+  });
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closePopover(); });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+})();
+</script>
+{% endblock %}
