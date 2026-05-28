@@ -81,6 +81,16 @@ def test_entry_status_missing_then_inherited():
     assert sf.entry_sync_status(_ent(), p2)["ready"]
 
 
+def test_bcs_entry_needs_subject_and_task():
+    from app.services import sync_fields as sf
+    p = _proj("bcs")
+    st = sf.entry_sync_status(_ent(), p)
+    assert st["needs_sync"] and not st["ready"]
+    assert "BCS Subject" in st["missing"] and "BCS Task" in st["missing"]
+    ready = sf.entry_sync_status(_ent(metadata={"bcs": {"subject": "Support", "task": "Analyse"}}), p)
+    assert ready["ready"]
+
+
 def test_entry_status_intern_always_ready():
     from app.services import sync_fields as sf
     st = sf.entry_sync_status(_ent(), _proj("intern"))
