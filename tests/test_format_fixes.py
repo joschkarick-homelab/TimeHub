@@ -18,7 +18,7 @@ def _suggestion():
     return ImportFormatSuggestion(
         source_hint="custom", separator=",", encoding="utf-8",
         date_format="%Y-%m-%d", time_format="%H:%M",
-        column_map={"A": "description"}, transforms=[], target_rules=[],
+        column_map={"description": "A"}, transforms=[], target_rules=[],
         default_project_code=None, notes="", detected_headers=["A", "B"],
     )
 
@@ -49,7 +49,7 @@ def test_import_unified_duration_target(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": "AutoDur", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date", "Project": "project_code", "Dur": "duration"},
+        "column_map": {"entry_date": "Date", "project_code": "Project", "duration": "Dur"},
     }, headers=h).json()["id"]
     # one row per format-supported unit, all should land as 90 minutes
     csv = ("Date,Project,Dur\n"
@@ -106,7 +106,7 @@ def test_format_edit_has_named_form(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": "FormId", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date"}, "sample_data": "Date\n2026-05-27\n",
+        "column_map": {"entry_date": "Date"}, "sample_data": "Date\n2026-05-27\n",
     }, headers=h).json()["id"]
     page = client.get(f"/import-formats/{fid}/edit")
     assert 'id="format-form"' in page.text
@@ -120,7 +120,7 @@ def _run_clock(client, code, target_field):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": f"Clock {code}", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date", "Project": "project_code", "Dur": target_field},
+        "column_map": {"entry_date": "Date", "project_code": "Project", target_field: "Dur"},
     }, headers=h).json()["id"]
     csv = f"Date,Project,Dur\n2026-05-27,{code},01:30:00\n"
     r = client.post(f"/api/v1/import-formats/{fid}/run",
@@ -150,7 +150,7 @@ def test_import_stores_sample_when_empty(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": "NoSampleYet", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date", "Project": "project_code"},
+        "column_map": {"entry_date": "Date", "project_code": "Project"},
     }, headers=h).json()["id"]
     assert (client.get(f"/api/v1/import-formats/{fid}", headers=h).json().get("sample_data")) in (None, "")
     csv = "Date,Project,Ignored\n2026-05-27,SMPLP,whatever\n"

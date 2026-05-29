@@ -49,11 +49,11 @@ def test_import_handles_utf8_bom_in_headers(client):
             "date_format": "%Y-%m-%d",
             "time_format": "%H:%M:%S",
             "column_map": {
-                "Description": "description",
-                "Project": "project_code",
-                "Start date": "entry_date",
-                "Start time": "start_time",
-                "Stop time": "end_time",
+                "description": "Description",
+                "project_code": "Project",
+                "entry_date": "Start date",
+                "start_time": "Start time",
+                "end_time": "Stop time",
             },
         },
         headers=h,
@@ -93,10 +93,11 @@ def test_ai_mapping_strips_bom_from_keys():
         },
     }
     s = _sanitize(raw_ai, "﻿Description,Start date\nx,2026-01-01\n")
-    assert "Description" in s.column_map
-    assert "Start date" in s.column_map
-    # BOM-prefixed key got cleaned, not preserved
-    assert "﻿Description" not in s.column_map
+    # column_map is target-keyed; the cleaned source headers are the values
+    assert "Description" in s.column_map.values()
+    assert "Start date" in s.column_map.values()
+    # BOM-prefixed source got cleaned, not preserved
+    assert "﻿Description" not in s.column_map.values()
 
 
 def test_export_endpoint_tolerates_empty_project_id(client):
@@ -113,8 +114,8 @@ def test_export_endpoint_tolerates_empty_project_id(client):
             "name": "EmptyPidFmt",
             "separator": ",",
             "date_format": "%Y-%m-%d",
-            "column_map": {"Date": "entry_date", "Hours": "duration_hours",
-                           "Project": "project_code"},
+            "column_map": {"entry_date": "Date", "duration_hours": "Hours",
+                           "project_code": "Project"},
         },
         headers=h,
     ).json()["id"]

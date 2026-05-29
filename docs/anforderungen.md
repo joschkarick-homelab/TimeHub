@@ -336,9 +336,17 @@ gebucht wird). **Format** = Importformat (wiederverwendbares CSV-Eingabeprofil).
 - **FR-MAP-3 Lesbare Labels:** In der UI heißen die Dauer-Ziele „Dauer
   (automatisch)", „Dauer in Minuten", „Dauer in Stunden"; Sync-Ziele „<ziel>:
   <Feldlabel>".
-- **FR-MAP-4 column_map-Form:** `{Quellspalte: Zielfeld}`. Mehrere Quellen auf
-  dasselbe Ziel sind technisch möglich (zuletzt gewinnt); ungültige Ziele
-  werden beim Speichern verworfen.
+- **FR-MAP-4 column_map-Form:** ziel-orientiert, `{Zielfeld: Quellspalte}`. Je
+  Zielfeld genau eine Quelle; **eine Quelle darf mehrere Ziele speisen**.
+  Ungültige Ziele werden beim Speichern verworfen. (Die KI denkt intern
+  quell→ziel; an der KI-Grenze wird invertiert.)
+- **FR-MAP-5 Ziel-orientierter Editor:** Das Mapping-UI zeigt links die
+  TimeHub-Zielfelder (statisch, eine Zeile je Feld) und rechts je ein
+  Quell-Dropdown (Spalten aus den Beispieldaten + „— keine —"). Dauer ist
+  **eine** Zeile mit Einheit-Auswahl (auto/Minuten/Stunden →
+  duration/duration_minutes/duration_hours). Sync-Felder stehen in einem
+  eigenen Abschnitt. Bestehende Formate werden beim Upgrade automatisch von
+  quell- auf ziel-orientiert umgestellt (Migration).
 
 ---
 

@@ -74,8 +74,8 @@ def _make_format(client, **overrides) -> int:
         "name": overrides.pop("name", "Jira Regex"),
         "separator": ",",
         "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date", "Hours": "duration_hours",
-                       "Project": "project_code", "Description": "description"},
+        "column_map": {"entry_date": "Date", "duration_hours": "Hours",
+                       "project_code": "Project", "description": "Description"},
         "transforms": [{"target": "sync:jira.issue_key", "op": "regex",
                         "source": "Description", "pattern": r"([A-Z]+-\d+)", "group": 1}],
         "target_rules": [{"when": "sync:jira.issue_key", "set_target": "jira"}],
@@ -127,7 +127,7 @@ def test_import_date_transform(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fmt_id = client.post("/api/v1/import-formats", json={
         "name": "DE dates", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Hours": "duration_hours", "Project": "project_code"},
+        "column_map": {"duration_hours": "Hours", "project_code": "Project"},
         "transforms": [{"target": "entry_date", "op": "date", "source": "Tag", "date_from": "%d.%m.%Y"}],
     }, headers=h).json()["id"]
     csv_de = "Tag,Hours,Project\n01.04.2026,1,DEPROJ\n"
@@ -145,7 +145,7 @@ def test_web_format_save_persists_transforms(client):
     import json
     r = client.post("/import-formats", data={
         "name": "WebTransforms", "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": json.dumps({"Description": "description"}),
+        "column_map_json": json.dumps({"description": "Description"}),
         "transforms_json": json.dumps([{"target": "sync:jira.issue_key", "op": "regex",
                                         "source": "Description", "pattern": r"([A-Z]+-\d+)"}]),
         "target_rules_json": json.dumps([{"when": "sync:jira.issue_key", "set_target": "jira"}]),
@@ -184,7 +184,7 @@ def test_export_emits_sync_field_value():
     project = SimpleNamespace(code="ACME", default_sync_target="jira")
     user = SimpleNamespace(email="a@x", full_name="A")
     body, _enc = export_via_import_format(
-        [(entry, project, user)], {"Ticket": "sync:jira.issue_key"}, separator=",",
+        [(entry, project, user)], {"sync:jira.issue_key": "Ticket"}, separator=",",
     )
     lines = body.strip().splitlines()
     assert lines[0] == "Ticket" and lines[1] == "ABC-1"

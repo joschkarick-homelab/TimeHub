@@ -34,7 +34,7 @@ def test_import_format_crud_and_visibility(client):
             "source_hint": "toggl",
             "separator": ",",
             "date_format": "%Y-%m-%d",
-            "column_map": {"Start date": "entry_date", "Description": "description"},
+            "column_map": {"entry_date": "Start date", "description": "Description"},
             "is_global": True,
         },
         headers=h_user,
@@ -80,7 +80,7 @@ def test_suggest_endpoint_uses_ai_service(client, monkeypatch):
         encoding="utf-8",
         date_format="%Y-%m-%d",
         time_format="%H:%M:%S",
-        column_map={"Start date": "entry_date", "Description": "description"},
+        column_map={"entry_date": "Start date", "description": "Description"},
         notes="Erkannt: Toggl-Export.",
         detected_headers=["Start date", "Description", "Duration"],
     )
@@ -90,7 +90,7 @@ def test_suggest_endpoint_uses_ai_service(client, monkeypatch):
         r = client.post("/api/v1/import-formats/suggest", files=files, headers=h)
         assert r.status_code == 200, r.text
         assert r.json()["source_hint"] == "toggl"
-        assert r.json()["column_map"]["Description"] == "description"
+        assert r.json()["column_map"]["description"] == "Description"
 
 
 def test_run_imports_via_saved_format(client):
@@ -116,10 +116,10 @@ def test_run_imports_via_saved_format(client):
             "separator": ";",
             "date_format": "%d.%m.%Y",
             "column_map": {
-                "Datum": "entry_date",
-                "Stunden": "duration_hours",
-                "Projekt": "project_code",
-                "Notiz": "description",
+                "entry_date": "Datum",
+                "duration_hours": "Stunden",
+                "project_code": "Projekt",
+                "description": "Notiz",
             },
         },
         headers=h,

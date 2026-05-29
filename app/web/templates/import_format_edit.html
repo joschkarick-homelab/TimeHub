@@ -69,34 +69,7 @@
         </label>
       </div>
 
-      <div>
-        <div class="flex items-center justify-between mb-1">
-          <span class="block text-sm font-medium">Spalten-Mapping</span>
-          <button type="button" id="add-row" class="text-xs text-indigo-600 hover:underline">
-            + Spalte hinzufügen
-          </button>
-        </div>
-        <p class="text-xs text-slate-500 mb-2">
-          Quell-Spalte (CSV-Header) → TimeHub-Zielfeld. „(ignorieren)" entfernt das Mapping.
-          Alle Spalten der Beispieldaten bleiben verfügbar — auch ignorierte.
-        </p>
-        <div id="map-rows" class="border border-slate-200 rounded divide-y divide-slate-100">
-          {% for header in headers %}
-            <div class="grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-1.5 text-sm items-center map-row">
-              <input class="h-9 border border-slate-300 rounded px-2 font-mono map-src"
-                     value="{{ header }}" placeholder="CSV-Header" />
-              <select class="h-9 border border-slate-300 rounded px-2 bg-white map-target">
-                <option value="">(ignorieren)</option>
-                {% for o in target_options %}
-                  <option value="{{ o.value }}" {% if column_map.get(header) == o.value %}selected{% endif %}>{{ o.label }}</option>
-                {% endfor %}
-              </select>
-              <button type="button" class="text-rose-600 hover:underline text-xs map-del">entfernen</button>
-            </div>
-          {% endfor %}
-        </div>
-        <input type="hidden" name="column_map_json" id="column_map_json" value="{}" />
-      </div>
+      {% include "_mapping_editor.html" %}
 
       {% include "_format_advanced.html" %}
 
@@ -144,47 +117,5 @@
   </section>
 </div>
 
-<script>
-  const TARGET_OPTIONS = {{ target_options | tojson }};
-  const rowsEl = document.getElementById("map-rows");
-  const hidden = document.getElementById("column_map_json");
-
-  function sync() {
-    const out = {};
-    rowsEl.querySelectorAll(".map-row").forEach(row => {
-      const src = row.querySelector(".map-src").value.trim();
-      const tgt = row.querySelector(".map-target").value;
-      if (src && tgt) out[src] = tgt;
-    });
-    hidden.value = JSON.stringify(out);
-    window.dispatchEvent(new Event("formatchange"));
-  }
-
-  function bind(row) {
-    row.querySelector(".map-src").addEventListener("input", sync);
-    row.querySelector(".map-target").addEventListener("change", sync);
-    row.querySelector(".map-del").addEventListener("click", () => { row.remove(); sync(); });
-  }
-
-  rowsEl.querySelectorAll(".map-row").forEach(bind);
-
-  document.getElementById("add-row").addEventListener("click", () => {
-    const row = document.createElement("div");
-    row.className = "grid grid-cols-[1fr_1fr_auto] gap-2 px-3 py-1.5 text-sm items-center map-row";
-    row.innerHTML = `
-      <input class="h-9 border border-slate-300 rounded px-2 font-mono map-src" placeholder="CSV-Header" />
-      <select class="h-9 border border-slate-300 rounded px-2 bg-white map-target">
-        <option value="">(ignorieren)</option>
-        ${TARGET_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join("")}
-      </select>
-      <button type="button" class="text-rose-600 hover:underline text-xs map-del">entfernen</button>
-    `;
-    rowsEl.appendChild(row);
-    bind(row);
-    row.querySelector(".map-src").focus();
-  });
-
-  sync();
-</script>
 {% include "_preview_js.html" %}
 {% endblock %}

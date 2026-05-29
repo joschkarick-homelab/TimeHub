@@ -30,7 +30,8 @@ def test_sanitize_unions_ai_columns_with_detected_headers():
     assert "Duration" in s.detected_headers
     # Header that only the AI mentioned still shows up so the user can override
     assert "MissingFromHeader" in s.detected_headers
-    assert s.column_map["Start date"] == "entry_date"
+    # column_map is target-keyed ({target: source}) after sanitizing
+    assert s.column_map["entry_date"] == "Start date"
 
 
 def test_sanitize_drops_unknown_target_fields():
@@ -46,7 +47,7 @@ def test_sanitize_drops_unknown_target_fields():
         },
     }
     s = _sanitize(raw_ai, "A;B\n01.01.2026;x\n")
-    assert s.column_map == {"A": "entry_date"}
+    assert s.column_map == {"entry_date": "A"}
 
 
 def test_suggest_mapping_requires_api_key(monkeypatch):

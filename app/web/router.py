@@ -777,14 +777,25 @@ def _visible_formats(db: Session, user: User) -> list[ImportFormat]:
 
 # Friendlier labels for a few plain targets (the duration trio especially).
 _TARGET_LABELS = {
+    "entry_date": "Datum",
+    "start_time": "Startzeit",
+    "end_time": "Endzeit",
     "duration": "Dauer (automatisch)",
     "duration_minutes": "Dauer in Minuten",
     "duration_hours": "Dauer in Stunden",
+    "project_code": "Projekt (Code/Name)",
+    "description": "Beschreibung",
+    "tags": "Tags",
+    "sync_target": "Sync-Ziel (pro Zeile)",
+    "external_ref": "Externe Referenz",
 }
 
-
-def _plain_label(token: str) -> str:
-    return _TARGET_LABELS.get(token, token)
+# Order of the always-shown standard target rows (duration is injected after the
+# time fields by the template).
+_STANDARD_ROW_ORDER = [
+    "entry_date", "start_time", "end_time",
+    "project_code", "description", "tags", "sync_target", "external_ref",
+]
 
 
 def _target_label(token: str) -> str:
@@ -794,15 +805,40 @@ def _target_label(token: str) -> str:
     return _TARGET_LABELS.get(token, token)
 
 
+def _mapping_rows() -> dict:
+    """Structured target rows for the target-oriented mapping editor."""
+    standard = [{"value": t, "label": _target_label(t)} for t in _STANDARD_ROW_ORDER]
+    sync = [
+        {"value": t, "label": sf.target_label(t)}
+        for t in sorted(SUPPORTED_TARGETS) if t.startswith("sync:")
+    ]
+    return {"standard": standard, "sync": sync}
+
+
+def _parse_column_map(raw: str) -> dict:
+    """Parse the target-keyed column_map JSON ({target: source}), keeping only
+    known targets with a non-empty source."""
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items() if k in SUPPORTED_TARGETS and v}
+
+
+def _invert_map(d: dict) -> dict:
+    """Swap keys/values (target<->source). Used at the AI boundary, which speaks
+    source->target while TimeHub stores target->source."""
+    return {v: k for k, v in d.items()}
+
+
 def _target_options() -> list[dict]:
-    """Mapping targets for the format UI: plain fields first, then sync fields,
-    each with a human label."""
+    """Flat list of all mapping targets with labels (used for the 'supported
+    fields' hint on the upload screen)."""
     base = sorted(t for t in SUPPORTED_TARGETS if not t.startswith("sync:"))
     sync = sorted(t for t in SUPPORTED_TARGETS if t.startswith("sync:"))
-    return (
-        [{"value": t, "label": _plain_label(t)} for t in base]
-        + [{"value": t, "label": sf.target_label(t)} for t in sync]
-    )
+    return [{"value": t, "label": _target_label(t)} for t in base + sync]
 
 
 def _parse_transforms(raw: str) -> list[dict]:
@@ -856,14 +892,15 @@ def _peek_headers(sample: str, separator: str) -> list[str]:
 
 
 def _headers_union(sample: str, separator: str, column_map: dict) -> list[str]:
-    """Every column from the stored sample, plus any mapped header not in it —
-    so ignored columns stay available as mapping rows and transform sources."""
+    """Every source column from the stored sample, plus any mapped source not in
+    it — so ignored columns stay available as mapping/transform sources.
+    column_map is target-keyed, so the sources are its values."""
     headers = _peek_headers(sample, separator)
     seen = set(headers)
-    for h in column_map:
-        if h not in seen:
-            headers.append(h)
-            seen.add(h)
+    for src in column_map.values():
+        if src and src not in seen:
+            headers.append(src)
+            seen.add(src)
     return headers
 
 
@@ -943,6 +980,8 @@ async def formats_new_submit(
             target_rows=target_rows,
             target_fields=sorted(SUPPORTED_TARGETS),
             target_options=_target_options(),
+            mapping_rows=_mapping_rows(),
+            mapping=suggestion.column_map,
             headers=suggestion.detected_headers,
             transforms=suggestion.transforms,
             target_rules=suggestion.target_rules,
@@ -979,13 +1018,7 @@ def formats_refine(
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
 
-    try:
-        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
-        if not isinstance(column_map, dict):
-            column_map = {}
-    except (json.JSONDecodeError, ValueError):
-        column_map = {}
-    column_map = {str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS}
+    canonical_map = _parse_column_map(column_map_json)  # target-keyed
 
     previous = {
         "source_hint": source_hint or "custom",
@@ -993,7 +1026,8 @@ def formats_refine(
         "encoding": encoding or "utf-8",
         "date_format": date_format or "%Y-%m-%d",
         "time_format": time_format or "%H:%M",
-        "column_map": column_map,
+        # the model speaks source->target
+        "column_map": _invert_map(canonical_map),
         "transforms": _parse_transforms(transforms_json),
         "target_rules": _parse_target_rules(target_rules_json),
         "default_project_code": default_project_code.strip() or None,
@@ -1007,12 +1041,12 @@ def formats_refine(
             encoding=previous["encoding"],
             date_format=previous["date_format"],
             time_format=previous["time_format"],
-            column_map=previous["column_map"],
+            column_map=canonical_map,
             transforms=previous["transforms"],
             target_rules=previous["target_rules"],
             default_project_code=previous["default_project_code"],
             notes=previous["notes"],
-            detected_headers=list(previous["column_map"].keys()),
+            detected_headers=list(canonical_map.values()),
         )
 
     error = None
@@ -1037,12 +1071,12 @@ def formats_refine(
         time_format=suggestion.time_format,
         transforms=suggestion.transforms,
     )
-    # Show every sample column (plus any the suggestion references) in the UI.
+    # Show every sample column (plus any source the suggestion references) in the UI.
     if source_rows:
         headers = list(source_rows[0].keys())
-        for k in suggestion.column_map:
-            if k not in headers:
-                headers.append(k)
+        for src in suggestion.column_map.values():
+            if src and src not in headers:
+                headers.append(src)
         suggestion.detected_headers = headers
 
     return templates.TemplateResponse(
@@ -1055,6 +1089,8 @@ def formats_refine(
             source_rows=source_rows,
             target_rows=target_rows,
             target_fields=sorted(SUPPORTED_TARGETS),
+            mapping_rows=_mapping_rows(),
+            mapping=suggestion.column_map,
             target_options=_target_options(),
             headers=suggestion.detected_headers,
             transforms=suggestion.transforms,
@@ -1082,13 +1118,7 @@ def formats_preview(
     user = _maybe_user(request, db)
     if user is None:
         return HTMLResponse("", status_code=401)
-    try:
-        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
-        if not isinstance(column_map, dict):
-            column_map = {}
-    except (json.JSONDecodeError, ValueError):
-        column_map = {}
-    column_map = {str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS}
+    column_map = _parse_column_map(column_map_json)
     transforms = _parse_transforms(transforms_json)
     sep = separator if separator and separator != "\\t" else (separator or ",")
     source_rows, target_rows = report_svc.preview_via_import_format(
@@ -1133,18 +1163,7 @@ async def formats_save(
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
 
-    try:
-        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
-        if not isinstance(column_map, dict):
-            raise ValueError("column_map must be an object")
-        column_map = {
-            str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS
-        }
-    except (json.JSONDecodeError, ValueError) as e:
-        return RedirectResponse(
-            url=f"/import-formats?error=Mapping+ungültig:+{e}",
-            status_code=status.HTTP_302_FOUND,
-        )
+    column_map = _parse_column_map(column_map_json)
 
     fmt = ImportFormat(
         name=name,
@@ -1196,6 +1215,8 @@ def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_d
             user,
             fmt=fmt,
             target_options=_target_options(),
+            mapping_rows=_mapping_rows(),
+            mapping=fmt.column_map,
             column_map=fmt.column_map,
             transforms=fmt.transforms or [],
             target_rules=fmt.target_rules or [],
@@ -1240,18 +1261,7 @@ async def formats_edit_submit(
     if fmt.owner_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="not allowed")
 
-    try:
-        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
-        if not isinstance(column_map, dict):
-            raise ValueError("column_map must be an object")
-        column_map = {
-            str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS
-        }
-    except (json.JSONDecodeError, ValueError) as e:
-        return RedirectResponse(
-            url=f"/import-formats?error=Mapping+ungültig:+{e}",
-            status_code=status.HTTP_302_FOUND,
-        )
+    column_map = _parse_column_map(column_map_json)
 
     fmt.name = name
     fmt.source_hint = source_hint or "custom"
@@ -1307,13 +1317,7 @@ def formats_edit_refine(
     if fmt.owner_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="not allowed")
 
-    try:
-        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
-        if not isinstance(column_map, dict):
-            column_map = {}
-    except (json.JSONDecodeError, ValueError):
-        column_map = {}
-    column_map = {str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS}
+    column_map = _parse_column_map(column_map_json)  # target-keyed
     transforms = _parse_transforms(transforms_json)
     target_rules = _parse_target_rules(target_rules_json)
 
@@ -1326,7 +1330,8 @@ def formats_edit_refine(
         previous = {
             "source_hint": source_hint, "separator": separator, "encoding": encoding,
             "date_format": date_format, "time_format": time_format,
-            "column_map": column_map, "transforms": transforms, "target_rules": target_rules,
+            "column_map": _invert_map(column_map),  # the model speaks source->target
+            "transforms": transforms, "target_rules": target_rules,
             "default_project_code": default_project_code.strip() or None, "notes": notes,
         }
         try:
@@ -1368,6 +1373,8 @@ def formats_edit_refine(
             user,
             fmt=fmt,
             target_options=_target_options(),
+            mapping_rows=_mapping_rows(),
+            mapping=column_map,
             column_map=column_map,
             transforms=transforms,
             target_rules=target_rules,

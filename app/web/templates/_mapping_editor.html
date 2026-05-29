@@ -1,0 +1,85 @@
+{# Target-oriented mapping editor: each TimeHub target field (left) gets a
+   source-column dropdown (right). Serializes to a target-keyed column_map
+   ({target: source}). A source may feed multiple targets. #}
+{% macro src_select(target, current, headers) %}
+  <select data-target="{{ target }}" class="m-src h-9 border border-slate-300 rounded px-2 bg-white text-sm">
+    <option value="">— keine —</option>
+    {% for h in headers %}
+      <option value="{{ h }}" {% if current == h %}selected{% endif %}>{{ h }}</option>
+    {% endfor %}
+  </select>
+{% endmacro %}
+
+{% set dur_src = mapping.get('duration') or mapping.get('duration_minutes') or mapping.get('duration_hours') or '' %}
+{% set dur_unit = 'duration' if mapping.get('duration') else ('duration_minutes' if mapping.get('duration_minutes') else ('duration_hours' if mapping.get('duration_hours') else 'duration')) %}
+
+<div>
+  <div class="text-sm font-medium mb-1">Spalten-Zuordnung</div>
+  <p class="text-xs text-slate-500 mb-2">
+    Links das TimeHub-Zielfeld, rechts die Quell-Spalte aus deiner CSV.
+    „— keine —" lässt das Feld leer. Eine Quelle darf mehrere Ziele speisen.
+  </p>
+  <div id="map-rows" class="border border-slate-200 rounded divide-y divide-slate-100">
+    {% for row in mapping_rows.standard %}
+      <div class="m-row grid grid-cols-[1fr_1.2fr] gap-2 px-3 py-1.5 text-sm items-center">
+        <span class="text-slate-700">{{ row.label }}</span>
+        {{ src_select(row.value, mapping.get(row.value), headers) }}
+      </div>
+      {% if row.value == 'end_time' %}
+        <div class="m-row grid grid-cols-[1fr_1.2fr] gap-2 px-3 py-1.5 text-sm items-center">
+          <span class="text-slate-700">Dauer</span>
+          <div class="flex gap-1">
+            <select class="m-src h-9 border border-slate-300 rounded px-2 bg-white text-sm flex-1">
+              <option value="">— keine —</option>
+              {% for h in headers %}
+                <option value="{{ h }}" {% if dur_src == h %}selected{% endif %}>{{ h }}</option>
+              {% endfor %}
+            </select>
+            <select class="m-unit h-9 border border-slate-300 rounded px-1 bg-white text-xs" title="Einheit">
+              <option value="duration" {% if dur_unit == 'duration' %}selected{% endif %}>auto</option>
+              <option value="duration_minutes" {% if dur_unit == 'duration_minutes' %}selected{% endif %}>Min</option>
+              <option value="duration_hours" {% if dur_unit == 'duration_hours' %}selected{% endif %}>Std</option>
+            </select>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    {% if mapping_rows.sync %}
+      <div class="px-3 py-1.5 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+        Sync-Felder (zielabhängig)
+      </div>
+      {% for row in mapping_rows.sync %}
+        <div class="m-row grid grid-cols-[1fr_1.2fr] gap-2 px-3 py-1.5 text-sm items-center">
+          <span class="text-slate-700">{{ row.label }}</span>
+          {{ src_select(row.value, mapping.get(row.value), headers) }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+  <input type="hidden" name="column_map_json" id="column_map_json" value="{}" />
+</div>
+
+<script>
+  (function () {
+    var hidden = document.getElementById("column_map_json");
+    var rows = document.getElementById("map-rows");
+    if (!hidden || !rows) return;
+    function serialize() {
+      var out = {};
+      rows.querySelectorAll(".m-row").forEach(function (row) {
+        var src = row.querySelector(".m-src");
+        if (!src || !src.value) return;
+        var unit = row.querySelector(".m-unit");
+        var target = unit ? unit.value : src.getAttribute("data-target");
+        if (target) out[target] = src.value;
+      });
+      hidden.value = JSON.stringify(out);
+      window.dispatchEvent(new Event("formatchange"));
+    }
+    rows.querySelectorAll(".m-src, .m-unit").forEach(function (el) {
+      el.addEventListener("change", serialize);
+    });
+    serialize();
+  })();
+</script>

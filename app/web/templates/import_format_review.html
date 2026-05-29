@@ -83,38 +83,7 @@
         </label>
       </div>
 
-      <div>
-        <span class="block text-sm font-medium mb-1">Spalten-Mapping</span>
-        <p class="text-xs text-slate-500 mb-2">
-          Eine Zuordnung wurde automatisch vorgeschlagen. Bei Bedarf hier korrigieren —
-          „(ignorieren)" lässt die Spalte aus.
-        </p>
-        <div class="border border-slate-200 rounded">
-          {% if suggestion.detected_headers %}
-            {% for header in suggestion.detected_headers %}
-              {% set suggested = suggestion.column_map.get(header) %}
-              <div class="grid grid-cols-2 gap-2 px-3 py-1.5 border-b border-slate-100 last:border-0 text-sm items-center">
-                <div class="font-mono truncate flex items-center gap-2" title="{{ header }}">
-                  {{ header }}
-                  {% if suggested %}
-                    <span class="text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">KI</span>
-                  {% endif %}
-                </div>
-                <select data-source="{{ header }}" class="h-9 border border-slate-300 rounded px-2 map-select bg-white">
-                  <option value="">(ignorieren)</option>
-                  {% for o in target_options %}
-                    <option value="{{ o.value }}" {% if suggested == o.value %}selected{% endif %}>{{ o.label }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-            {% endfor %}
-          {% else %}
-            <p class="text-xs text-slate-500 p-3">Keine Header erkannt — du kannst das Mapping als JSON unten manuell setzen.</p>
-          {% endif %}
-        </div>
-        <input type="hidden" name="column_map_json" id="column_map_json"
-               value='{{ suggestion.column_map | tojson }}' />
-      </div>
+      {% include "_mapping_editor.html" %}
 
       {% include "_format_advanced.html" %}
 
@@ -151,21 +120,5 @@
   </section>
 </div>
 
-<script>
-  // Keep the hidden column_map JSON in sync with the dropdowns, then nudge the preview.
-  const hidden = document.getElementById("column_map_json");
-  function sync() {
-    const out = {};
-    document.querySelectorAll(".map-select").forEach(sel => {
-      const src = sel.dataset.source;
-      const val = sel.value;
-      if (src && val) out[src] = val;
-    });
-    hidden.value = JSON.stringify(out);
-    window.dispatchEvent(new Event("formatchange"));
-  }
-  document.querySelectorAll(".map-select").forEach(sel => sel.addEventListener("change", sync));
-  sync();
-</script>
 {% include "_preview_js.html" %}
 {% endblock %}

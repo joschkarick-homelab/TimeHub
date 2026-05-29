@@ -162,13 +162,18 @@ def _sanitize(raw: dict, raw_sample: str) -> ImportFormatSuggestion:
             detected.append(src)
             seen[src] = True
 
+    # The model speaks source->target (natural language: "this column is the
+    # date"); TimeHub stores target->source. Invert here. If two sources map to
+    # the same target, the last one wins (a target holds one source).
+    target_keyed: dict[str, str] = {src_to_tgt: src for src, src_to_tgt in cleaned.items()}
+
     return ImportFormatSuggestion(
         source_hint=str(raw.get("source_hint") or "custom")[:64],
         separator=separator,
         encoding=str(raw.get("encoding") or "utf-8")[:16],
         date_format=str(raw.get("date_format") or "%Y-%m-%d")[:32],
         time_format=str(raw.get("time_format") or "%H:%M")[:32],
-        column_map=cleaned,
+        column_map=target_keyed,
         transforms=clean_transforms(raw.get("transforms"), SUPPORTED_TARGETS),
         target_rules=clean_target_rules(raw.get("target_rules"), _KNOWN_SYNC_TARGETS),
         default_project_code=(raw.get("default_project_code") or None),

@@ -144,24 +144,23 @@ def export_via_import_format(
 ) -> tuple[str, str]:
     """Emit the same shape of CSV that the ImportFormat would consume.
 
-    The ImportFormat's column_map is `source_header -> target_field`. To
-    export, we walk the same mapping in reverse and emit a CSV with the
-    original headers, filled from each entry's target_field value. This
-    makes formats round-trippable: export A, re-import with the same format,
-    end up with the same entries.
+    The ImportFormat's column_map is `target_field -> source_header`. To
+    export, we emit a CSV with the original source headers, filled from each
+    entry's target_field value. This makes formats round-trippable: export A,
+    re-import with the same format, end up with the same entries.
 
-    If multiple source headers map to the same target field, only the first
-    is emitted (the rest would be redundant duplicates).
+    If multiple targets share one source header, only the first is emitted
+    (a column can't hold two values).
     """
     if not column_map:
         raise ValueError("Format has no column mapping — cannot export")
 
-    seen_targets: set[str] = set()
+    seen_sources: set[str] = set()
     columns: list[tuple[str, str]] = []  # (source_header, target_field)
-    for src, target in column_map.items():
-        if target in seen_targets:
+    for target, src in column_map.items():
+        if src in seen_sources:
             continue
-        seen_targets.add(target)
+        seen_sources.add(src)
         columns.append((src, target))
 
     buf = io.StringIO()
@@ -203,9 +202,9 @@ def preview_via_import_format(
         source_rows.append({k: (v or "") for k, v in raw_row.items()})
 
         # Plain copies first, then transforms override / derive (regex, date,
-        # duration, ...) — same order as the importer.
+        # duration, ...) — same order as the importer. column_map is target-keyed.
         mapped: dict[str, str] = {}
-        for src, field in column_map.items():
+        for field, src in column_map.items():
             mapped[field] = (raw_row.get(src) or "")
         for field, val in apply_transforms(
             transforms, raw_row, date_format=date_format, supported=SUPPORTED_TARGETS

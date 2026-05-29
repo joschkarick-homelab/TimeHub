@@ -73,7 +73,7 @@ def import_csv(
     target_rules: list[dict] | None = None,
     apply_target_rules: bool = False,
 ) -> dict:
-    bad_targets = set(column_map.values()) - SUPPORTED_TARGETS
+    bad_targets = set(column_map.keys()) - SUPPORTED_TARGETS
     if bad_targets:
         raise ValueError(f"Unsupported target fields: {sorted(bad_targets)}")
 
@@ -88,9 +88,9 @@ def import_csv(
     if reader.fieldnames:
         reader.fieldnames = [_normalize_header(h) for h in reader.fieldnames]
 
-    # Same normalization on the mapping side, so headers and mapping keys
-    # compare apples to apples regardless of where the noise came from.
-    column_map = {_normalize_header(src): target for src, target in column_map.items()}
+    # column_map is target-keyed ({target: source}); normalize the source values
+    # so they compare apples to apples with the (normalized) row headers.
+    column_map = {target: _normalize_header(src) for target, src in column_map.items()}
 
     created_ids: list[int] = []
     errors: list[dict] = []
@@ -131,7 +131,7 @@ def import_csv(
     for row_no, raw_row in enumerate(reader, start=2):
         try:
             mapped: dict = {}
-            for src, target in column_map.items():
+            for target, src in column_map.items():
                 if src in raw_row:
                     mapped[target] = raw_row[src]
 

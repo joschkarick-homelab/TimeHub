@@ -59,7 +59,7 @@ def _suggestion(**over):
     base = dict(
         source_hint="toggl", separator=",", encoding="utf-8",
         date_format="%Y-%m-%d", time_format="%H:%M",
-        column_map={"Description": "description", "Date": "entry_date", "Hours": "duration_hours"},
+        column_map={"description": "Description", "entry_date": "Date", "duration_hours": "Hours"},
         transforms=[], target_rules=[], default_project_code=None, notes="",
         detected_headers=["Date", "Hours", "Description"],
     )
@@ -112,7 +112,7 @@ def test_refine_passes_instruction_and_previous(client, monkeypatch):
         "name": "Toggl X", "sample_text": _SAMPLE,
         "instruction": "Jira-Tickets aus der Beschreibung als sync:jira.issue_key ziehen",
         "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": json.dumps({"Description": "description"}),
+        "column_map_json": json.dumps({"description": "Description"}),
         "transforms_json": "[]", "target_rules_json": "[]",
     })
     assert r.status_code == 200
@@ -135,7 +135,7 @@ def test_refine_without_instruction_warns_and_keeps_state(client, monkeypatch):
     r = client.post("/import-formats/refine", data={
         "name": "Toggl X", "sample_text": _SAMPLE, "instruction": "   ",
         "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": json.dumps({"Description": "description"}),
+        "column_map_json": json.dumps({"description": "Description"}),
         "transforms_json": "[]", "target_rules_json": "[]",
     })
     assert r.status_code == 200
@@ -156,7 +156,7 @@ def test_refine_handles_ai_error_without_losing_state(client, monkeypatch):
     r = client.post("/import-formats/refine", data={
         "name": "Toggl X", "sample_text": _SAMPLE, "instruction": "tu was",
         "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": json.dumps({"Description": "description"}),
+        "column_map_json": json.dumps({"description": "Description"}),
         "transforms_json": json.dumps([{"target": "sync:jira.issue_key", "op": "copy",
                                         "source": "Description"}]),
         "target_rules_json": "[]",

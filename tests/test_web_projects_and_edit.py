@@ -110,10 +110,10 @@ def test_import_errors_are_visible_in_response(client):
             "separator": ";",
             "date_format": "%Y-%m-%d",
             "column_map": {
-                "Datum": "entry_date",
-                "Stunden": "duration_hours",
-                "Projekt": "project_code",
-                "Notiz": "description",
+                "entry_date": "Datum",
+                "duration_hours": "Stunden",
+                "project_code": "Projekt",
+                "description": "Notiz",
             },
         },
         headers=h,
@@ -155,7 +155,7 @@ def test_format_edit_persists_changes(client):
             "name": "EditMe",
             "separator": ",",
             "date_format": "%Y-%m-%d",
-            "column_map": {"Date": "entry_date", "Hrs": "duration_hours"},
+            "column_map": {"entry_date": "Date", "duration_hours": "Hrs"},
         },
         headers=h,
     ).json()["id"]
@@ -165,8 +165,8 @@ def test_format_edit_persists_changes(client):
     assert "EditMe" in r.text
     assert "Date" in r.text and "Hrs" in r.text
 
-    # Change name + tweak the mapping (rename Hrs -> Hours and remap to duration_minutes)
-    new_map = '{"Date": "entry_date", "Hours": "duration_minutes", "Project": "project_code"}'
+    # Change name + tweak the mapping (target-keyed: {target: source})
+    new_map = '{"entry_date": "Date", "duration_minutes": "Hours", "project_code": "Project"}'
     r = client.post(
         f"/import-formats/{fmt_id}/edit",
         data={
@@ -189,7 +189,7 @@ def test_format_edit_persists_changes(client):
     assert after["separator"] == ";"
     assert after["date_format"] == "%d.%m.%Y"
     assert after["column_map"] == {
-        "Date": "entry_date",
-        "Hours": "duration_minutes",
-        "Project": "project_code",
+        "entry_date": "Date",
+        "duration_minutes": "Hours",
+        "project_code": "Project",
     }

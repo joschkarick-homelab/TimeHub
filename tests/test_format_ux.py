@@ -44,7 +44,7 @@ def test_import_duration_op_end_to_end(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": "DurFmt", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date", "Project": "project_code"},
+        "column_map": {"entry_date": "Date", "project_code": "Project"},
         "transforms": [{"target": "duration_minutes", "op": "duration", "source": "Dur"}],
     }, headers=h).json()["id"]
     csv = "Date,Project,Dur\n2026-05-27,DURPROJ,01:30:00\n"
@@ -64,7 +64,7 @@ def test_edit_keeps_ignored_columns_via_sample(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": "WithSample", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date"},  # Dauer + Ignorierte nicht gemappt
+        "column_map": {"entry_date": "Date"},  # Dauer + Ignorierte nicht gemappt
         "sample_data": "Date,Dauer,Notiz\n2026-05-27,01:30:00,egal\n",
     }, headers=h).json()["id"]
     page = client.get(f"/import-formats/{fid}/edit")
@@ -78,7 +78,7 @@ def test_web_save_persists_sample(client):
     import json
     client.post("/import-formats", data={
         "name": "SampleSave", "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": json.dumps({"Date": "entry_date"}),
+        "column_map_json": json.dumps({"entry_date": "Date"}),
         "transforms_json": "[]", "target_rules_json": "[]",
         "sample_text": "Date,Dur\n2026-05-27,01:30:00\n",
     }, follow_redirects=False)
@@ -95,7 +95,7 @@ def test_preview_endpoint_renders_transform(client):
     r = client.post("/import-formats/preview", data={
         "sample_text": "Date,Dur\n2026-05-27,01:30:00\n",
         "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": json.dumps({"Date": "entry_date"}),
+        "column_map_json": json.dumps({"entry_date": "Date"}),
         "transforms_json": json.dumps([{"target": "duration_minutes", "op": "duration", "source": "Dur"}]),
     })
     assert r.status_code == 200
@@ -114,7 +114,7 @@ def test_edit_refine_stays_on_edit_and_applies_ai(client, monkeypatch):
     h = {"Authorization": f"Bearer {_token(client)}"}
     fid = client.post("/api/v1/import-formats", json={
         "name": "RefineEdit", "separator": ",", "date_format": "%Y-%m-%d",
-        "column_map": {"Date": "entry_date"},
+        "column_map": {"entry_date": "Date"},
         "sample_data": "Date,Dur\n2026-05-27,01:30:00\n",
     }, headers=h).json()["id"]
 
@@ -125,7 +125,7 @@ def test_edit_refine_stays_on_edit_and_applies_ai(client, monkeypatch):
         return ImportFormatSuggestion(
             source_hint="custom", separator=",", encoding="utf-8",
             date_format="%Y-%m-%d", time_format="%H:%M",
-            column_map={"Date": "entry_date"},
+            column_map={"entry_date": "Date"},
             transforms=[{"target": "duration_minutes", "op": "duration", "source": "Dur"}],
             target_rules=[], notes="Dauer umgerechnet.", detected_headers=["Date", "Dur"],
         )
@@ -135,7 +135,7 @@ def test_edit_refine_stays_on_edit_and_applies_ai(client, monkeypatch):
         "name": "RefineEdit", "sample_text": "Date,Dur\n2026-05-27,01:30:00\n",
         "instruction": "Dauer aus Dur in Minuten umrechnen",
         "separator": ",", "date_format": "%Y-%m-%d", "time_format": "%H:%M",
-        "column_map_json": '{"Date": "entry_date"}', "transforms_json": "[]", "target_rules_json": "[]",
+        "column_map_json": '{"entry_date": "Date"}', "transforms_json": "[]", "target_rules_json": "[]",
     })
     assert r.status_code == 200
     # stayed on the edit screen for this format
