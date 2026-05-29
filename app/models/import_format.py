@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -30,6 +30,9 @@ class ImportFormat(Base):
     transforms: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     # Conditional sync-target rules applied at import when enabled.
     target_rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # A small sample (header + a few rows) kept so the edit screen can show a
+    # live preview and offer AI refinement without re-uploading the file.
+    sample_data: Mapped[str | None] = mapped_column(Text, nullable=True)
     default_project_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     owner_id: Mapped[int | None] = mapped_column(

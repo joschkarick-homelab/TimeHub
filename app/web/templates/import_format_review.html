@@ -130,49 +130,19 @@
   </section>
 
   <section class="bg-white border border-slate-200 rounded-lg p-5">
-    <h2 class="font-semibold mb-1">Vorschau: Quelle → Ziel</h2>
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="font-semibold">Vorschau: Quelle → Ziel</h2>
+      <button type="button" id="refresh-preview" class="text-xs text-indigo-600 hover:underline">↻ aktualisieren</button>
+    </div>
     <p class="text-xs text-slate-500 mb-3">
-      Was beim Import aus den ersten {{ source_rows|length }} Zeilen entsteht.
-      Stimmt das nicht, im Mapping links korrigieren.
+      Aktualisiert sich live, wenn du Mapping oder Transformationen änderst — inkl. Regex & Co.
     </p>
-
-    {% if not source_rows %}
-      <p class="text-sm text-slate-500">Keine Daten zum Auswerten — die CSV scheint leer zu sein.</p>
-    {% else %}
-      <div class="space-y-4">
-        {% for i in range(source_rows|length) %}
-          <div class="border border-slate-200 rounded p-3 text-xs">
-            <div class="font-medium text-slate-500 uppercase tracking-wide text-[10px] mb-1">Zeile {{ i + 1 }} (Quelle)</div>
-            <div class="space-y-0.5 mb-3">
-              {% for k, v in source_rows[i].items() %}
-                <div class="flex gap-2">
-                  <span class="font-mono text-slate-400 min-w-32 truncate" title="{{ k }}">{{ k }}</span>
-                  <span class="text-slate-700">{{ v or '—' }}</span>
-                </div>
-              {% endfor %}
-            </div>
-            <div class="font-medium text-emerald-600 uppercase tracking-wide text-[10px] mb-1">→ TimeHub-Eintrag</div>
-            {% if target_rows[i] %}
-              <div class="space-y-0.5">
-                {% for field in target_fields if target_rows[i].get(field) %}
-                  <div class="flex gap-2">
-                    <span class="font-mono text-emerald-700 min-w-32">{{ field }}</span>
-                    <span class="text-slate-900">{{ target_rows[i][field] }}</span>
-                  </div>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p class="text-rose-600">⚠ Keine Felder gemappt — der Eintrag würde nicht importiert.</p>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+    <div id="preview-panel">{% include "_preview_panel.html" %}</div>
   </section>
 </div>
 
 <script>
-  // Keep the hidden column_map JSON in sync with the dropdowns.
+  // Keep the hidden column_map JSON in sync with the dropdowns, then nudge the preview.
   const hidden = document.getElementById("column_map_json");
   function sync() {
     const out = {};
@@ -182,8 +152,10 @@
       if (src && val) out[src] = val;
     });
     hidden.value = JSON.stringify(out);
+    window.dispatchEvent(new Event("formatchange"));
   }
   document.querySelectorAll(".map-select").forEach(sel => sel.addEventListener("change", sync));
   sync();
 </script>
+{% include "_preview_js.html" %}
 {% endblock %}

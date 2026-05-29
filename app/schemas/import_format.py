@@ -30,6 +30,7 @@ class ImportFormatBase(BaseModel):
     column_map: dict[str, str] = Field(default_factory=dict)
     transforms: list[dict] = Field(default_factory=list)
     target_rules: list[dict] = Field(default_factory=list)
+    sample_data: str | None = None
     default_project_code: str | None = None
     notes: str = ""
 
@@ -48,6 +49,7 @@ class ImportFormatUpdate(BaseModel):
     column_map: dict[str, str] | None = None
     transforms: list[dict] | None = None
     target_rules: list[dict] | None = None
+    sample_data: str | None = None
     default_project_code: str | None = None
     notes: str | None = None
     is_global: bool | None = None  # admin only

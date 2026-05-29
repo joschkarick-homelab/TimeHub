@@ -24,7 +24,7 @@ from datetime import datetime
 _MAX_REGEX_INPUT = 2000
 _PATTERN_CACHE: dict[str, re.Pattern] = {}
 
-VALID_OPS = {"copy", "regex", "date", "split", "constant"}
+VALID_OPS = {"copy", "regex", "date", "split", "constant", "duration"}
 _RULE_KEYS = ("source", "pattern", "group", "sep", "index", "value", "date_from", "default")
 
 
@@ -88,6 +88,26 @@ def safe_search(pattern: str, text: str | None) -> re.Match | None:
     return rx.search(text[:_MAX_REGEX_INPUT])
 
 
+def _duration_to_minutes(txt: str) -> int | None:
+    """Parse a clock-style duration "HH:MM:SS" or "HH:MM" into whole minutes.
+    Returns None for anything without a colon (too ambiguous to guess)."""
+    txt = (txt or "").strip()
+    if ":" not in txt:
+        return None
+    parts = txt.split(":")
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError:
+        return None
+    if len(parts) == 3:
+        h, m, s = nums
+        return h * 60 + m + round(s / 60)
+    if len(parts) == 2:
+        h, m = nums
+        return h * 60 + m
+    return None
+
+
 def apply_transform(rule: dict, row: dict, *, date_format: str = "%Y-%m-%d") -> str | None:
     """Compute a single transform's output value, or None when it yields nothing.
 
@@ -127,6 +147,13 @@ def apply_transform(rule: dict, row: dict, *, date_format: str = "%Y-%m-%d") -> 
             out = datetime.strptime((raw or "").strip(), df).strftime(date_format)
         except ValueError:
             out = None
+    elif op == "duration":
+        minutes = _duration_to_minutes(raw or "")
+        if minutes is not None:
+            if rule.get("target") == "duration_hours":
+                out = f"{minutes / 60:.4f}".rstrip("0").rstrip(".")
+            else:
+                out = str(minutes)
 
     if not out and rule.get("default"):
         out = str(rule.get("default"))

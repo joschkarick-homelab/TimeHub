@@ -36,7 +36,7 @@
   var RULES = {{ target_rules | tojson }};
   var SYNC_TARGETS = ["jira", "salesforce", "bcs", "intern", "none"];
   var OPS = [["copy", "Kopieren"], ["regex", "Regex-Teilstring"], ["date", "Datum umwandeln"],
-            ["split", "Split"], ["constant", "Konstante"]];
+            ["duration", "Dauer HH:MM:SS"], ["split", "Split"], ["constant", "Konstante"]];
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -81,6 +81,9 @@
     }
     if (op === "constant") {
       return '<input class="' + inputCls + ' p-value" placeholder="fester Wert" value="' + esc(r.value) + '" />';
+    }
+    if (op === "duration") {
+      return '<span class="text-xs text-slate-400 self-center">HH:MM:SS / HH:MM der Quell-Spalte → Minuten (bzw. Stunden bei Ziel „duration_hours")</span>';
     }
     return '<span class="text-xs text-slate-400 self-center">übernimmt die Quell-Spalte</span>';
   }
@@ -135,6 +138,7 @@
       if (o.target) out.push(o);
     });
     tHidden.value = JSON.stringify(out);
+    window.dispatchEvent(new Event("formatchange"));
   }
 
   document.getElementById("add-transform").addEventListener("click", function () { addTransform({}); serializeTransforms(); });
@@ -170,6 +174,7 @@
       if (when && set_target) out.push({ when: when, set_target: set_target });
     });
     rHidden.value = JSON.stringify(out);
+    window.dispatchEvent(new Event("formatchange"));
   }
 
   document.getElementById("add-rule").addEventListener("click", function () { addRule({}); serializeRules(); });

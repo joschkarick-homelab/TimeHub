@@ -775,6 +775,39 @@ def _parse_target_rules(raw: str) -> list[dict]:
     return clean_target_rules(data, set(_KNOWN_SYNC_TARGETS))
 
 
+# Keep the stored sample small — same budget as what we send to the AI.
+_SAMPLE_MAX_LINES = 30
+
+
+def _trim_sample(text: str) -> str:
+    lines = text.splitlines()
+    return "\n".join(lines[:_SAMPLE_MAX_LINES])[:8000]
+
+
+def _peek_headers(sample: str, separator: str) -> list[str]:
+    import csv as _csv
+    import io as _io
+    if not sample.strip():
+        return []
+    reader = _csv.reader(_io.StringIO(sample), delimiter=separator)
+    try:
+        return [h.lstrip("﻿").strip() for h in next(reader)]
+    except StopIteration:
+        return []
+
+
+def _headers_union(sample: str, separator: str, column_map: dict) -> list[str]:
+    """Every column from the stored sample, plus any mapped header not in it —
+    so ignored columns stay available as mapping rows and transform sources."""
+    headers = _peek_headers(sample, separator)
+    seen = set(headers)
+    for h in column_map:
+        if h not in seen:
+            headers.append(h)
+            seen.add(h)
+    return headers
+
+
 @router.get("/import-formats", response_class=HTMLResponse)
 def formats_list(
     request: Request,
@@ -838,6 +871,7 @@ async def formats_new_submit(
         separator=sep,
         date_format=suggestion.date_format,
         time_format=suggestion.time_format,
+        transforms=suggestion.transforms,
     )
     return templates.TemplateResponse(
         "import_format_review.html",
@@ -853,7 +887,8 @@ async def formats_new_submit(
             headers=suggestion.detected_headers,
             transforms=suggestion.transforms,
             target_rules=suggestion.target_rules,
-            sample_text=text,
+            sample_text=_trim_sample(text),
+            tlabel=sf.target_label,
             error=None,
         ),
     )
@@ -939,6 +974,7 @@ def formats_refine(
         separator=sep,
         date_format=suggestion.date_format,
         time_format=suggestion.time_format,
+        transforms=suggestion.transforms,
     )
     # Show every sample column (plus any the suggestion references) in the UI.
     if source_rows:
@@ -963,8 +999,54 @@ def formats_refine(
             transforms=suggestion.transforms,
             target_rules=suggestion.target_rules,
             sample_text=sample_text,
+            tlabel=sf.target_label,
             error=error,
         ),
+    )
+
+
+@router.post("/import-formats/preview", response_class=HTMLResponse)
+def formats_preview(
+    request: Request,
+    sample_text: str = Form(""),
+    separator: str = Form(","),
+    date_format: str = Form("%Y-%m-%d"),
+    time_format: str = Form("%H:%M"),
+    column_map_json: str = Form("{}"),
+    transforms_json: str = Form("[]"),
+    db: Session = Depends(get_db),
+):
+    """Live preview fragment: render the current mapping + transforms against
+    the sample. Returned as an HTML partial the editor swaps in on change."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return HTMLResponse("", status_code=401)
+    try:
+        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
+        if not isinstance(column_map, dict):
+            column_map = {}
+    except (json.JSONDecodeError, ValueError):
+        column_map = {}
+    column_map = {str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS}
+    transforms = _parse_transforms(transforms_json)
+    sep = separator if separator and separator != "\\t" else (separator or ",")
+    source_rows, target_rows = report_svc.preview_via_import_format(
+        sample_text,
+        column_map,
+        separator=sep,
+        date_format=date_format or "%Y-%m-%d",
+        time_format=time_format or "%H:%M",
+        transforms=transforms,
+    )
+    return templates.TemplateResponse(
+        "_preview_panel.html",
+        {
+            "request": request,
+            "source_rows": source_rows,
+            "target_rows": target_rows,
+            "target_fields": sorted(SUPPORTED_TARGETS),
+            "tlabel": sf.target_label,
+        },
     )
 
 
@@ -982,6 +1064,7 @@ async def formats_save(
     column_map_json: str = Form("{}"),
     transforms_json: str = Form("[]"),
     target_rules_json: str = Form("[]"),
+    sample_text: str = Form(""),
     is_global: bool = Form(False),
     db: Session = Depends(get_db),
 ):
@@ -1012,6 +1095,7 @@ async def formats_save(
         column_map=column_map,
         transforms=_parse_transforms(transforms_json),
         target_rules=_parse_target_rules(target_rules_json),
+        sample_data=(_trim_sample(sample_text) or None),
         default_project_code=(default_project_code.strip() or None),
         notes=notes,
         owner_id=user.id,
@@ -1037,6 +1121,13 @@ def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_d
     # edit form the user can't actually submit.
     if fmt.owner_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="not allowed to edit this format")
+    sample = fmt.sample_data or ""
+    sep = fmt.separator if fmt.separator != "\\t" else "\t"
+    source_rows, target_rows = report_svc.preview_via_import_format(
+        sample, fmt.column_map, separator=sep,
+        date_format=fmt.date_format, time_format=fmt.time_format,
+        transforms=fmt.transforms or [],
+    )
     return templates.TemplateResponse(
         "import_format_edit.html",
         _ctx(
@@ -1044,11 +1135,18 @@ def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_d
             user,
             fmt=fmt,
             target_options=_target_options(),
+            column_map=fmt.column_map,
             transforms=fmt.transforms or [],
             target_rules=fmt.target_rules or [],
-            # All currently-mapped headers + the keys from column_map, so the
-            # user always sees every assignment they made.
-            headers=list(fmt.column_map.keys()),
+            # All columns from the stored sample stay available — even ignored
+            # ones — plus any mapped header not in the sample.
+            headers=_headers_union(sample, fmt.separator, fmt.column_map),
+            sample_text=sample,
+            source_rows=source_rows,
+            target_rows=target_rows,
+            target_fields=sorted(SUPPORTED_TARGETS),
+            tlabel=sf.target_label,
+            error=None,
         ),
     )
 
@@ -1068,6 +1166,7 @@ async def formats_edit_submit(
     column_map_json: str = Form("{}"),
     transforms_json: str = Form("[]"),
     target_rules_json: str = Form("[]"),
+    sample_text: str = Form(""),
     is_global: bool = Form(False),
     db: Session = Depends(get_db),
 ):
@@ -1102,6 +1201,7 @@ async def formats_edit_submit(
     fmt.column_map = column_map
     fmt.transforms = _parse_transforms(transforms_json)
     fmt.target_rules = _parse_target_rules(target_rules_json)
+    fmt.sample_data = _trim_sample(sample_text) or None
     fmt.default_project_code = default_project_code.strip() or None
     fmt.notes = notes
     # only admins may flip the global flag
@@ -1112,6 +1212,110 @@ async def formats_edit_submit(
     return RedirectResponse(
         url=f"/import-formats?flash=Format+'{name}'+aktualisiert",
         status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/import-formats/{fmt_id}/refine", response_class=HTMLResponse)
+def formats_edit_refine(
+    request: Request,
+    fmt_id: int,
+    name: str = Form(...),
+    sample_text: str = Form(""),
+    instruction: str = Form(""),
+    source_hint: str = Form("custom"),
+    separator: str = Form(","),
+    encoding: str = Form("utf-8"),
+    date_format: str = Form("%Y-%m-%d"),
+    time_format: str = Form("%H:%M"),
+    default_project_code: str = Form(""),
+    notes: str = Form(""),
+    column_map_json: str = Form("{}"),
+    transforms_json: str = Form("[]"),
+    target_rules_json: str = Form("[]"),
+    db: Session = Depends(get_db),
+):
+    """AI refinement that stays on the edit screen: re-runs the model with the
+    current state + instruction, then re-renders the edit form (unsaved) so the
+    user can review and Save."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    fmt = db.get(ImportFormat, fmt_id)
+    if fmt is None:
+        raise HTTPException(status_code=404, detail="format not found")
+    if fmt.owner_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail="not allowed")
+
+    try:
+        column_map = json.loads(column_map_json) if column_map_json.strip() else {}
+        if not isinstance(column_map, dict):
+            column_map = {}
+    except (json.JSONDecodeError, ValueError):
+        column_map = {}
+    column_map = {str(k): str(v) for k, v in column_map.items() if v in SUPPORTED_TARGETS}
+    transforms = _parse_transforms(transforms_json)
+    target_rules = _parse_target_rules(target_rules_json)
+
+    error = None
+    if not instruction.strip():
+        error = "Bitte eine Anweisung eingeben, was die KI anpassen soll."
+    elif not sample_text.strip():
+        error = "Für die KI werden Beispieldaten benötigt — bitte unten einfügen."
+    else:
+        previous = {
+            "source_hint": source_hint, "separator": separator, "encoding": encoding,
+            "date_format": date_format, "time_format": time_format,
+            "column_map": column_map, "transforms": transforms, "target_rules": target_rules,
+            "default_project_code": default_project_code.strip() or None, "notes": notes,
+        }
+        try:
+            suggestion = suggest_mapping(sample_text, instruction=instruction, previous=previous)
+            source_hint = suggestion.source_hint
+            separator = suggestion.separator
+            encoding = suggestion.encoding
+            date_format = suggestion.date_format
+            time_format = suggestion.time_format
+            column_map = suggestion.column_map
+            transforms = suggestion.transforms
+            target_rules = suggestion.target_rules
+            notes = suggestion.notes or notes
+        except AiMappingError as e:
+            error = str(e)
+
+    # Reflect the (unsaved) current/refined values in the re-render. The session
+    # never commits this — we expunge so an accidental flush can't persist it.
+    fmt.name = name
+    fmt.source_hint = source_hint
+    fmt.separator = separator
+    fmt.encoding = encoding
+    fmt.date_format = date_format
+    fmt.time_format = time_format
+    fmt.default_project_code = default_project_code.strip() or None
+    fmt.notes = notes
+    db.expunge(fmt)
+    sep = separator if separator != "\\t" else "\t"
+    source_rows, target_rows = report_svc.preview_via_import_format(
+        sample_text, column_map, separator=sep,
+        date_format=date_format, time_format=time_format, transforms=transforms,
+    )
+    return templates.TemplateResponse(
+        "import_format_edit.html",
+        _ctx(
+            request,
+            user,
+            fmt=fmt,
+            target_options=_target_options(),
+            column_map=column_map,
+            transforms=transforms,
+            target_rules=target_rules,
+            headers=_headers_union(sample_text, separator, column_map),
+            sample_text=sample_text,
+            source_rows=source_rows,
+            target_rows=target_rows,
+            target_fields=sorted(SUPPORTED_TARGETS),
+            tlabel=sf.target_label,
+            error=error,
+        ),
     )
 
 

@@ -183,13 +183,17 @@ def preview_via_import_format(
     separator: str = ",",
     date_format: str = "%Y-%m-%d",
     time_format: str = "%H:%M",
+    transforms: list[dict] | None = None,
     max_rows: int = 5,
 ) -> tuple[list[dict], list[dict]]:
-    """For the format-review screen: parse the first N rows of the user's
+    """For the format-review/edit screen: parse the first N rows of the user's
     sample and produce two parallel lists — the raw source row and what
-    TimeHub would store after the column_map is applied. Used purely to
-    show "source -> target" side-by-side so the user can sanity-check
-    the mapping before saving."""
+    TimeHub would store after the column_map AND transforms are applied. Used
+    purely to show "source -> target" side-by-side so the user can sanity-check
+    the format before saving."""
+    from app.schemas.import_format import SUPPORTED_TARGETS
+    from app.services.transforms import apply_transforms
+
     reader = csv.DictReader(io.StringIO(raw_text), delimiter=separator)
     source_rows: list[dict] = []
     target_rows: list[dict] = []
@@ -197,9 +201,20 @@ def preview_via_import_format(
         if len(source_rows) >= max_rows:
             break
         source_rows.append({k: (v or "") for k, v in raw_row.items()})
-        target: dict[str, str] = {}
+
+        # Plain copies first, then transforms override / derive (regex, date,
+        # duration, ...) — same order as the importer.
+        mapped: dict[str, str] = {}
         for src, field in column_map.items():
-            val = (raw_row.get(src) or "").strip()
+            mapped[field] = (raw_row.get(src) or "")
+        for field, val in apply_transforms(
+            transforms, raw_row, date_format=date_format, supported=SUPPORTED_TARGETS
+        ).items():
+            mapped[field] = val
+
+        target: dict[str, str] = {}
+        for field, raw_val in mapped.items():
+            val = (raw_val or "").strip()
             if not val:
                 continue
             if field == "entry_date":

@@ -1,0 +1,37 @@
+{# Live "source → target" preview. Rendered both inside the format pages and
+   standalone by /import-formats/preview (the editor swaps it in on change). #}
+{% if not source_rows %}
+  <p class="text-sm text-slate-500">
+    Keine Beispieldaten — füge oben ein paar CSV-Zeilen ein, dann erscheint hier
+    live, was TimeHub daraus machen würde (inkl. Transformationen).
+  </p>
+{% else %}
+  <div class="space-y-4">
+    {% for i in range(source_rows|length) %}
+      <div class="border border-slate-200 rounded p-3 text-xs">
+        <div class="font-medium text-slate-500 uppercase tracking-wide text-[10px] mb-1">Zeile {{ i + 1 }} (Quelle)</div>
+        <div class="space-y-0.5 mb-3">
+          {% for k, v in source_rows[i].items() %}
+            <div class="flex gap-2">
+              <span class="font-mono text-slate-400 min-w-32 truncate" title="{{ k }}">{{ k }}</span>
+              <span class="text-slate-700">{{ v or '—' }}</span>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="font-medium text-emerald-600 uppercase tracking-wide text-[10px] mb-1">→ TimeHub-Eintrag</div>
+        {% if target_rows[i] %}
+          <div class="space-y-0.5">
+            {% for field in target_fields if target_rows[i].get(field) %}
+              <div class="flex gap-2">
+                <span class="font-mono text-emerald-700 min-w-32">{{ tlabel(field) if tlabel else field }}</span>
+                <span class="text-slate-900">{{ target_rows[i][field] }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-rose-600">⚠ Keine Felder gemappt — der Eintrag würde nicht importiert.</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}

@@ -1,0 +1,39 @@
+<script>
+  // Live preview: gather the current format state from the form and ask the
+  // server to render the source→target panel. Debounced; also listens for the
+  // custom "formatchange" event the editors fire after rewriting hidden JSON.
+  (function () {
+    var panel = document.getElementById("preview-panel");
+    if (!panel) return;
+    var form = panel.closest("form") || document.querySelector("form");
+    if (!form) return;
+    function val(name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      return el ? el.value : "";
+    }
+    var timer = null;
+    function doRefresh() {
+      var body = new URLSearchParams();
+      body.set("sample_text", val("sample_text"));
+      body.set("separator", val("separator") || ",");
+      body.set("date_format", val("date_format") || "%Y-%m-%d");
+      body.set("time_format", val("time_format") || "%H:%M");
+      body.set("column_map_json", val("column_map_json") || "{}");
+      body.set("transforms_json", val("transforms_json") || "[]");
+      fetch("/import-formats/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      }).then(function (r) { return r.ok ? r.text() : ""; })
+        .then(function (html) { if (html) panel.innerHTML = html; });
+    }
+    window.refreshPreview = function () { clearTimeout(timer); timer = setTimeout(doRefresh, 250); };
+    window.addEventListener("formatchange", window.refreshPreview);
+    form.addEventListener("change", window.refreshPreview);
+    form.addEventListener("input", function (e) {
+      if (e.target && e.target.name === "sample_text") window.refreshPreview();
+    });
+    var btn = document.getElementById("refresh-preview");
+    if (btn) btn.addEventListener("click", function (e) { e.preventDefault(); doRefresh(); });
+  })();
+</script>
