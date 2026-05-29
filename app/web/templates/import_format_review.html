@@ -19,9 +19,19 @@
       <p class="text-sm text-slate-600 italic mb-3">„{{ suggestion.notes }}"</p>
     {% endif %}
 
-    <form method="post" action="/import-formats" class="space-y-4">
+    <form method="post" action="/import-formats" id="format-form" class="space-y-4">
       <input type="hidden" name="name" value="{{ name }}" />
-      <textarea name="sample_text" class="hidden">{{ sample_text or '' }}</textarea>
+
+      <div>
+        <label class="block text-sm font-medium mb-1">Beispieldaten <span class="text-slate-400 font-normal">(für Vorschau &amp; KI)</span></label>
+        <p class="text-xs text-slate-500 mb-1">
+          Header-Zeile + ein paar Datenzeilen. Wird beim Speichern am Format hinterlegt,
+          damit Vorschau und KI später ohne erneuten Upload funktionieren.
+        </p>
+        <textarea name="sample_text" rows="4"
+                  class="w-full border border-slate-300 rounded px-2 py-1.5 font-mono text-xs"
+                  placeholder="Date,Hours,Description&#10;2026-05-27,01:30:00,Ticket ABC-1: …">{{ sample_text or '' }}</textarea>
+      </div>
 
       {% if ai_enabled %}
       <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3">

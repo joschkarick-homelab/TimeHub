@@ -5,7 +5,9 @@
   (function () {
     var panel = document.getElementById("preview-panel");
     if (!panel) return;
-    var form = panel.closest("form") || document.querySelector("form");
+    // Target the mapping form explicitly — querySelector("form") would grab the
+    // theme switcher in the header instead.
+    var form = document.getElementById("format-form") || panel.closest("form") || document.querySelector("form");
     if (!form) return;
     function val(name) {
       var el = form.querySelector('[name="' + name + '"]');

@@ -72,6 +72,48 @@ def test_duration_target_label_and_options(client):
     assert "Dauer (automatisch)" in page.text
 
 
+# ---------- project code is optional / auto-generated ----------
+
+def test_project_code_auto_from_name(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    client.post("/projects", data={"name": "Acme Website", "default_sync_target": "intern",
+                                    "status": "active"}, follow_redirects=False)
+    projects = client.get("/api/v1/projects", headers=h).json()
+    p = next(p for p in projects if p["name"] == "Acme Website")
+    assert p["code"] == "ACME-WEBSITE"
+    # same name again → still unique
+    client.post("/projects", data={"name": "Acme Website", "default_sync_target": "intern",
+                                    "status": "active"}, follow_redirects=False)
+    codes = [x["code"] for x in client.get("/api/v1/projects", headers=h).json()
+             if x["name"] == "Acme Website"]
+    assert len(set(codes)) == 2 and "ACME-WEBSITE-2" in codes
+
+
+def test_explicit_project_code_still_honored(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    client.post("/projects", data={"name": "Custom", "code": "MYKEY",
+                                    "default_sync_target": "intern", "status": "active"},
+                follow_redirects=False)
+    assert any(p["code"] == "MYKEY" for p in client.get("/api/v1/projects", headers=h).json())
+
+
+# ---------- point 2: preview reads the right form ----------
+
+def test_format_edit_has_named_form(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    fid = client.post("/api/v1/import-formats", json={
+        "name": "FormId", "separator": ",", "date_format": "%Y-%m-%d",
+        "column_map": {"Date": "entry_date"}, "sample_data": "Date\n2026-05-27\n",
+    }, headers=h).json()["id"]
+    page = client.get(f"/import-formats/{fid}/edit")
+    assert 'id="format-form"' in page.text
+    # the sample is an editable textarea, not hidden
+    assert 'name="sample_text"' in page.text
+
+
 def _run_clock(client, code, target_field):
     """Build a format mapping a HH:MM:SS column straight to a duration field
     (no transform) and import one row of 01:30:00."""

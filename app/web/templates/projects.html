@@ -18,8 +18,9 @@
       <input name="name" required class="w-full h-10 border border-slate-300 rounded px-2" />
     </label>
     <label class="sm:col-span-1 text-sm">
-      <span class="block font-medium mb-1 text-xs">Code (eindeutig)</span>
-      <input name="code" required pattern="[A-Za-z0-9_\-]+"
+      <span class="block font-medium mb-1 text-xs">Code <span class="text-slate-400 font-normal">(optional)</span></span>
+      <input name="code" pattern="[A-Za-z0-9_\-]*" placeholder="auto"
+             title="Optional – wird sonst automatisch aus dem Namen erzeugt"
              class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
     </label>
     <label class="sm:col-span-1 text-sm">

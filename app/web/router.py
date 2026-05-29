@@ -1488,6 +1488,22 @@ _KNOWN_SYNC_TARGETS = ["intern", "jira", "salesforce", "bcs", "none"]
 _KNOWN_STATUSES = ["active", "inactive"]
 
 
+def _unique_project_code(db: Session, name: str) -> str:
+    """Derive a stable, unique code from the project name so users only have to
+    enter a name. Normalizes the same way the importer matches codes, so an
+    auto-code stays compatible with importing the plain name."""
+    import re as _re
+
+    base = _re.sub(r"[^A-Za-z0-9]+", "-", (name or "").strip()).strip("-").upper()[:60] or "PROJEKT"
+    existing = {c for (c,) in db.execute(select(Project.code)).all()}
+    if base not in existing:
+        return base
+    i = 2
+    while f"{base}-{i}" in existing:
+        i += 1
+    return f"{base}-{i}"
+
+
 @router.get("/projects", response_class=HTMLResponse)
 def projects_page(
     request: Request,
@@ -1520,7 +1536,7 @@ def projects_page(
 async def projects_create(
     request: Request,
     name: str = Form(...),
-    code: str = Form(...),
+    code: str = Form(""),
     customer: str = Form(""),
     color: str = Form("#6366f1"),
     default_sync_target: str = Form("intern"),
@@ -1532,9 +1548,11 @@ async def projects_create(
     if redir is not None:
         return redir
     target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
+    # Code is optional — derive a unique one from the name when left blank.
+    final_code = code.strip() or _unique_project_code(db, name)
     p = Project(
         name=name.strip(),
-        code=code.strip(),
+        code=final_code,
         customer=(customer.strip() or None),
         color=color or "#6366f1",
         default_sync_target=target,
@@ -1588,7 +1606,7 @@ async def projects_update(
     request: Request,
     project_id: int,
     name: str = Form(...),
-    code: str = Form(...),
+    code: str = Form(""),
     customer: str = Form(""),
     color: str = Form("#6366f1"),
     default_sync_target: str = Form("intern"),
@@ -1603,7 +1621,8 @@ async def projects_update(
     if project is None:
         raise HTTPException(status_code=404, detail="Not found")
     project.name = name.strip()
-    project.code = code.strip()
+    # Code optional: keep the existing one when the field is left blank.
+    project.code = code.strip() or project.code or _unique_project_code(db, name)
     project.customer = customer.strip() or None
     project.color = color or "#6366f1"
     target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"

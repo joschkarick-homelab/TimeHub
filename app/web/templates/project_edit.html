@@ -14,8 +14,9 @@
                class="w-full h-10 border border-slate-300 rounded px-2" />
       </label>
       <label class="text-sm">
-        <span class="block font-medium mb-1">Code (eindeutig)</span>
-        <input name="code" required pattern="[A-Za-z0-9_\-]+" value="{{ project.code }}"
+        <span class="block font-medium mb-1">Code <span class="text-slate-400 font-normal">(automatisch)</span></span>
+        <input name="code" pattern="[A-Za-z0-9_\-]*" value="{{ project.code }}"
+               title="Stabiler Schlüssel für Import/Export — bei Bedarf anpassbar"
                class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
       </label>
       <label class="text-sm">
