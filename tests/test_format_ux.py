@@ -121,7 +121,7 @@ def test_edit_refine_stays_on_edit_and_applies_ai(client, monkeypatch):
     import app.web.router as router
     from app.schemas.import_format import ImportFormatSuggestion
 
-    def fake_suggest(text, *, instruction=None, previous=None):
+    def fake_suggest(text, *, instruction=None, previous=None, hints=None):
         return ImportFormatSuggestion(
             source_hint="custom", separator=",", encoding="utf-8",
             date_format="%Y-%m-%d", time_format="%H:%M",

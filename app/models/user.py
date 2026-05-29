@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -21,6 +21,8 @@ class User(Base):
     # User->Contact link in SF if they prefer.
     salesforce_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     salesforce_contact_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Personal standing instructions for the AI import-format assistant.
+    ai_hints: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

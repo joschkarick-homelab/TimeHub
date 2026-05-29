@@ -2,9 +2,28 @@
 {% block content %}
 <h1 class="text-xl font-semibold mb-4">Nutzerverwaltung</h1>
 
+{% if flash %}
+  <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{{ flash }}</div>
+{% endif %}
 {% if error %}
   <div class="mb-4 text-sm text-rose-600">{{ error }}</div>
 {% endif %}
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-2">Globale KI-Vorgaben</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Standard-Anforderungen, die der Import-Assistent für <strong>alle</strong> Nutzer beachtet
+    — z. B. „Eine Dauer wie 01:30:00 bedeutet 1 Stunde 30 Minuten 0 Sekunden (= 90 Minuten)".
+  </p>
+  <form method="post" action="/settings/ai-hints" class="space-y-2">
+    <textarea name="ai_hints" rows="3"
+              class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm"
+              placeholder="z. B. Dauer im Format HH:MM:SS; Projektcode steht in Spalte 'Kürzel'">{{ ai_hints_global }}</textarea>
+    <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+      Vorgaben speichern
+    </button>
+  </form>
+</section>
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Neuen Nutzer anlegen</h2>

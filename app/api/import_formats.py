@@ -13,6 +13,7 @@ from app.schemas.import_format import (
     ImportFormatUpdate,
 )
 from app.schemas.time_entry import BulkResult
+from app.services import app_settings as app_settings_svc
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
 
@@ -119,7 +120,8 @@ def delete_format(
 @router.post("/suggest", response_model=ImportFormatSuggestion)
 async def suggest(
     file: UploadFile = File(...),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Run a one-shot AI mapping suggestion. The result is NOT persisted —
     show it to the user, let them tweak it, then POST /import-formats to save."""
@@ -128,8 +130,14 @@ async def suggest(
         text = raw.decode("utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"could not decode file: {e}") from e
+    hints_parts = []
+    g = app_settings_svc.get_setting(db, app_settings_svc.AI_HINTS_KEY, "")
+    if g.strip():
+        hints_parts.append(g.strip())
+    if current_user.ai_hints and current_user.ai_hints.strip():
+        hints_parts.append(current_user.ai_hints.strip())
     try:
-        return suggest_mapping(text)
+        return suggest_mapping(text, hints="\n".join(hints_parts))
     except AiMappingError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
@@ -165,6 +173,14 @@ async def run_import(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Remember the uploaded CSV as the format's sample (only if none stored yet).
+    if not fmt.sample_data:
+        sample = "\n".join(raw.decode("utf-8", errors="replace").splitlines()[:30])[:8000]
+        if sample:
+            fmt.sample_data = sample
+            db.add(fmt)
+            db.commit()
 
     # tag the created entries' source as CSV (already done inside import_csv)
     _ = EntrySource.CSV

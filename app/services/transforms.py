@@ -88,9 +88,10 @@ def safe_search(pattern: str, text: str | None) -> re.Match | None:
     return rx.search(text[:_MAX_REGEX_INPUT])
 
 
-def _duration_to_minutes(txt: str) -> int | None:
+def clock_duration_to_minutes(txt: str) -> int | None:
     """Parse a clock-style duration "HH:MM:SS" or "HH:MM" into whole minutes.
-    Returns None for anything without a colon (too ambiguous to guess)."""
+    Returns None for anything without a colon (too ambiguous to guess).
+    Example: "01:30:00" -> 90 (1 hour 30 minutes 0 seconds)."""
     txt = (txt or "").strip()
     if ":" not in txt:
         return None
@@ -148,7 +149,7 @@ def apply_transform(rule: dict, row: dict, *, date_format: str = "%Y-%m-%d") -> 
         except ValueError:
             out = None
     elif op == "duration":
-        minutes = _duration_to_minutes(raw or "")
+        minutes = clock_duration_to_minutes(raw or "")
         if minutes is not None:
             if rule.get("target") == "duration_hours":
                 out = f"{minutes / 60:.4f}".rstrip("0").rstrip(".")

@@ -9,7 +9,23 @@ from sqlalchemy.orm import Session
 from app.models import Project, TimeEntry
 from app.models._enums import EntrySource, SyncTarget
 from app.services import sync_fields as sf
-from app.services.transforms import apply_transforms, eval_target_rules
+from app.services.transforms import apply_transforms, clock_duration_to_minutes, eval_target_rules
+
+
+def _parse_duration_field(value: str, *, as_hours: bool) -> int | None:
+    """Turn a duration cell into whole minutes. Clock formats like "01:30:00"
+    or "01:30" are read as HH:MM(:SS); otherwise the value is numeric — minutes,
+    or decimal hours when it came from a duration_hours column."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if ":" in v:
+        return clock_duration_to_minutes(v)
+    try:
+        num = float(v.replace(",", "."))
+    except ValueError:
+        return None
+    return int(round(num * 60)) if as_hours else int(num)
 
 _BASE_TARGETS = {
     "entry_date", "start_time", "end_time",
@@ -141,9 +157,9 @@ def import_csv(
 
             duration = None
             if mapped.get("duration_minutes"):
-                duration = int(float(mapped["duration_minutes"].replace(",", ".")))
+                duration = _parse_duration_field(mapped["duration_minutes"], as_hours=False)
             elif mapped.get("duration_hours"):
-                duration = int(round(float(mapped["duration_hours"].replace(",", ".")) * 60))
+                duration = _parse_duration_field(mapped["duration_hours"], as_hours=True)
             elif start_time and end_time:
                 duration = (end_time.hour * 60 + end_time.minute) - (
                     start_time.hour * 60 + start_time.minute

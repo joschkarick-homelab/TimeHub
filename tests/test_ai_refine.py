@@ -97,7 +97,7 @@ def test_refine_passes_instruction_and_previous(client, monkeypatch):
     import app.web.router as router
     captured = {}
 
-    def fake_suggest(text, *, instruction=None, previous=None):
+    def fake_suggest(text, *, instruction=None, previous=None, hints=None):
         captured["text"] = text
         captured["instruction"] = instruction
         captured["previous"] = previous

@@ -69,7 +69,7 @@ in an unusual format). Shape:
   {
     "target": "<target field above OR a sync field below>",
     "source": "<source CSV header>",
-    "op": "copy" | "regex" | "date" | "split" | "constant",
+    "op": "copy" | "regex" | "date" | "split" | "constant" | "duration",
     "pattern": "<regex with ONE capture group>",   // op=regex
     "group": 1,
     "date_from": "<strptime format of the source value>",  // op=date
@@ -79,6 +79,13 @@ in an unusual format). Shape:
   }
 Example — pull "ABC-123" out of a Description like "Ticket ABC-123: did things":
   {"target":"sync:jira.issue_key","source":"Description","op":"regex","pattern":"([A-Z]+-\\d+)","group":1}
+
+IMPORTANT about durations: a value like "01:30:00" (or "01:30") is a clock-style
+duration meaning HH:MM:SS / HH:MM — i.e. 1 hour 30 minutes 0 seconds = 90 minutes,
+NOT 1 minute. Never read the first field as minutes. For such a column use op
+"duration" (parses HH:MM:SS / HH:MM → minutes, or decimal hours when the target is
+duration_hours), e.g.:
+  {"target":"duration_minutes","source":"Duration","op":"duration"}
 
 A "target rule" sets an entry's sync target automatically when info is present:
   { "when": "<a target field that, once filled, should trigger this>", "set_target": "jira|salesforce|bcs|intern|none" }
@@ -218,9 +225,13 @@ def suggest_mapping(
     *,
     instruction: str | None = None,
     previous: dict | None = None,
+    hints: str | None = None,
 ) -> ImportFormatSuggestion:
     """One-shot mapping suggestion, or a refinement when `instruction` + `previous`
-    are given (the model revises its prior JSON to honor the instruction)."""
+    are given (the model revises its prior JSON to honor the instruction).
+
+    `hints` are admin/user-configured standing instructions injected as a
+    separate (uncached) system block, so the big base prompt stays cacheable."""
     settings = get_settings()
     if not settings.anthropic_api_key:
         raise AiMappingError(
@@ -233,18 +244,21 @@ def suggest_mapping(
     # Import lazily so the app still boots when anthropic isn't installed
     from anthropic import Anthropic
 
+    system: list[dict] = [
+        {"type": "text", "text": _full_system_prompt(), "cache_control": {"type": "ephemeral"}}
+    ]
+    if hints and hints.strip():
+        system.append({
+            "type": "text",
+            "text": "Verbindliche Vorgaben des Teams/Nutzers (immer beachten):\n" + hints.strip(),
+        })
+
     client = Anthropic(api_key=settings.anthropic_api_key)
     try:
         resp = client.messages.create(
             model=settings.ai_mapping_model,
             max_tokens=1500,
-            system=[
-                {
-                    "type": "text",
-                    "text": _full_system_prompt(),
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
+            system=system,
             messages=_build_messages(
                 sample, settings.ai_mapping_max_sample_lines, instruction, previous
             ),

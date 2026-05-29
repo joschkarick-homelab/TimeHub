@@ -15,6 +15,7 @@ from app.deps import get_current_user
 from app.models import ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
+from app.services import app_settings as app_settings_svc
 from app.services import reports as report_svc
 from app.services import sync_fields as sf
 from app.services.transforms import clean_target_rules, clean_transforms
@@ -655,14 +656,39 @@ def _require_admin_or_redirect(user: User | None):
 
 
 @router.get("/users", response_class=HTMLResponse)
-def users_page(request: Request, db: Session = Depends(get_db), error: str | None = None):
+def users_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    error: str | None = None,
+    flash: str | None = None,
+):
     user = _maybe_user(request, db)
     redir = _require_admin_or_redirect(user)
     if redir is not None:
         return redir
     users = list(db.execute(select(User).order_by(User.id)).scalars())
     return templates.TemplateResponse(
-        "users.html", _ctx(request, user, users=users, error=error)
+        "users.html",
+        _ctx(
+            request,
+            user,
+            users=users,
+            ai_hints_global=app_settings_svc.get_setting(db, app_settings_svc.AI_HINTS_KEY, ""),
+            error=error,
+            flash=flash,
+        ),
+    )
+
+
+@router.post("/settings/ai-hints", response_class=HTMLResponse)
+def settings_ai_hints(request: Request, ai_hints: str = Form(""), db: Session = Depends(get_db)):
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    app_settings_svc.set_setting(db, app_settings_svc.AI_HINTS_KEY, ai_hints.strip())
+    return RedirectResponse(
+        url="/users?flash=Globale+KI-Vorgaben+gespeichert", status_code=status.HTTP_302_FOUND
     )
 
 
@@ -775,6 +801,17 @@ def _parse_target_rules(raw: str) -> list[dict]:
     return clean_target_rules(data, set(_KNOWN_SYNC_TARGETS))
 
 
+def _ai_hints(db: Session, user: User | None) -> str:
+    """Combine global (admin) and personal standing instructions for the AI."""
+    parts = []
+    g = app_settings_svc.get_setting(db, app_settings_svc.AI_HINTS_KEY, "")
+    if g and g.strip():
+        parts.append(g.strip())
+    if user and user.ai_hints and user.ai_hints.strip():
+        parts.append(user.ai_hints.strip())
+    return "\n".join(parts)
+
+
 # Keep the stored sample small — same budget as what we send to the AI.
 _SAMPLE_MAX_LINES = 30
 
@@ -850,7 +887,7 @@ async def formats_new_submit(
     raw = await sample.read()
     text = raw.decode("utf-8", errors="replace")
     try:
-        suggestion = suggest_mapping(text)
+        suggestion = suggest_mapping(text, hints=_ai_hints(db, user))
     except AiMappingError as e:
         return templates.TemplateResponse(
             "import_format_new.html",
@@ -962,7 +999,9 @@ def formats_refine(
         error = "Bitte eine Anweisung eingeben, was die KI anpassen soll."
     else:
         try:
-            suggestion = suggest_mapping(sample_text, instruction=instruction, previous=previous)
+            suggestion = suggest_mapping(
+                sample_text, instruction=instruction, previous=previous, hints=_ai_hints(db, user)
+            )
         except AiMappingError as e:
             suggestion = _from_previous()
             error = str(e)
@@ -1269,7 +1308,9 @@ def formats_edit_refine(
             "default_project_code": default_project_code.strip() or None, "notes": notes,
         }
         try:
-            suggestion = suggest_mapping(sample_text, instruction=instruction, previous=previous)
+            suggestion = suggest_mapping(
+                sample_text, instruction=instruction, previous=previous, hints=_ai_hints(db, user)
+            )
             source_hint = suggestion.source_hint
             separator = suggestion.separator
             encoding = suggestion.encoding
@@ -1403,6 +1444,13 @@ async def import_run(
             _ctx(request, user, formats=formats, result=None, error=str(e), fmt=fmt),
             status_code=400,
         )
+
+    # Remember the uploaded CSV as the format's sample (only if none stored yet),
+    # so preview & AI keep working on the edit screen without a re-upload.
+    if not fmt.sample_data:
+        fmt.sample_data = _trim_sample(raw.decode("utf-8", errors="replace"))
+        db.add(fmt)
+        db.commit()
 
     formats = _visible_formats(db, user)
     return templates.TemplateResponse(
@@ -1616,6 +1664,7 @@ def profile_save(
     full_name: str = Form(""),
     salesforce_user_id: str = Form(""),
     salesforce_contact_id: str = Form(""),
+    ai_hints: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _maybe_user(request, db)
@@ -1624,6 +1673,7 @@ def profile_save(
     user.full_name = full_name.strip()
     user.salesforce_user_id = salesforce_user_id.strip() or None
     user.salesforce_contact_id = salesforce_contact_id.strip() or None
+    user.ai_hints = ai_hints.strip() or None
     db.add(user)
     db.commit()
     return RedirectResponse(
