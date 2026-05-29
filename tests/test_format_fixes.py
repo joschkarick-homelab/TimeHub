@@ -35,6 +35,43 @@ def test_parse_duration_field_clock_and_numeric():
     assert _parse_duration_field("kaputt", as_hours=False) is None
 
 
+def test_auto_duration_detects_unit():
+    from app.services.transforms import auto_duration_to_minutes
+    assert auto_duration_to_minutes("01:30:00") == 90   # clock
+    assert auto_duration_to_minutes("1,5") == 90        # decimal hours
+    assert auto_duration_to_minutes("1.5") == 90
+    assert auto_duration_to_minutes("90") == 90         # plain minutes
+    assert auto_duration_to_minutes("") is None
+
+
+def test_import_unified_duration_target(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    fid = client.post("/api/v1/import-formats", json={
+        "name": "AutoDur", "separator": ",", "date_format": "%Y-%m-%d",
+        "column_map": {"Date": "entry_date", "Project": "project_code", "Dur": "duration"},
+    }, headers=h).json()["id"]
+    # one row per format-supported unit, all should land as 90 minutes
+    csv = ("Date,Project,Dur\n"
+           "2026-06-01,AUTODUR,01:30:00\n"
+           "2026-06-02,AUTODUR,1.5\n"
+           "2026-06-03,AUTODUR,90\n")
+    r = client.post(f"/api/v1/import-formats/{fid}/run",
+                    files={"file": ("a.csv", csv, "text/csv")}, headers=h)
+    assert r.status_code == 201 and r.json()["created"] == 3, r.json()
+    entries = client.get("/api/v1/time-entries", headers=h).json()
+    mins = {e["entry_date"]: e["duration_minutes"] for e in entries
+            if e["entry_date"] in ("2026-06-01", "2026-06-02", "2026-06-03")}
+    assert mins == {"2026-06-01": 90, "2026-06-02": 90, "2026-06-03": 90}
+
+
+def test_duration_target_label_and_options(client):
+    _login_session(client)
+    # the format wizard offers a single auto duration option, clearly labelled
+    page = client.get("/import-formats/new")
+    assert "Dauer (automatisch)" in page.text
+
+
 def _run_clock(client, code, target_field):
     """Build a format mapping a HH:MM:SS column straight to a duration field
     (no transform) and import one row of 01:30:00."""

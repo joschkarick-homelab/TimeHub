@@ -8,6 +8,7 @@ _BASE_TARGETS = {
     "entry_date",
     "start_time",
     "end_time",
+    "duration",
     "duration_minutes",
     "duration_hours",
     "project_code",

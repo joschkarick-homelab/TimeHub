@@ -109,6 +109,25 @@ def clock_duration_to_minutes(txt: str) -> int | None:
     return None
 
 
+def auto_duration_to_minutes(value: str) -> int | None:
+    """Normalize a duration in any common format to whole minutes:
+    "01:30:00"/"01:30" → clock, "1.5"/"1,5" → decimal hours, "90" → minutes."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if ":" in v:
+        return clock_duration_to_minutes(v)
+    if "." in v or "," in v:
+        try:
+            return int(round(float(v.replace(",", ".")) * 60))
+        except ValueError:
+            return None
+    try:
+        return int(v)
+    except ValueError:
+        return None
+
+
 def apply_transform(rule: dict, row: dict, *, date_format: str = "%Y-%m-%d") -> str | None:
     """Compute a single transform's output value, or None when it yields nothing.
 

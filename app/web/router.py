@@ -775,12 +775,34 @@ def _visible_formats(db: Session, user: User) -> list[ImportFormat]:
     return list(db.execute(stmt).scalars())
 
 
+# Friendlier labels for a few plain targets (the duration trio especially).
+_TARGET_LABELS = {
+    "duration": "Dauer (automatisch)",
+    "duration_minutes": "Dauer in Minuten",
+    "duration_hours": "Dauer in Stunden",
+}
+
+
+def _plain_label(token: str) -> str:
+    return _TARGET_LABELS.get(token, token)
+
+
+def _target_label(token: str) -> str:
+    """Human label for any mapping target (plain or sync), for previews/UI."""
+    if token.startswith("sync:"):
+        return sf.target_label(token)
+    return _TARGET_LABELS.get(token, token)
+
+
 def _target_options() -> list[dict]:
     """Mapping targets for the format UI: plain fields first, then sync fields,
     each with a human label."""
     base = sorted(t for t in SUPPORTED_TARGETS if not t.startswith("sync:"))
     sync = sorted(t for t in SUPPORTED_TARGETS if t.startswith("sync:"))
-    return [{"value": t, "label": sf.target_label(t)} for t in base + sync]
+    return (
+        [{"value": t, "label": _plain_label(t)} for t in base]
+        + [{"value": t, "label": sf.target_label(t)} for t in sync]
+    )
 
 
 def _parse_transforms(raw: str) -> list[dict]:
@@ -925,7 +947,7 @@ async def formats_new_submit(
             transforms=suggestion.transforms,
             target_rules=suggestion.target_rules,
             sample_text=_trim_sample(text),
-            tlabel=sf.target_label,
+            tlabel=_target_label,
             error=None,
         ),
     )
@@ -1038,7 +1060,7 @@ def formats_refine(
             transforms=suggestion.transforms,
             target_rules=suggestion.target_rules,
             sample_text=sample_text,
-            tlabel=sf.target_label,
+            tlabel=_target_label,
             error=error,
         ),
     )
@@ -1184,7 +1206,7 @@ def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_d
             source_rows=source_rows,
             target_rows=target_rows,
             target_fields=sorted(SUPPORTED_TARGETS),
-            tlabel=sf.target_label,
+            tlabel=_target_label,
             error=None,
         ),
     )
@@ -1354,7 +1376,7 @@ def formats_edit_refine(
             source_rows=source_rows,
             target_rows=target_rows,
             target_fields=sorted(SUPPORTED_TARGETS),
-            tlabel=sf.target_label,
+            tlabel=_target_label,
             error=error,
         ),
     )

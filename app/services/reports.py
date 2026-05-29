@@ -113,7 +113,7 @@ def _format_value(field: str, entry: TimeEntry, project: Project, user: User,
         return entry.start_time.strftime(time_fmt) if entry.start_time else ""
     if field == "end_time":
         return entry.end_time.strftime(time_fmt) if entry.end_time else ""
-    if field == "duration_minutes":
+    if field in ("duration", "duration_minutes"):
         return str(entry.duration_minutes)
     if field == "duration_hours":
         return f"{entry.duration_minutes / 60:.2f}".replace(".", ",")
@@ -192,7 +192,7 @@ def preview_via_import_format(
     purely to show "source -> target" side-by-side so the user can sanity-check
     the format before saving."""
     from app.schemas.import_format import SUPPORTED_TARGETS
-    from app.services.transforms import apply_transforms
+    from app.services.transforms import apply_transforms, auto_duration_to_minutes
 
     reader = csv.DictReader(io.StringIO(raw_text), delimiter=separator)
     source_rows: list[dict] = []
@@ -229,6 +229,9 @@ def preview_via_import_format(
                     )
                 except ValueError:
                     target[field] = f"⚠ {val} (Format?)"
+            elif field == "duration":
+                m = auto_duration_to_minutes(val)
+                target[field] = f"{m} min" if m is not None else f"⚠ {val}"
             elif field == "duration_minutes":
                 try:
                     target[field] = f"{int(float(val.replace(',', '.')))} min"

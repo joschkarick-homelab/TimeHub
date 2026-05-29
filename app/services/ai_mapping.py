@@ -55,8 +55,9 @@ Target fields (use these names ONLY as mapping/transform targets, skip columns t
   entry_date          required — the date of the work (calendar day)
   start_time          optional — wall-clock start, HH:MM
   end_time            optional — wall-clock end, HH:MM
-  duration_minutes    integer minutes
-  duration_hours      decimal hours (TimeHub will convert)
+  duration            PREFERRED — a duration in ANY format ("90", "1,5", "01:30:00"); unit auto-detected
+  duration_minutes    only to force the value to be read as minutes
+  duration_hours      only to force the value to be read as decimal hours
   project_code        the project's stable code/key
   description         free-text description / task / ticket title
   tags                comma-separated list of tags / labels
@@ -82,10 +83,11 @@ Example — pull "ABC-123" out of a Description like "Ticket ABC-123: did things
 
 IMPORTANT about durations: a value like "01:30:00" (or "01:30") is a clock-style
 duration meaning HH:MM:SS / HH:MM — i.e. 1 hour 30 minutes 0 seconds = 90 minutes,
-NOT 1 minute. Never read the first field as minutes. For such a column use op
-"duration" (parses HH:MM:SS / HH:MM → minutes, or decimal hours when the target is
-duration_hours), e.g.:
-  {"target":"duration_minutes","source":"Duration","op":"duration"}
+NOT 1 minute. Never read the first field as minutes. PREFER mapping the column to the
+single `duration` target (the unit is auto-detected for "90", "1,5" and "01:30:00").
+Only use duration_minutes/duration_hours when you must force a specific unit. A
+transform op is unnecessary for standard durations:
+  {"<Duration column>": "duration"}   // in column_map
 
 A "target rule" sets an entry's sync target automatically when info is present:
   { "when": "<a target field that, once filled, should trigger this>", "set_target": "jira|salesforce|bcs|intern|none" }
