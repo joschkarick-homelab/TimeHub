@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-1">Sync-Center</h1>
+<p class="text-sm text-slate-600 mb-6">
+  Zentrale Anlaufstelle für alle Sync-Aktionen. Hier landen die Stapel-Syncs
+  (typischerweise einmal pro Tag oder Woche). Einzelne Einträge kannst du
+  zusätzlich direkt im Dashboard auswählen.
+</p>
+
+<div class="grid sm:grid-cols-2 gap-4">
+
+  {# ---------- Salesforce ---------- #}
+  {% set sf = counts.salesforce %}
+  <section class="bg-white border border-slate-200 rounded-lg p-5">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="font-semibold">Salesforce / Certinia PSA</h2>
+      {% if not sf_configured %}
+        <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">nicht konfiguriert</span>
+      {% endif %}
+    </div>
+    <dl class="text-sm grid grid-cols-3 gap-2 mb-3">
+      <div><dt class="text-slate-500 text-xs">sync-bereit</dt><dd class="font-semibold">{{ sf.ready_ids|length }}</dd></div>
+      <div><dt class="text-slate-500 text-xs">offen</dt><dd>{{ sf.pending }}</dd></div>
+      <div><dt class="text-slate-500 text-xs">synced</dt><dd>{{ sf.synced }}</dd></div>
+    </dl>
+    {% if not sf_configured %}
+      <p class="text-xs text-slate-500">
+        Admin: Zugangsdaten unter <a href="/users" class="text-indigo-600 hover:underline">Nutzer → Salesforce-Integration</a>.
+      </p>
+    {% elif sf.ready_ids %}
+      <form method="post" action="/sync/salesforce/preview">
+        {% for eid in sf.ready_ids %}<input type="hidden" name="entry_ids" value="{{ eid }}" />{% endfor %}
+        <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
+          ↗ Vorschau für alle ({{ sf.ready_ids|length }})
+        </button>
+      </form>
+    {% else %}
+      <p class="text-xs text-slate-500">Aktuell keine sync-bereiten Einträge.</p>
+    {% endif %}
+  </section>
+
+  {# ---------- Jira (Platzhalter) ---------- #}
+  <section class="bg-white border border-slate-200 rounded-lg p-5 opacity-70">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="font-semibold">Jira</h2>
+      <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">geplant</span>
+    </div>
+    <dl class="text-sm grid grid-cols-3 gap-2 mb-3">
+      <div><dt class="text-slate-500 text-xs">sync-bereit</dt><dd class="font-semibold">{{ counts.jira.ready_ids|length }}</dd></div>
+      <div><dt class="text-slate-500 text-xs">offen</dt><dd>{{ counts.jira.pending }}</dd></div>
+      <div><dt class="text-slate-500 text-xs">synced</dt><dd>{{ counts.jira.synced }}</dd></div>
+    </dl>
+    <p class="text-xs text-slate-500">Push wird in einem späteren Schritt freigeschaltet.</p>
+  </section>
+
+  {# ---------- BCS (Platzhalter) ---------- #}
+  <section class="bg-white border border-slate-200 rounded-lg p-5 opacity-70">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="font-semibold">BCS</h2>
+      <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">geplant</span>
+    </div>
+    <dl class="text-sm grid grid-cols-3 gap-2 mb-3">
+      <div><dt class="text-slate-500 text-xs">sync-bereit</dt><dd class="font-semibold">{{ counts.bcs.ready_ids|length }}</dd></div>
+      <div><dt class="text-slate-500 text-xs">offen</dt><dd>{{ counts.bcs.pending }}</dd></div>
+      <div><dt class="text-slate-500 text-xs">synced</dt><dd>{{ counts.bcs.synced }}</dd></div>
+    </dl>
+    <p class="text-xs text-slate-500">Push wird in einem späteren Schritt freigeschaltet.</p>
+  </section>
+
+  {# ---------- CSV-Export ---------- #}
+  <section class="bg-white border border-slate-200 rounded-lg p-5">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="font-semibold">CSV-Export</h2>
+    </div>
+    {% if formats %}
+      <p class="text-xs text-slate-500 mb-3">
+        Ganze Timesheet-Exporte für externe Systeme (Toggl-/Clockify-Format, Custom-Excel-Sheets …).
+      </p>
+      <form method="get" action="/entries/export" class="flex flex-wrap items-end gap-2">
+        <label class="text-xs">
+          <span class="block text-slate-500 mb-1">Format</span>
+          <select name="format_id" required
+                  class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
+            {% for f in formats %}
+              <option value="{{ f.id }}">
+                {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">
+          ⬇ Exportieren
+        </button>
+      </form>
+    {% else %}
+      <p class="text-xs text-slate-500">
+        Noch keine Importformate angelegt — der Export verwendet dieselben Format-Profile.
+        Leg eines unter <a href="/import-formats/new" class="text-indigo-600 hover:underline">Formate → neu</a> an.
+      </p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

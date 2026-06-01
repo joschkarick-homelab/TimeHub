@@ -59,6 +59,7 @@ Target fields (use these names ONLY as mapping/transform targets, skip columns t
   duration_minutes    only to force the value to be read as minutes
   duration_hours      only to force the value to be read as decimal hours
   project_code        the project's stable code/key
+  customer            customer / client name (used when a project is auto-created on import)
   description         free-text description / task / ticket title
   tags                comma-separated list of tags / labels
   sync_target         override sync target per row (jira / salesforce / bcs / intern / none)

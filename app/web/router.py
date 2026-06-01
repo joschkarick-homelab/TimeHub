@@ -744,6 +744,48 @@ def settings_salesforce(
     )
 
 
+@router.get("/sync", response_class=HTMLResponse)
+def sync_center(request: Request, db: Session = Depends(get_db)):
+    """Hub for sync actions. Lists per-target counts and a 'preview ready
+    entries' button per implemented target, plus the CSV-Export."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    entries = list(
+        db.execute(select(TimeEntry).where(TimeEntry.user_id == user.id)).scalars()
+    )
+    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+
+    targets = ("jira", "salesforce", "bcs")
+    counts: dict[str, dict] = {t: {"ready_ids": [], "pending": 0, "synced": 0} for t in targets}
+    for e in entries:
+        project = proj_lookup.get(e.project_id)
+        if project is None:
+            continue
+        st = sf.entry_sync_status(e, project)
+        t = st["target"]
+        if t not in counts:
+            continue
+        if e.sync_status == "synced":
+            counts[t]["synced"] += 1
+        elif st["ready"]:
+            counts[t]["ready_ids"].append(e.id)
+        else:
+            counts[t]["pending"] += 1
+
+    formats = _visible_formats(db, user)
+    return templates.TemplateResponse(
+        "sync_center.html",
+        _ctx(
+            request,
+            user,
+            counts=counts,
+            sf_configured=sf_svc.credentials_configured(db),
+            formats=formats,
+        ),
+    )
+
+
 @router.post("/sync/salesforce/preview", response_class=HTMLResponse)
 def sync_salesforce_preview(
     request: Request,
@@ -1021,6 +1063,7 @@ _TARGET_LABELS = {
     "duration_minutes": "Dauer in Minuten",
     "duration_hours": "Dauer in Stunden",
     "project_code": "Projekt (Code/Name)",
+    "customer": "Kunde",
     "description": "Beschreibung",
     "tags": "Tags",
     "sync_target": "Sync-Ziel (pro Zeile)",
@@ -1031,7 +1074,7 @@ _TARGET_LABELS = {
 # time fields by the template).
 _STANDARD_ROW_ORDER = [
     "entry_date", "start_time", "end_time",
-    "project_code", "description", "tags", "sync_target", "external_ref",
+    "project_code", "customer", "description", "tags", "sync_target", "external_ref",
 ]
 
 

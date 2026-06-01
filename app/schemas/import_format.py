@@ -12,6 +12,7 @@ _BASE_TARGETS = {
     "duration_minutes",
     "duration_hours",
     "project_code",
+    "customer",
     "description",
     "tags",
     "sync_target",

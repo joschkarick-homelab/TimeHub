@@ -69,6 +69,7 @@
             <a href="/" class="hover:text-indigo-600">Dashboard</a>
             <a href="/calendar" class="hover:text-indigo-600">Kalender</a>
             <a href="/reports" class="hover:text-indigo-600">Reports</a>
+            <a href="/sync" class="hover:text-indigo-600">Sync</a>
             <a href="/projects" class="hover:text-indigo-600">Projekte</a>
             <a href="/import" class="hover:text-indigo-600">Import</a>
             <a href="/import-formats" class="hover:text-indigo-600">Formate</a>
@@ -102,6 +103,7 @@
           <a href="/" class="block py-2 hover:text-indigo-600">Dashboard</a>
           <a href="/calendar" class="block py-2 hover:text-indigo-600">Kalender</a>
           <a href="/reports" class="block py-2 hover:text-indigo-600">Reports</a>
+          <a href="/sync" class="block py-2 hover:text-indigo-600">Sync</a>
           <a href="/projects" class="block py-2 hover:text-indigo-600">Projekte</a>
           <a href="/import" class="block py-2 hover:text-indigo-600">Import</a>
           <a href="/import-formats" class="block py-2 hover:text-indigo-600">Formate</a>
@@ -131,6 +133,56 @@
   <main class="max-w-5xl mx-auto px-4 py-6">
     {% block content %}{% endblock %}
   </main>
+
+  {# Global loading overlay: shown on form submit and on AJAX previews that
+     might wait on the server (CSV processing, AI). The overlay is removed on
+     pageshow / fetch end. #}
+  <div id="loading-overlay"
+       class="hidden fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[1px] items-center justify-center"
+       style="display:none">
+    <div class="bg-white rounded-lg shadow-xl px-5 py-4 flex items-center gap-3 text-sm">
+      <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg"
+           fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path>
+      </svg>
+      <span id="loading-overlay-label" class="text-slate-700">Bitte warten …</span>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var overlay = document.getElementById("loading-overlay");
+      var label = document.getElementById("loading-overlay-label");
+      if (!overlay) return;
+      function show(msg) {
+        if (msg) label.textContent = msg;
+        overlay.style.display = "flex";
+      }
+      function hide() { overlay.style.display = "none"; label.textContent = "Bitte warten …"; }
+      window.showLoading = show;
+      window.hideLoading = hide;
+      // Show on any form submit unless the form opts out with data-no-loading.
+      document.addEventListener("submit", function (e) {
+        var f = e.target;
+        if (!(f instanceof HTMLFormElement)) return;
+        if (f.dataset.noLoading === "true") return;
+        var msg = f.dataset.loadingMessage;
+        if (!msg) {
+          var action = (f.action || "").toString();
+          if (action.indexOf("/import-formats/new") !== -1) msg = "KI analysiert die CSV …";
+          else if (action.indexOf("/refine") !== -1) msg = "KI schärft das Mapping nach …";
+          else if (action.indexOf("/import") !== -1 && f.method.toLowerCase() === "post") msg = "Import läuft …";
+          else if (action.indexOf("/sync/salesforce/preview") !== -1) msg = "Salesforce wird abgefragt …";
+          else if (action.indexOf("/settings/salesforce/test") !== -1) msg = "Salesforce-Login wird geprüft …";
+        }
+        show(msg);
+      }, true);
+      // On bfcache restore, hide overlay (browser back/forward).
+      window.addEventListener("pageshow", hide);
+    })();
+  </script>
   <script>
     (function () {
       var btn = document.getElementById("nav-toggle");

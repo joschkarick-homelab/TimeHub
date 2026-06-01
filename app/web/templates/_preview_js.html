@@ -31,10 +31,11 @@
     }
     window.refreshPreview = function () { clearTimeout(timer); timer = setTimeout(doRefresh, 250); };
     window.addEventListener("formatchange", window.refreshPreview);
+    // Refresh on any field change inside the mapping form — debounced, so even
+    // per-keystroke input on the sample textarea or transform parameters lands
+    // as a single fetch.
+    form.addEventListener("input", window.refreshPreview);
     form.addEventListener("change", window.refreshPreview);
-    form.addEventListener("input", function (e) {
-      if (e.target && e.target.name === "sample_text") window.refreshPreview();
-    });
     var btn = document.getElementById("refresh-preview");
     if (btn) btn.addEventListener("click", function (e) { e.preventDefault(); doRefresh(); });
   })();

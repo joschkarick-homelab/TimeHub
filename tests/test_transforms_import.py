@@ -49,6 +49,36 @@ def test_safe_search_handles_bad_pattern_and_is_bounded():
     assert safe_search(r"y", "y" * 50000) is not None
 
 
+def test_split_transform_lands_on_both_rows(client):
+    """Reproduces a user report: "Split by : 1" on a Description like
+    "Ticket 123: …" — the right-hand side should land for every row, even when
+    the resulting value doesn't match Jira's strict pattern (then it's stored
+    but flagged as a format warning in the readiness display)."""
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    fmt = client.post("/api/v1/import-formats", json={
+        "name": "SplitDesc", "separator": ",",
+        "date_format": "%Y-%m-%d",
+        "column_map": {"entry_date": "Date", "duration_hours": "Hours",
+                       "project_code": "Project"},
+        "transforms": [{"target": "sync:jira.issue_key", "op": "split",
+                        "source": "Desc", "sep": ":", "index": 1}],
+    }, headers=h).json()
+    csv = ('Date,Hours,Project,Desc\n'
+           '2026-04-10,1,SPLITP,"Ticket 123: Implementierung"\n'
+           '2026-04-11,1,SPLITP,"Ticket 123: ABC-7"\n')
+    r = client.post(f"/api/v1/import-formats/{fmt['id']}/run",
+                    files={"file": ("d.csv", csv, "text/csv")}, headers=h)
+    assert r.status_code == 201 and r.json()["created"] == 2, r.json()
+    entries = client.get("/api/v1/time-entries", headers=h).json()
+    on_dates = {e["entry_date"]: e["sync_metadata_override"] for e in entries
+                if e["entry_date"] in ("2026-04-10", "2026-04-11")}
+    # Both rows landed — the freeform one just fails the Jira pattern (a UI
+    # readiness check), but the value is stored either way.
+    assert on_dates["2026-04-10"] == {"jira": {"issue_key": "Implementierung"}}
+    assert on_dates["2026-04-11"] == {"jira": {"issue_key": "ABC-7"}}
+
+
 def test_eval_target_rules():
     from app.services.transforms import eval_target_rules
     rules = [{"when": "sync:jira.issue_key", "set_target": "jira"}]

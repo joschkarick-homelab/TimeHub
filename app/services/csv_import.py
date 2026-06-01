@@ -35,7 +35,7 @@ def _parse_duration_field(value: str, *, as_hours: bool) -> int | None:
 _BASE_TARGETS = {
     "entry_date", "start_time", "end_time",
     "duration", "duration_minutes", "duration_hours",
-    "project_code", "description", "tags",
+    "project_code", "customer", "description", "tags",
     "sync_target", "external_ref",
 }
 # Entry-level sync fields (e.g. sync:jira.issue_key) are valid mapping targets too.
@@ -102,28 +102,36 @@ def import_csv(
         for p in db.execute(select(Project)).scalars()
     }
 
-    def get_or_create_project(code: str | None) -> Project | None:
+    def get_or_create_project(code: str | None, customer: str | None = None) -> Project | None:
         if not code:
             return None
         code = code.strip()
         if not code:
             return None
-        if code in project_cache:
-            return project_cache[code]
+        cust = (customer or "").strip() or None
+        cached = project_cache.get(code)
+        if cached is not None:
+            # Backfill the customer if the row was first seen empty and the
+            # current CSV row supplies one.
+            if cust and not cached.customer:
+                cached.customer = cust
+                db.add(cached)
+            return cached
         normalized = _normalize_code(code)
         existing = norm_index.get(normalized)
         if existing is None:
-            # exact lookup as a final guard (case where index missed because the
-            # DB has a row created after import started)
             existing = db.execute(
                 select(Project).where(func.upper(Project.code) == code.upper())
             ).scalar_one_or_none()
         if existing is None and auto_create_projects:
-            existing = Project(code=code, name=code)
+            existing = Project(code=code, name=code, customer=cust)
             db.add(existing)
             db.flush()
             norm_index[normalized] = existing
             created_projects.append(code)
+        elif existing is not None and cust and not existing.customer:
+            existing.customer = cust
+            db.add(existing)
         if existing is not None:
             project_cache[code] = existing
         return existing
@@ -176,7 +184,7 @@ def import_csv(
                 raise ValueError("could not derive a positive duration")
 
             code = mapped.get("project_code") or default_project_code
-            project = get_or_create_project(code)
+            project = get_or_create_project(code, mapped.get("customer"))
             if project is None:
                 raise ValueError(f"unknown project_code '{code}'")
 
