@@ -143,7 +143,7 @@ gebucht wird). **Format** = Importformat (wiederverwendbares CSV-Eingabeprofil).
   | --- | --- | --- | --- | --- |
   | jira | default_issue (Standard-Ticket) | Projekt | nein | `[A-Z][A-Z0-9]+-\d+`, z. B. `ABC-1` |
   | jira | issue_key (Jira-Ticket) | Eintrag | **ja** | `[A-Z][A-Z0-9]+-\d+`; erbt `default_issue` |
-  | salesforce | project_id (Salesforce Projekt-ID) | Projekt | **ja** | z. B. `a0X…` |
+  | salesforce | assignment_id (Salesforce Projektbesetzung) | Projekt | **ja** | pse__Assignment__c-Id; daraus werden Project und Resource abgeleitet |
   | bcs | subject (BCS Subject) | Eintrag | **ja** | — |
   | bcs | task (BCS Task) | Eintrag | **ja** | — |
   | intern / none | — | — | — | — |
@@ -498,7 +498,46 @@ Login + API. Mobil als Hamburger-Menü.
 
 ---
 
-## 23. Abgrenzung (bewusst nicht in diesem Stand)
+## 23. Salesforce-Sync (Vorschau-Stand)
+
+- **FR-SF-1 Zugangsdaten (Admin):** Der Salesforce-API-User ist **global** vom
+  Admin pflegbar — auf `/users` gibt es eine Sektion „Salesforce-Integration"
+  mit Username, Passwort, Security-Token, Login-URL (Default
+  `login.salesforce.com`), API-Version (Default `60.0`). Passwort und Token
+  werden nur überschrieben, wenn ein Wert eingetragen wird (leere Felder
+  bewahren das bestehende Geheimnis). Eingegebene Geheimnisse werden in der
+  UI nie zurückgespiegelt (nur „gesetzt"-Status).
+- **FR-SF-2 Auth-Flow:** SOAP-Login an `/services/Soap/u/<api>` mit Username
+  + Passwort + Security-Token; der zurückgegebene Session-Identifier wird als
+  Bearer für die REST-API genutzt. „Verbindung testen"-Button auf `/users`
+  führt einen Login probehalber aus und meldet Erfolg/Fehler.
+- **FR-SF-3 Mapping-Anker:** Pflichtfeld am Projekt ist
+  `salesforce.assignment_id` (pse__Assignment__c-Id). Daraus werden Resource
+  (Contact) und Project beim Sync abgeleitet — kein zusätzliches Contact-Feld
+  am Nutzerprofil mehr nötig.
+- **FR-SF-4 Auswahl im Dashboard:** Bei eingerichteter SF-Integration zeigt
+  das Dashboard Checkboxen vor jedem Eintrag, dessen effektives Ziel
+  `salesforce` ist, der lokal sync-bereit ist und nicht bereits `synced` ist.
+  Über der Tabelle erscheint ein Button „Auswahl in Salesforce-Vorschau".
+- **FR-SF-5 Vorschau (read-only):** `POST /sync/salesforce/preview` mit
+  `entry_ids` rendert die Salesforce-Vorschau:
+  - pro Eintrag eigene Assignment-/Resource-/Project-Auflösung (SOQL),
+  - Monats-Kontierungsmonat (pse__Time_Period__c, Typ Month) für das
+    Eintragsdatum,
+  - Gruppierung **(Assignment × Kalenderwoche)** → ein
+    `pse__Timecard_Header__c`-Payload mit Resource/Project/Assignment, der
+    monatlichen Time-Period, den Wochengrenzen und gesummten Tagesstunden
+    (`pse__Monday_Hours__c` … `pse__Sunday_Hours__c`), Status `Saved`.
+  - Übersprungene Einträge mit Begründung (Assignment fehlt, SF kennt sie
+    nicht, Kontierungsmonat fehlt, Assignment geschlossen) werden eigens
+    gelistet.
+  - **Es wird nichts geschrieben** — der „Push wird im nächsten Schritt
+    freigeschaltet"-Hinweis steht unten auf der Seite.
+- **FR-SF-6 Sichtbarkeit:** Die SF-UI im Dashboard erscheint **nur**, wenn
+  Zugangsdaten hinterlegt sind und mindestens ein Eintrag des Nutzers
+  sync-bereit ist.
+
+## 24. Abgrenzung (bewusst nicht in diesem Stand)
 
 - Echte Pushes nach Jira/Salesforce/BCS (nur Datenmodell + Bereitschaft
   vorbereitet; Salesforce-Recherche in `docs/salesforce-integration.md`).

@@ -128,25 +128,38 @@
 <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
   <div class="flex items-center justify-between p-5 pb-3 gap-3 flex-wrap">
     <h2 class="font-semibold">Einträge (gruppiert nach Tag)</h2>
-    {% if days and formats %}
-      <form method="get" action="/entries/export" class="flex items-center gap-2">
-        <input type="hidden" name="date_from" value="{{ date_from }}" />
-        <input type="hidden" name="date_to" value="{{ date_to }}" />
-        <input type="hidden" name="project_id" value="{{ project_id }}" />
-        <label class="text-xs text-slate-500">Export als</label>
-        <select name="format_id" required
-                class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
-          {% for f in formats %}
-            <option value="{{ f.id }}">
-              {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
-            </option>
-          {% endfor %}
-        </select>
-        <button class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">
-          ⬇ Filter exportieren
-        </button>
-      </form>
-    {% endif %}
+    <div class="flex items-center gap-3 flex-wrap">
+      {% if sf_configured and sf_selectable_count %}
+        <form id="sf-sync-form" method="post" action="/sync/salesforce/preview"
+              class="flex items-center gap-2">
+          <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
+            ↗ Auswahl in Salesforce-Vorschau
+          </button>
+          <span class="text-xs text-slate-500">
+            {{ sf_selectable_count }} sync-bereit
+          </span>
+        </form>
+      {% endif %}
+      {% if days and formats %}
+        <form method="get" action="/entries/export" class="flex items-center gap-2">
+          <input type="hidden" name="date_from" value="{{ date_from }}" />
+          <input type="hidden" name="date_to" value="{{ date_to }}" />
+          <input type="hidden" name="project_id" value="{{ project_id }}" />
+          <label class="text-xs text-slate-500">Export als</label>
+          <select name="format_id" required
+                  class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
+            {% for f in formats %}
+              <option value="{{ f.id }}">
+                {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <button class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">
+            ⬇ Filter exportieren
+          </button>
+        </form>
+      {% endif %}
+    </div>
   </div>
 
   {% if days %}
@@ -154,6 +167,7 @@
   <table class="w-full text-sm min-w-[640px]">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
+        {% if sf_configured %}<th class="px-2 py-2 w-6"></th>{% endif %}
         <th class="px-4 py-2">Datum</th>
         <th class="px-4 py-2">Projekt</th>
         <th class="px-4 py-2">Dauer</th>
@@ -168,6 +182,14 @@
         {% for e in day.entries %}
           {% set p = projects_by_id.get(e.project_id) %}
           <tr class="border-t border-slate-100">
+            {% if sf_configured %}
+              <td class="px-2 py-2 align-middle">
+                {% if sf_selectable.get(e.id) %}
+                  <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="sf-sync-form"
+                         title="Für Salesforce-Sync auswählen" />
+                {% endif %}
+              </td>
+            {% endif %}
             <td class="px-4 py-2">{{ e.entry_date }}</td>
             <td class="px-4 py-2">
               {% if p %}
@@ -200,6 +222,7 @@
           </tr>
         {% endfor %}
         <tr class="bg-slate-50 border-t border-slate-200 text-slate-700 text-xs">
+          {% if sf_configured %}<td class="px-2 py-1.5"></td>{% endif %}
           <td class="px-4 py-1.5 font-medium">Σ {{ day.date }}</td>
           <td class="px-4 py-1.5">{{ day.entries|length }} Einträge</td>
           <td class="px-4 py-1.5 tabular-nums font-semibold">

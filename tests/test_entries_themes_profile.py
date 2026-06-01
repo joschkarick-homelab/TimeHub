@@ -180,27 +180,21 @@ def test_theme_switcher_falls_back_on_bogus_value(client):
 
 # ---------- Profile ----------
 
-def test_profile_page_renders_and_saves_salesforce_ids(client):
+def test_profile_page_saves_name_and_no_longer_renders_salesforce(client):
     _login_session(client)
     r = client.get("/profile")
     assert r.status_code == 200
     assert "Mein Profil" in r.text
-    assert "Salesforce-Anbindung" in r.text
+    # The Salesforce section was removed from the profile — the API user is
+    # now admin-managed (siehe /users), die Resource kommt aus der Assignment.
+    assert "Salesforce-Anbindung" not in r.text
+    assert 'name="salesforce_user_id"' not in r.text
+    assert 'name="salesforce_contact_id"' not in r.text
 
-    r = client.post(
-        "/profile",
-        data={
-            "full_name": "Admin Full",
-            "salesforce_user_id": "005ABCD1234567",
-            "salesforce_contact_id": "003ABCD1234567",
-        },
-        follow_redirects=False,
-    )
+    r = client.post("/profile", data={"full_name": "Admin Full"},
+                    follow_redirects=False)
     assert r.status_code == 302
-
     token = _login_api(client)
     me = client.get("/api/v1/auth/me",
                     headers={"Authorization": f"Bearer {token}"}).json()
     assert me["full_name"] == "Admin Full"
-    assert me["salesforce_user_id"] == "005ABCD1234567"
-    assert me["salesforce_contact_id"] == "003ABCD1234567"

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">Salesforce-Sync — Vorschau</h1>
+  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+</div>
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error }}
+  </div>
+{% endif %}
+{% if sf_error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    <strong>Salesforce-Fehler:</strong> {{ sf_error }}
+  </div>
+{% endif %}
+
+<p class="text-sm text-slate-600 mb-4">
+  Folgende Timecard-Header würden in Salesforce angelegt. <strong>Nichts wird
+  geschrieben</strong> — das ist eine reine Vorschau. Bitte Payloads gegen deine
+  PSA-Org abgleichen; den Push schalte ich danach frei.
+</p>
+
+{% if item_errors %}
+  <section class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+    <h2 class="font-semibold text-amber-900 mb-2">Hinweise</h2>
+    <ul class="text-sm text-amber-900 space-y-1">
+      {% for err in item_errors %}
+        <li>• {{ err.error }}{% if err.assignment_id %} (Assignment <code>{{ err.assignment_id }}</code>){% endif %}{% if err.date %} (Datum {{ err.date }}){% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{% if skipped %}
+  <section class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+    <h2 class="font-semibold mb-2">Übersprungene Einträge ({{ skipped|length }})</h2>
+    <ul class="text-sm text-slate-700 space-y-1">
+      {% for s in skipped %}
+        <li class="flex justify-between gap-3">
+          <span><span class="font-mono">#{{ s.entry.id }}</span> · {{ s.entry.entry_date }} · {{ '%.2f'|format(s.entry.duration_minutes / 60) }}h</span>
+          <span class="text-amber-800">{{ s.reason }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{% if groups %}
+  <div class="space-y-4">
+    {% for g in groups %}
+      <section class="bg-white border border-slate-200 rounded-lg p-5">
+        <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <div>
+            <h2 class="font-semibold">
+              {{ g.assignment.project_name or g.assignment.name or g.assignment_id }}
+              <span class="text-slate-500 font-normal text-sm">
+                · Resource: {{ g.assignment.resource_name or '—' }}
+              </span>
+            </h2>
+            <p class="text-xs text-slate-500">
+              Woche {{ g.week_start }} – {{ g.week_end }} · Kontierungsmonat:
+              <strong>{{ g.period.name }}</strong> ({{ g.period.start_date }} – {{ g.period.end_date }})
+            </p>
+          </div>
+          <div class="text-sm tabular-nums">Summe: <strong>{{ g.total_hours }} h</strong></div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Tagesstunden</div>
+            <table class="text-sm w-full">
+              <tbody>
+                {% for day, hours in g.hours_by_day.items() %}
+                  {% if hours %}
+                    <tr class="border-t border-slate-100">
+                      <td class="py-1 pr-3 text-slate-600">{{ day }}</td>
+                      <td class="py-1 tabular-nums">{{ '%.2f'|format(hours) }} h</td>
+                    </tr>
+                  {% endif %}
+                {% endfor %}
+              </tbody>
+            </table>
+            <div class="mt-3 text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              Enthaltene Einträge
+            </div>
+            <ul class="text-xs text-slate-600 space-y-0.5">
+              {% for e in g.entries %}
+                <li>
+                  <span class="font-mono">#{{ e.id }}</span> · {{ e.entry_date }} ·
+                  {{ '%.2f'|format(e.duration_minutes / 60) }}h
+                  {% if e.description %}— {{ e.description }}{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              Payload für <code>pse__Timecard_Header__c</code>
+            </div>
+            <pre class="text-[11px] bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto">{{ g.payload | tojson(indent=2) }}</pre>
+          </div>
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+
+  <section class="mt-6 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm">
+    <div class="font-semibold mb-1">Push noch nicht aktiv</div>
+    <p class="text-slate-600">
+      Sobald du die Struktur in deiner Org bestätigt hast, schalte ich den
+      „Synchronisieren bestätigen"-Schritt frei.
+    </p>
+  </section>
+{% elif not item_errors and not skipped and not sf_error %}
+  <p class="text-sm text-slate-500">Nichts zu zeigen.</p>
+{% endif %}
+
+{% endblock %}

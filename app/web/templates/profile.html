@@ -25,30 +25,6 @@
     </div>
 
     <fieldset class="border border-slate-200 rounded p-4">
-      <legend class="text-sm font-medium px-1">Salesforce-Anbindung</legend>
-      <p class="text-xs text-slate-500 mb-3">
-        Optional. Wird gebraucht, sobald TimeHub Zeiten in Salesforce/Certinia PSA
-        wegschiebt — siehe <code>docs/salesforce-integration.md</code>. Die
-        Resource im PSA-Datenmodell ist ein <em>Contact</em>, daher die zwei
-        getrennten Felder; sind beide gefüllt, gewinnt die Contact-ID.
-      </p>
-      <div class="grid sm:grid-cols-2 gap-3">
-        <label class="text-sm">
-          <span class="block font-medium mb-1">Salesforce-User-ID</span>
-          <input name="salesforce_user_id" value="{{ user.salesforce_user_id or '' }}"
-                 placeholder="005..." pattern="[a-zA-Z0-9]{0,18}"
-                 class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
-        </label>
-        <label class="text-sm">
-          <span class="block font-medium mb-1">Salesforce-Contact-ID</span>
-          <input name="salesforce_contact_id" value="{{ user.salesforce_contact_id or '' }}"
-                 placeholder="003..." pattern="[a-zA-Z0-9]{0,18}"
-                 class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
-        </label>
-      </div>
-    </fieldset>
-
-    <fieldset class="border border-slate-200 rounded p-4">
       <legend class="text-sm font-medium px-1">KI-Hinweise (persönlich)</legend>
       <p class="text-xs text-slate-500 mb-2">
         Optionale Standard-Vorgaben für den Import-Assistenten, die bei jedem

@@ -17,6 +17,7 @@ from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
 from app.services import app_settings as app_settings_svc
 from app.services import reports as report_svc
+from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
 from app.services.transforms import clean_target_rules, clean_transforms
 from app.services.ai_mapping import AiMappingError, suggest_mapping
@@ -138,6 +139,20 @@ def index(
         if e.project_id in proj_lookup
     }
 
+    sf_configured = sf_svc.credentials_configured(db)
+    # Pre-flagged entries the user can pick for a Salesforce sync: target must
+    # resolve to salesforce, local data must be sync-ready, and the entry hasn't
+    # been synced yet.
+    sf_selectable = {
+        e.id: (
+            entry_status.get(e.id, {}).get("target") == "salesforce"
+            and entry_status.get(e.id, {}).get("ready") is True
+            and e.sync_status != "synced"
+        )
+        for e in entries
+    }
+    sf_selectable_count = sum(1 for v in sf_selectable.values() if v)
+
     formats = _visible_formats(db, user) if entries else []
 
     return templates.TemplateResponse(
@@ -149,6 +164,9 @@ def index(
             projects=projects,
             projects_by_id=projects_by_id,
             entry_status=entry_status,
+            sf_selectable=sf_selectable,
+            sf_selectable_count=sf_selectable_count,
+            sf_configured=sf_configured,
             sync_field_registry=sf.registry_json("entry"),
             project_targets={p.id: p.default_sync_target for p in projects},
             total_hours=round(total_minutes / 60, 2),
@@ -667,6 +685,7 @@ def users_page(
     if redir is not None:
         return redir
     users = list(db.execute(select(User).order_by(User.id)).scalars())
+    sf_creds = sf_svc.get_credentials(db)
     return templates.TemplateResponse(
         "users.html",
         _ctx(
@@ -674,6 +693,11 @@ def users_page(
             user,
             users=users,
             ai_hints_global=app_settings_svc.get_setting(db, app_settings_svc.AI_HINTS_KEY, ""),
+            sf_username=sf_creds["username"],
+            sf_login_url=sf_creds["login_url"],
+            sf_api_version=sf_creds["api_version"],
+            sf_password_set=bool(sf_creds["password"]),
+            sf_token_set=bool(sf_creds["security_token"]),
             error=error,
             flash=flash,
         ),
@@ -689,6 +713,219 @@ def settings_ai_hints(request: Request, ai_hints: str = Form(""), db: Session = 
     app_settings_svc.set_setting(db, app_settings_svc.AI_HINTS_KEY, ai_hints.strip())
     return RedirectResponse(
         url="/users?flash=Globale+KI-Vorgaben+gespeichert", status_code=status.HTTP_302_FOUND
+    )
+
+
+@router.post("/settings/salesforce", response_class=HTMLResponse)
+def settings_salesforce(
+    request: Request,
+    sf_username: str = Form(""),
+    sf_password: str = Form(""),
+    sf_security_token: str = Form(""),
+    sf_login_url: str = Form(""),
+    sf_api_version: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    sf_svc.save_credentials(
+        db,
+        username=sf_username,
+        password=sf_password,
+        security_token=sf_security_token,
+        login_url=sf_login_url,
+        api_version=sf_api_version,
+    )
+    return RedirectResponse(
+        url="/users?flash=Salesforce-Zugangsdaten+gespeichert",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/sync/salesforce/preview", response_class=HTMLResponse)
+def sync_salesforce_preview(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Resolve the selected entries against Salesforce (read-only) and render
+    a preview of the Timecard-Header payloads that would be written. No DML."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    if not entry_ids:
+        return RedirectResponse(
+            url="/?error=Keine+Einträge+ausgewählt",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Restrict to the user's own entries (admin sees only their own here too —
+    # syncing on behalf of others requires explicit assignment data we don't
+    # have yet).
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id)
+        .order_by(TimeEntry.entry_date, TimeEntry.id)
+    )
+    entries = list(db.execute(stmt).scalars())
+    if not entries:
+        return RedirectResponse(
+            url="/?error=Keine+gültigen+Einträge+gefunden",
+            status_code=status.HTTP_302_FOUND,
+        )
+    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+
+    client = sf_svc.client_from_settings(db)
+    if client is None:
+        return templates.TemplateResponse(
+            "sync_salesforce_preview.html",
+            _ctx(request, user, error=(
+                "Salesforce-Zugangsdaten sind nicht hinterlegt. "
+                "Admin: unter Nutzer → Salesforce-Integration eintragen."
+            ), groups=[], errors=[], entries=entries),
+        )
+
+    # Step 1: gather assignment IDs and resolve each (one SOQL per id).
+    assignment_ids: list[str] = []
+    per_entry_assignment: dict[int, str | None] = {}
+    item_errors: list[dict] = []
+    for e in entries:
+        project = proj_lookup.get(e.project_id)
+        aid = sf_svc.assignment_id_for(e, project) if project else None
+        per_entry_assignment[e.id] = aid
+        if aid and aid not in assignment_ids:
+            assignment_ids.append(aid)
+
+    assignments: dict[str, dict] = {}
+    sf_error: str | None = None
+    try:
+        for aid in assignment_ids:
+            a = sf_svc.get_assignment(client, aid)
+            if a is None:
+                item_errors.append({"assignment_id": aid,
+                                    "error": "Projektbesetzung in Salesforce nicht gefunden"})
+                continue
+            assignments[aid] = a
+    except sf_svc.SalesforceError as e:
+        sf_error = str(e)
+
+    # Step 2: monthly Time-Period per unique entry month.
+    periods: dict[str, dict] = {}  # keyed by YYYY-MM
+    if sf_error is None:
+        try:
+            for e in entries:
+                ym = e.entry_date.strftime("%Y-%m")
+                if ym in periods:
+                    continue
+                p = sf_svc.get_monthly_time_period(client, e.entry_date.isoformat())
+                if p is None:
+                    item_errors.append({"date": e.entry_date.isoformat(),
+                                        "error": "Kein Monats-Kontierungsmonat in Salesforce"})
+                else:
+                    periods[ym] = p
+        except sf_svc.SalesforceError as e:
+            sf_error = str(e)
+
+    # Step 3: group selectable entries by (assignment_id, ISO-week) and
+    # build the Timecard-Header payloads.
+    groups: list[dict] = []
+    skipped: list[dict] = []
+    if sf_error is None:
+        grouped: dict[tuple[str, date], dict] = {}
+        weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                    "Friday", "Saturday", "Sunday"]
+        for e in entries:
+            aid = per_entry_assignment[e.id]
+            if not aid or aid not in assignments:
+                skipped.append({"entry": e, "reason": "keine Projektbesetzung gepflegt"
+                                if not aid else "Projektbesetzung nicht in SF"})
+                continue
+            ym = e.entry_date.strftime("%Y-%m")
+            if ym not in periods:
+                skipped.append({"entry": e, "reason": f"Kontierungsmonat {ym} fehlt"})
+                continue
+            assignment = assignments[aid]
+            if assignment.get("closed"):
+                skipped.append({"entry": e,
+                                "reason": "Projektbesetzung in SF geschlossen für Zeiterfassung"})
+                continue
+            # Week containing the entry date (Monday = day 0).
+            wd = e.entry_date.weekday()
+            monday = e.entry_date - timedelta(days=wd)
+            sunday = monday + timedelta(days=6)
+            key = (aid, monday)
+            grp = grouped.get(key)
+            if grp is None:
+                grp = {
+                    "assignment": assignment,
+                    "assignment_id": aid,
+                    "week_start": monday,
+                    "week_end": sunday,
+                    "period": periods[ym],
+                    "hours_by_day": {d: 0.0 for d in weekdays},
+                    "entries": [],
+                }
+                grouped[key] = grp
+            grp["entries"].append(e)
+            grp["hours_by_day"][weekdays[wd]] += round(e.duration_minutes / 60, 4)
+        for grp in grouped.values():
+            payload = {
+                "pse__Resource__c": grp["assignment"]["resource_id"],
+                "pse__Project__c": grp["assignment"]["project_id"],
+                "pse__Assignment__c": grp["assignment_id"],
+                "pse__Time_Period__c": grp["period"]["id"],
+                "pse__Start_Date__c": grp["week_start"].isoformat(),
+                "pse__End_Date__c": grp["week_end"].isoformat(),
+                "pse__Status__c": "Saved",
+            }
+            for day, hours in grp["hours_by_day"].items():
+                if hours > 0:
+                    payload[f"pse__{day}_Hours__c"] = hours
+            grp["payload"] = payload
+            grp["total_hours"] = round(sum(grp["hours_by_day"].values()), 2)
+            groups.append(grp)
+
+    return templates.TemplateResponse(
+        "sync_salesforce_preview.html",
+        _ctx(
+            request,
+            user,
+            groups=groups,
+            skipped=skipped,
+            item_errors=item_errors,
+            sf_error=sf_error,
+            entries=entries,
+            error=None,
+        ),
+    )
+
+
+@router.post("/settings/salesforce/test", response_class=HTMLResponse)
+def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
+    """Try a SOAP login against the stored credentials and report the result."""
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    client = sf_svc.client_from_settings(db)
+    if client is None:
+        return RedirectResponse(
+            url="/users?error=Bitte+Username+und+Passwort+hinterlegen",
+            status_code=status.HTTP_302_FOUND,
+        )
+    try:
+        client.login()
+    except sf_svc.SalesforceError as e:
+        from urllib.parse import quote_plus
+        return RedirectResponse(
+            url=f"/users?error=Salesforce-Login+fehlgeschlagen:+{quote_plus(str(e))[:200]}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    return RedirectResponse(
+        url=f"/users?flash=Salesforce-Login+ok+%28{client.instance_url}%29",
+        status_code=status.HTTP_302_FOUND,
     )
 
 
@@ -1710,8 +1947,6 @@ def profile_page(
 def profile_save(
     request: Request,
     full_name: str = Form(""),
-    salesforce_user_id: str = Form(""),
-    salesforce_contact_id: str = Form(""),
     ai_hints: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -1719,8 +1954,6 @@ def profile_save(
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     user.full_name = full_name.strip()
-    user.salesforce_user_id = salesforce_user_id.strip() or None
-    user.salesforce_contact_id = salesforce_contact_id.strip() or None
     user.ai_hints = ai_hints.strip() or None
     db.add(user)
     db.commit()

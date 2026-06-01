@@ -26,6 +26,64 @@
 </section>
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <h2 class="font-semibold mb-2">Salesforce-Integration</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Zentraler API-User für den Salesforce/Certinia-PSA-Sync (für alle TimeHub-Nutzer).
+    SOAP-Login per Username + Passwort + Security-Token. Passwort und Token werden
+    nur überschrieben, wenn ein Wert eingetragen wird (leere Felder lassen den
+    bestehenden Wert unverändert).
+  </p>
+  <form method="post" action="/settings/salesforce" class="grid sm:grid-cols-2 gap-3">
+    <label class="text-sm sm:col-span-2">
+      <span class="block font-medium mb-1">Username</span>
+      <input name="sf_username" value="{{ sf_username }}"
+             placeholder="api.user@firma.com"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">
+        Passwort
+        {% if sf_password_set %}<span class="text-emerald-700 text-[10px] ml-1">gesetzt</span>{% endif %}
+      </span>
+      <input type="password" name="sf_password" autocomplete="new-password"
+             placeholder="{{ '••••••••' if sf_password_set else 'noch nicht hinterlegt' }}"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">
+        Security-Token
+        {% if sf_token_set %}<span class="text-emerald-700 text-[10px] ml-1">gesetzt</span>{% endif %}
+      </span>
+      <input type="password" name="sf_security_token" autocomplete="new-password"
+             placeholder="{{ '••••••••' if sf_token_set else 'noch nicht hinterlegt' }}"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">Login-URL</span>
+      <input name="sf_login_url" value="{{ sf_login_url }}"
+             placeholder="https://login.salesforce.com"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">API-Version</span>
+      <input name="sf_api_version" value="{{ sf_api_version }}"
+             placeholder="60.0"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <div class="sm:col-span-2 flex gap-2">
+      <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+        Zugangsdaten speichern
+      </button>
+    </div>
+  </form>
+  <form method="post" action="/settings/salesforce/test" class="mt-2">
+    <button class="h-8 px-3 border border-slate-300 rounded text-xs hover:bg-slate-50">
+      Verbindung testen
+    </button>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Neuen Nutzer anlegen</h2>
   <form method="post" action="/users" class="grid sm:grid-cols-6 gap-3 items-end">
     <div class="sm:col-span-2">

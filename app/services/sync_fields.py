@@ -59,12 +59,13 @@ TARGET_FIELDS: dict[str, list[SyncField]] = {
     ],
     "salesforce": [
         SyncField(
-            key="project_id",
-            label="Salesforce Projekt-ID",
+            key="assignment_id",
+            label="Salesforce Projektbesetzung",
             level="project",
             required=True,
-            placeholder="a0X...",
-            help="pse__Project__c Id der Projektbesetzung.",
+            pattern=r"[a-zA-Z0-9]{15,18}",
+            placeholder="a01...",
+            help="pse__Assignment__c-Id; daraus leiten wir Project und Resource (Contact) ab.",
         ),
     ],
     "bcs": [

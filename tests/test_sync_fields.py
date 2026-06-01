@@ -97,11 +97,15 @@ def test_entry_status_intern_always_ready():
     assert st["ready"] and not st["needs_sync"]
 
 
-def test_project_status_salesforce_requires_project_id():
+def test_project_status_salesforce_requires_assignment_id():
     from app.services import sync_fields as sf
     assert not sf.project_sync_status(_proj("salesforce"))["ready"]
-    ok = sf.project_sync_status(_proj("salesforce", {"salesforce": {"project_id": "a0X1"}}))
+    # 15-char Salesforce ID
+    ok = sf.project_sync_status(_proj("salesforce", {"salesforce": {"assignment_id": "a01000000000001"}}))
     assert ok["ready"]
+    # too short → format violation, not ready
+    bad = sf.project_sync_status(_proj("salesforce", {"salesforce": {"assignment_id": "short"}}))
+    assert not bad["ready"]
 
 
 def test_apply_fields_sets_and_clears():
@@ -123,11 +127,11 @@ def test_project_create_stores_salesforce_id(client):
     _login_session(client)
     client.post("/projects", data={
         "name": "SF Proj", "code": "SFWEB", "default_sync_target": "salesforce",
-        "status": "active", "meta__salesforce__project_id": "a0X999",
+        "status": "active", "meta__salesforce__assignment_id": "a01000000000999",
     }, follow_redirects=False)
     h = {"Authorization": f"Bearer {_token(client)}"}
     p = next(p for p in client.get("/api/v1/projects", headers=h).json() if p["code"] == "SFWEB")
-    assert p["sync_metadata"] == {"salesforce": {"project_id": "a0X999"}}
+    assert p["sync_metadata"] == {"salesforce": {"assignment_id": "a01000000000999"}}
 
 
 def test_entry_edit_stores_jira_ticket_and_override(client):

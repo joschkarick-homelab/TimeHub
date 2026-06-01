@@ -52,17 +52,18 @@ def test_import_unified_duration_target(client):
         "column_map": {"entry_date": "Date", "project_code": "Project", "duration": "Dur"},
     }, headers=h).json()["id"]
     # one row per format-supported unit, all should land as 90 minutes
+    # use dates far from date.today() so other tests' "today" entries can't bleed in
     csv = ("Date,Project,Dur\n"
-           "2026-06-01,AUTODUR,01:30:00\n"
-           "2026-06-02,AUTODUR,1.5\n"
-           "2026-06-03,AUTODUR,90\n")
+           "2026-04-01,AUTODUR,01:30:00\n"
+           "2026-04-02,AUTODUR,1.5\n"
+           "2026-04-03,AUTODUR,90\n")
     r = client.post(f"/api/v1/import-formats/{fid}/run",
                     files={"file": ("a.csv", csv, "text/csv")}, headers=h)
     assert r.status_code == 201 and r.json()["created"] == 3, r.json()
     entries = client.get("/api/v1/time-entries", headers=h).json()
     mins = {e["entry_date"]: e["duration_minutes"] for e in entries
-            if e["entry_date"] in ("2026-06-01", "2026-06-02", "2026-06-03")}
-    assert mins == {"2026-06-01": 90, "2026-06-02": 90, "2026-06-03": 90}
+            if e["entry_date"] in ("2026-04-01", "2026-04-02", "2026-04-03")}
+    assert mins == {"2026-04-01": 90, "2026-04-02": 90, "2026-04-03": 90}
 
 
 def test_duration_target_label_and_options(client):
