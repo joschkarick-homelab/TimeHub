@@ -73,13 +73,27 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
 - die Projektbesetzung in SF nicht gefunden wird,
 - die Projektbesetzung `Geschlossen__c=true` ist,
 - kein Kontierungsmonat für (Projektbesetzung × Tagesdatum) existiert,
-- der Kontierungsmonat `Abgeschlossen__c=true` ist.
+- der Kontierungsmonat `Abgeschlossen__c=true` ist,
+- der Kontierungsmonat einen Status ≠ `offen` hat (also bereits eingereicht
+  / in Bearbeitung / kontrolliert / Öffnung beantragt).
+
+## UI
+
+- Im Projekt-Edit (Ziel = salesforce) ist die Projektbesetzung ein
+  **Dropdown**, das beim Render live alle aktiven Projektbesetzungen des
+  eingeloggten Users über die SF-API holt (Match per `Mitarbeiter__r.Email`
+  ODER `Externe_Projektbesetzung__r.Email = user.email`). Fehlen SF-Creds
+  oder gibt es keine Treffer, fällt das UI auf ein freies Text-Input zurück.
+- Im Eintrag-Edit (effektives Ziel = salesforce) ist „Remote / Vor Ort" ein
+  Dropdown mit Default **Remote**. Beim Sync gilt: explizit gesetzter Wert
+  am Eintrag → ggf. Override am Projekt → Default des Felds.
 
 ## Offene Punkte (für später)
 
-1. **Status des Kontierungsmonats:** Aktuell blockt nur `Abgeschlossen__c`.
-   Soll `Status__c in ('abgeschlossen','kontrolliert')` ebenfalls hart
-   blocken oder nur warnen?
+1. **Vorschlag bei unbekannten Projekten:** Beim CSV-Import (auto-Anlegen)
+   und beim manuellen Projekt-Anlegen sollen passende Salesforce-
+   Projektbesetzungen aus den aktiven PBs des Users als Vorschlag angeboten
+   werden (Match z. B. über Namensähnlichkeit / Projektbezeichnung).
 2. **Bestehender Kontierungsmonat nicht da:** Aktuell „skipped" mit Hinweis.
    Soll TimeHub später einen anlegen können?
 3. **Konfigurierbarkeit:** Feld-/Objektnamen sind in der mindsquare-Org

@@ -131,6 +131,76 @@ def test_build_zeiterfassung_payload_with_start_end_clips_long_description():
     assert payload["Remote__c"] is False  # no remote value passed
 
 
+def test_preview_skips_when_kontierungsmonat_not_open(client, monkeypatch):
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFPREVSTATUS")
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period",
+                        lambda _c, _aid, _date: dict(_FAKE_PERIOD, status="in Bearbeitung"))
+    r = client.post("/sync/salesforce/preview", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    assert "nicht offen" in r.text
+    assert "in Bearbeitung" in r.text
+
+
+def test_preview_explicit_vor_ort_overrides_default(client, monkeypatch):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    pid = client.post("/api/v1/projects", json={
+        "name": "SF Vor Ort", "code": "SFVORORT",
+        "default_sync_target": "salesforce",
+        "sync_metadata": {"salesforce": {"assignment_id": "a01000000000001"}},
+    }, headers=h).json()["id"]
+    eid = client.post("/api/v1/time-entries", json={
+        "project_id": pid, "entry_date": "2026-05-27", "duration_minutes": 60,
+        "description": "vor ort",
+        "sync_metadata_override": {"salesforce": {"remote": "false"}},
+    }, headers=h).json()["id"]
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+    r = client.post("/sync/salesforce/preview", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    assert '"Remote__c": false' in r.text
+    assert "Vor Ort" in r.text
+
+
+def test_list_assignments_for_user_query_shape(monkeypatch):
+    """list_assignments_for_user matcht intern UND extern auf die E-Mail."""
+    from app.services import salesforce as sfs
+    captured = {}
+    def fake_query(self, soql):
+        captured["soql"] = soql
+        return {"records": [
+            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo"},
+            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None},
+        ]}
+    monkeypatch.setattr(sfs.SalesforceClient, "query", fake_query)
+    client = sfs.SalesforceClient("u", "p", "")
+    client.session_id = "x"; client.instance_url = "https://x"
+    items = sfs.list_assignments_for_user(client, "rick@mindsquare.de")
+    assert "rick@mindsquare.de" in captured["soql"]
+    assert "Mitarbeiter__r.Email" in captured["soql"]
+    assert "Externe_Projektbesetzung__r.Email" in captured["soql"]
+    assert "Geschlossen__c = false" in captured["soql"]
+    assert items == [
+        {"value": "a01000000000111", "label": "Foo (PB-111)"},
+        {"value": "a01000000000222", "label": "PB-222"},
+    ]
+
+
+def test_list_assignments_for_user_rejects_bad_email():
+    from app.services import salesforce as sfs
+    client = sfs.SalesforceClient("u", "p", "")
+    client.session_id = "x"; client.instance_url = "https://x"
+    # No SOQL is sent for obviously broken/injecting emails
+    assert sfs.list_assignments_for_user(client, "evil'--") == []
+    assert sfs.list_assignments_for_user(client, "") == []
+
+
 def test_describe_sobject_rejects_garbage_names():
     import pytest
     from app.services.salesforce import SalesforceClient, SalesforceError, describe_sobject
@@ -280,8 +350,9 @@ def test_preview_renders_zeiterfassung_payload(client, monkeypatch):
     assert "Taetigkeitsbeschreibung__c" in body
     assert "Pause__c" in body
     assert "Remote__c" in body
-    # Default Remote (no override) ist false → "Vor Ort"-Badge
-    assert "Vor Ort" in body
+    # Default für Remote ist "Remote" → ohne expliziten Wert: Remote-Badge + true
+    assert ">Remote</span>" in body
+    assert '"Remote__c": true' in body
     # 90 Minuten ohne Start/Ende → Von_Stunde 0, Bis_Stunde 1, Bis_Minute 30
     assert '"Von_Stunde__c": 0' in body
     assert '"Bis_Stunde__c": 1' in body

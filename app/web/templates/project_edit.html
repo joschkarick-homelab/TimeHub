@@ -59,6 +59,7 @@
   </form>
 </section>
 
+<script>window.SYNC_DYNAMIC_OPTIONS = {{ (sync_dynamic_options or {}) | tojson }};</script>
 {% include "_sync_fields_js.html" %}
 <script>
   (function () {

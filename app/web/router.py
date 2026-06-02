@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from app.services.transforms import clean_target_rules, clean_transforms
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
 
+log = logging.getLogger(__name__)
 router = APIRouter(include_in_schema=False)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -896,18 +898,28 @@ def sync_salesforce_preview(
                               f"für diese Projektbesetzung in SF",
                 })
                 continue
+            period_name = period.get("name") or e.entry_date.strftime("%m/%Y")
+            status = (period.get("status") or "").strip()
+            # Nur 'offen' lassen wir schreiben — alles andere (Kundengenehmigung,
+            # in Bearbeitung, abgeschlossen, kontrolliert, Öffnung beantragt) gilt
+            # als bereits eingereicht oder gesperrt.
             if period.get("closed"):
-                skipped.append({
-                    "entry": e,
-                    "reason": f"Kontierungsmonat {period.get('name') or e.entry_date.strftime('%m/%Y')} "
-                              f"ist abgeschlossen",
-                })
+                skipped.append({"entry": e,
+                                "reason": f"Kontierungsmonat {period_name} ist abgeschlossen"})
+                continue
+            if status.lower() != "offen":
+                skipped.append({"entry": e,
+                                "reason": f"Kontierungsmonat {period_name} ist nicht offen"
+                                          f" (Status: {status or '—'})"})
                 continue
 
             project = proj_lookup.get(e.project_id)
-            remote_value = ((e.sync_metadata_override or {}).get("salesforce") or {}).get("remote")
-            if not remote_value and project is not None:
-                remote_value = ((project.sync_metadata or {}).get("salesforce") or {}).get("remote")
+            # Resolve via sync_fields so override → project default → field default.
+            remote_field = next((f for f in sf.entry_fields("salesforce") if f.key == "remote"), None)
+            remote_value = (
+                sf.entry_value(e, project, remote_field, "salesforce")
+                if remote_field and project else None
+            )
             payload = sf_svc.build_zeiterfassung_payload(e, period["id"], remote_value)
 
             group = grouped.setdefault((aid, period["id"]), {
@@ -1199,6 +1211,26 @@ def _parse_target_rules(raw: str) -> list[dict]:
     except (json.JSONDecodeError, ValueError):
         return []
     return clean_target_rules(data, set(_KNOWN_SYNC_TARGETS))
+
+
+def _sync_dynamic_options(db: Session, user: User | None) -> dict:
+    """Runtime-Auswahllisten für SyncFields mit options_source. Aktuell:
+    aktive Salesforce-Projektbesetzungen des aktuellen Users (E-Mail-Match).
+    Fehler / fehlende Creds → leere Map (UI fällt auf freies Eingabefeld zurück)."""
+    options: dict[str, list[dict]] = {}
+    if user is None:
+        return options
+    client = sf_svc.client_from_settings(db)
+    if client is None or not user.email:
+        return options
+    try:
+        items = sf_svc.list_assignments_for_user(client, user.email)
+    except sf_svc.SalesforceError as e:
+        log.info("SF assignment lookup skipped: %s", e)
+        return options
+    if items:
+        options["sf_assignments"] = items
+    return options
 
 
 def _ai_hints(db: Session, user: User | None) -> str:
@@ -1874,6 +1906,7 @@ def projects_page(
             project_status=project_status,
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("project"),
+            sync_dynamic_options=_sync_dynamic_options(db, user),
             statuses=_KNOWN_STATUSES,
             flash=flash,
             error=error,
@@ -1944,6 +1977,7 @@ def projects_edit_form(request: Request, project_id: int, db: Session = Depends(
             project=project,
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("project"),
+            sync_dynamic_options=_sync_dynamic_options(db, user),
             current_meta=project.sync_metadata or {},
             statuses=_KNOWN_STATUSES,
         ),

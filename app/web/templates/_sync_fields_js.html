@@ -2,11 +2,19 @@
   // Shared renderer for target-dependent sync fields. Builds inputs named
   // meta__<target>__<key> so the server can pick them up generically. Only the
   // active target's fields are rendered (and thus submitted).
+  //
+  // Felder mit `choices` (statische Picklist) oder `options_source` (dynamische
+  // Liste aus window.SYNC_DYNAMIC_OPTIONS) werden als <select> gerendert; sonst
+  // als <input>. Vorbelegung: gespeicherter Wert > field.default > leer.
   window.renderSyncFields = function (container, registry, target, current) {
     function esc(s) {
-      return String(s).replace(/[&<>"']/g, function (c) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
         return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
       });
+    }
+    function dynOptions(source) {
+      var src = window.SYNC_DYNAMIC_OPTIONS || {};
+      return src[source];
     }
     if (!container) return;
     container.innerHTML = "";
@@ -14,18 +22,46 @@
     if (!fields.length) { container.classList.add("hidden"); return; }
     container.classList.remove("hidden");
     fields.forEach(function (f) {
-      var cur = ((current || {})[target] || {})[f.key] || "";
+      var stored = ((current || {})[target] || {})[f.key] || "";
+      var dyn = f.options_source ? dynOptions(f.options_source) : null;
+      var opts = dyn != null ? dyn : (f.choices || null);
+      var value = stored || (f.default || "");
       var id = "meta_" + target + "_" + f.key;
       var name = "meta__" + target + "__" + f.key;
       var wrap = document.createElement("div");
-      wrap.innerHTML =
+      var labelHtml =
         '<label class="block text-xs font-medium mb-1" for="' + id + '">' +
           esc(f.label) + (f.required ? ' <span class="text-rose-500">*</span>' : "") +
-        "</label>" +
-        '<input id="' + id + '" name="' + name + '" value="' + esc(cur) + '"' +
-          ' placeholder="' + esc(f.placeholder || "") + '"' +
-          ' class="w-full h-10 border border-slate-300 rounded px-2" />' +
-        (f.help ? '<p class="text-[11px] text-slate-500 mt-0.5">' + esc(f.help) + "</p>" : "");
+        "</label>";
+      var control;
+      if (opts && opts.length) {
+        var optionsHtml = "";
+        if (!f.required) {
+          optionsHtml += '<option value="">— keine Auswahl —</option>';
+        }
+        opts.forEach(function (o) {
+          var v = o.value != null ? String(o.value) : "";
+          var sel = (v === String(value)) ? " selected" : "";
+          optionsHtml += '<option value="' + esc(v) + '"' + sel + '>' + esc(o.label || v) + "</option>";
+        });
+        control = '<select id="' + id + '" name="' + name + '"' +
+                  ' class="w-full h-10 border border-slate-300 rounded px-2 bg-white">' +
+                  optionsHtml + "</select>";
+      } else if (f.options_source) {
+        // Dynamische Quelle angedacht, aber gerade keine Werte (z. B. keine SF-
+        // Creds, kein Match): Fallback auf freies Text-Input mit Hinweis.
+        control = '<input id="' + id + '" name="' + name + '" value="' + esc(value) + '"' +
+                  ' placeholder="' + esc(f.placeholder || "") + '"' +
+                  ' class="w-full h-10 border border-slate-300 rounded px-2" />' +
+                  '<p class="text-[11px] text-slate-400 mt-0.5">' +
+                  '(Auswahlliste momentan nicht verfügbar — Wert manuell eintragen.)</p>';
+      } else {
+        control = '<input id="' + id + '" name="' + name + '" value="' + esc(value) + '"' +
+                  ' placeholder="' + esc(f.placeholder || "") + '"' +
+                  ' class="w-full h-10 border border-slate-300 rounded px-2" />';
+      }
+      var helpHtml = f.help ? '<p class="text-[11px] text-slate-500 mt-0.5">' + esc(f.help) + "</p>" : "";
+      wrap.innerHTML = labelHtml + control + helpHtml;
       container.appendChild(wrap);
     });
   };

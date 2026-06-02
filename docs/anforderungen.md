@@ -120,7 +120,8 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   | --- | --- | --- | --- | --- |
   | jira | default_issue (Standard-Ticket) | Projekt | nein | `[A-Z][A-Z0-9]+-\d+` |
   | jira | issue_key (Jira-Ticket) | Eintrag | **ja** | wie oben; erbt `default_issue` |
-  | salesforce | assignment_id (Projektbesetzung) | Projekt | **ja** | 15-/18-stellige SF-Id |
+  | salesforce | assignment_id (Projektbesetzung) | Projekt | **ja** | 15-/18-stellige SF-Id; UI-Dropdown der aktiven PBs des Users (Live-SOQL) |
+  | salesforce | remote (Remote / Vor Ort) | Eintrag | nein | Picklist `true`/`false`, Default „Remote"; per Import-Transform befüllbar |
   | bcs | subject | Eintrag | **ja** | — |
   | bcs | task | Eintrag | **ja** | — |
   | intern / none | — | — | — | — |
@@ -427,22 +428,29 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   an `/services/Soap/u/<api>` mit Username + (Passwort + Security-Token); die
   Session-Id dient als Bearer für REST.
 - **FR-SF-2** Mapping-Anker: Pflichtfeld am Projekt ist
-  `salesforce.assignment_id` (pse__Assignment__c-Id). Daraus werden Resource
-  (Contact) und Project beim Sync abgeleitet.
+  `salesforce.assignment_id` (Id der Projektbesetzung__c). Daraus werden
+  Projekt und Mitarbeiter beim Sync abgeleitet. Im Projekt-Edit-UI ist
+  das ein **Dropdown** der aktiven Projektbesetzungen des aktuellen Users
+  (Live-SOQL: `Mitarbeiter__r.Email = user.email` ODER
+  `Externe_Projektbesetzung__r.Email = user.email`, `Geschlossen__c=false`).
+  Ohne SF-Creds oder ohne Treffer → freies Text-Input als Fallback.
 - **FR-SF-3** Auswahl im Dashboard (FR-DASH-7) oder zentral über Sync-Center.
 - **FR-SF-4** Vorschau (read-only): `POST /sync/salesforce/preview` mit
-  `entry_ids` rendert:
-  - pro Eintrag SOQL-Auflösung von Assignment (Project, Resource, geschlossen?)
-    und Monats-Kontierungsmonat (`pse__Time_Period__c` mit Typ Month für das
-    Eintragsdatum),
-  - Gruppierung **(Assignment × Kalenderwoche)** → ein
-    `pse__Timecard_Header__c`-Payload mit `pse__Resource__c`,
-    `pse__Project__c`, `pse__Assignment__c`, `pse__Time_Period__c`,
-    `pse__Start/End_Date__c` (Mo/So der Woche), gesummte Tagesstunden
-    (`pse__Monday_Hours__c` … `pse__Sunday_Hours__c`), `pse__Status__c="Saved"`.
-  - Übersprungene Einträge mit Begründung (keine Assignment gepflegt /
-    Assignment nicht in SF / Kontierungsmonat fehlt / Assignment geschlossen).
-  - **Es wird nichts geschrieben** — „Push noch nicht aktiv"-Hinweis am Ende.
+  `entry_ids` rendert pro Eintrag eine `Zeiterfassung__c`-Payload, gruppiert
+  nach (Projektbesetzung × Kontierungsmonat). Pro Eintrag wird per SOQL die
+  Projektbesetzung aufgelöst und der Kontierungsmonat__c gesucht
+  (`WHERE Projektbesetzung__c = '…' AND Monatsbeginn__c ≤ Tag AND
+  Monatsende__c ≥ Tag`). Payload: `Kontierungsmonat__c`, `Tag__c`,
+  `Arbeitszeit__c` / `Arbeitszeit_Minuten__c`,
+  `Von_Stunde__c` / `Von_Minute__c` / `Bis_Stunde__c` / `Bis_Minute__c`
+  (Default `0` bzw. Dauer-in-Stunden für Einträge ohne Uhrzeit; Minuten auf
+  Viertelstunden-Picklist gesnappt), `Pause__c=0`,
+  `Taetigkeitsbeschreibung__c` (auf 255 Zeichen gekappt) und `Remote__c`
+  (aus dem Eintrag-Sync-Feld). Übersprungen wird, wenn: keine Assignment
+  gepflegt / PB nicht in SF / PB geschlossen / Kontierungsmonat fehlt /
+  Kontierungsmonat `Abgeschlossen__c=true` / `Status__c` ≠ `offen` (alles
+  außer „offen" gilt als bereits eingereicht). **Es wird nichts geschrieben**
+  — „Push noch nicht aktiv"-Hinweis am Ende.
 - **FR-SF-5** Sichtbarkeit: SF-UI im Dashboard nur, wenn Credentials hinterlegt
   und mindestens ein Eintrag des Nutzers sync-bereit ist; im Sync-Center
   unabhängig sichtbar, der Button erscheint aber nur bei Sync-bereiten
@@ -485,3 +493,13 @@ Nicht in diesem Stand:
 - OAuth/SSO (Microsoft/Authentik).
 - Eigene Tag-/Kunden-Verwaltung (Tags = freie Liste; Kunde = Projektfeld,
   beim Import auto-pflegbar).
+
+## 25. Backlog (geplant)
+
+- **FR-FUTURE-1** Beim **CSV-Import** sollen Projekte, die in TimeHub noch
+  nicht existieren, einen Vorschlag aus den aktiven Salesforce-
+  Projektbesetzungen des Users bekommen (Match z. B. über
+  Namens-/Bezeichnungsähnlichkeit), statt nur stumm angelegt zu werden.
+- **FR-FUTURE-2** Gleiches beim **manuellen Projekt-Anlegen** im UI: Eingabe
+  des Namens triggert Vorschläge passender SF-Projektbesetzungen samt
+  Übernahme der `assignment_id`.

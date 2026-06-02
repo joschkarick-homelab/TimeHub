@@ -254,6 +254,34 @@ def describe_sobject(client: SalesforceClient, object_name: str) -> dict:
     return json.loads(body)
 
 
+def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict]:
+    """Alle aktiven (nicht geschlossenen) Projektbesetzungen des Users mit der
+    gegebenen E-Mail — interner Mitarbeiter ODER externer Contact. Liefert
+    Dropdown-fertige `{value, label}`-Einträge.
+
+    Wenn die E-Mail-Adresse unplausibel ist (z. B. ein Hochkomma enthält),
+    wird ohne Query eine leere Liste zurückgegeben — die Eingabe steckt direkt
+    im SOQL, also wird sie defensiv geprüft."""
+    e = (email or "").strip()
+    if not e or len(e) > 254 or any(c in e for c in ("'", "\\", "\n", "\r")):
+        return []
+    soql = (
+        "SELECT Id, Name, Projektbezeichnung__c "
+        "FROM Projektbesetzung__c "
+        f"WHERE (Mitarbeiter__r.Email = '{e}' OR Externe_Projektbesetzung__r.Email = '{e}') "
+        "AND Geschlossen__c = false "
+        "ORDER BY Projektbezeichnung__c NULLS LAST, Name"
+    )
+    res = client.query(soql)
+    out: list[dict] = []
+    for r in res.get("records") or []:
+        name = r.get("Name") or "?"
+        bez = (r.get("Projektbezeichnung__c") or "").strip()
+        label = f"{bez} ({name})" if bez else name
+        out.append({"value": r["Id"], "label": label})
+    return out
+
+
 def get_monthly_period(client: SalesforceClient, assignment_id: str,
                        date_iso: str) -> dict | None:
     """Finde den Kontierungsmonat__c, der für DIESE Projektbesetzung das

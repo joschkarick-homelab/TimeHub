@@ -31,6 +31,12 @@ class SyncField:
     help: str = ""
     # entry fields may fall back to a project-level value when left empty
     inherit_from_project: str | None = None  # project field key to inherit from
+    # Optional fixed picklist — UI renders a <select>. Tuple of (value, label).
+    choices: tuple[tuple[str, str], ...] | None = None
+    # Vorbelegung, wenn noch kein Wert gespeichert ist.
+    default: str | None = None
+    # Hint to the renderer: load runtime options from window.SYNC_DYNAMIC_OPTIONS[options_source].
+    options_source: str | None = None
 
 
 _JIRA_ISSUE = r"[A-Z][A-Z0-9]+-\d+"
@@ -66,14 +72,17 @@ TARGET_FIELDS: dict[str, list[SyncField]] = {
             pattern=r"[a-zA-Z0-9]{15,18}",
             placeholder="a01...",
             help="Id der Salesforce-Projektbesetzung; daraus werden Projekt und Mitarbeiter abgeleitet.",
+            # Dropdown mit allen aktiven, dem User zugeordneten PBs (Live-SOQL).
+            options_source="sf_assignments",
         ),
         SyncField(
             key="remote",
-            label="Remote (Salesforce)",
+            label="Remote / Vor Ort",
             level="entry",
             required=False,
-            placeholder="true / false",
-            help="Wird beim Sync in Zeiterfassung__c.Remote__c übernommen. Übliche Werte: true/false, 1/0, ja/nein. Üblicherweise per Import-Transformation aus der Quell-CSV befüllt.",
+            help="Wird beim Sync in Zeiterfassung__c.Remote__c übernommen. Per Import-Transformation aus der Quell-CSV überschreibbar.",
+            choices=(("true", "Remote"), ("false", "Vor Ort")),
+            default="true",
         ),
     ],
     "bcs": [
@@ -129,10 +138,13 @@ def project_value(project, target: str, key: str) -> str | None:
 
 
 def entry_value(entry, project, field: SyncField, target: str) -> str | None:
-    """Resolve an entry-level field value, inheriting a project default when set."""
+    """Resolve an entry-level field value, inheriting from the project default
+    when set and finally from the field's `default` constant."""
     val = _get(entry.sync_metadata_override, target, field.key)
-    if not val and field.inherit_from_project:
+    if not val and field.inherit_from_project and project is not None:
         val = _get(project.sync_metadata, target, field.inherit_from_project)
+    if not val and field.default:
+        val = field.default
     return val
 
 
@@ -224,6 +236,9 @@ def registry_json(level: str) -> dict[str, list[dict]]:
                 "placeholder": f.placeholder,
                 "help": f.help,
                 "inherit_from_project": f.inherit_from_project or "",
+                "choices": [{"value": v, "label": lbl} for v, lbl in (f.choices or ())],
+                "default": f.default or "",
+                "options_source": f.options_source or "",
             }
             for f in fields
             if f.level == level
