@@ -65,7 +65,15 @@ TARGET_FIELDS: dict[str, list[SyncField]] = {
             required=True,
             pattern=r"[a-zA-Z0-9]{15,18}",
             placeholder="a01...",
-            help="pse__Assignment__c-Id; daraus leiten wir Project und Resource (Contact) ab.",
+            help="Id der Salesforce-Projektbesetzung; daraus werden Projekt und Mitarbeiter abgeleitet.",
+        ),
+        SyncField(
+            key="remote",
+            label="Remote (Salesforce)",
+            level="entry",
+            required=False,
+            placeholder="true / false",
+            help="Wird beim Sync in Zeiterfassung__c.Remote__c übernommen. Übliche Werte: true/false, 1/0, ja/nein. Üblicherweise per Import-Transformation aus der Quell-CSV befüllt.",
         ),
     ],
     "bcs": [

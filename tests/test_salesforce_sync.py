@@ -77,6 +77,60 @@ def test_describe_sobject_hits_right_endpoint_and_parses(monkeypatch):
     assert meta["fields"][0]["name"] == "Id"
 
 
+def test_coerce_bool_lenient():
+    from app.services.salesforce import _coerce_bool
+    for truthy in ("true", "True", "1", "yes", "ja", "x", "wahr", "Y", True):
+        assert _coerce_bool(truthy) is True, truthy
+    for falsy in ("false", "0", "no", "nein", "", None, False, "random"):
+        assert _coerce_bool(falsy) is False, falsy
+
+
+def test_snap_quarter_rounds_to_nearest_15():
+    from app.services.salesforce import _snap_quarter
+    assert _snap_quarter(9, 0) == (9, "00")
+    assert _snap_quarter(9, 7) == (9, "00")     # round down
+    assert _snap_quarter(9, 8) == (9, "15")     # round up
+    assert _snap_quarter(9, 30) == (9, "30")
+    assert _snap_quarter(9, 53) == (10, "00")   # rolls over
+    assert _snap_quarter(0, 90) == (1, "30")    # 90 min into the day
+
+
+def test_build_zeiterfassung_payload_without_start_end():
+    from datetime import date as _date
+    from types import SimpleNamespace
+    from app.services.salesforce import build_zeiterfassung_payload
+    entry = SimpleNamespace(
+        entry_date=_date(2026, 5, 27), start_time=None, end_time=None,
+        duration_minutes=90, description="Demo-Beschreibung",
+    )
+    payload = build_zeiterfassung_payload(entry, "a0Q000MAY26", remote_value="true")
+    assert payload["Kontierungsmonat__c"] == "a0Q000MAY26"
+    assert payload["Tag__c"] == "2026-05-27"
+    assert payload["Arbeitszeit__c"] == 1.5
+    assert payload["Arbeitszeit_Minuten__c"] == 90
+    assert payload["Von_Stunde__c"] == 0 and payload["Von_Minute__c"] == "00"
+    assert payload["Bis_Stunde__c"] == 1 and payload["Bis_Minute__c"] == "30"
+    assert payload["Pause__c"] == 0
+    assert payload["Taetigkeitsbeschreibung__c"] == "Demo-Beschreibung"
+    assert payload["Remote__c"] is True
+
+
+def test_build_zeiterfassung_payload_with_start_end_clips_long_description():
+    from datetime import date as _date, time as _time
+    from types import SimpleNamespace
+    from app.services.salesforce import build_zeiterfassung_payload
+    entry = SimpleNamespace(
+        entry_date=_date(2026, 5, 27),
+        start_time=_time(9, 0), end_time=_time(10, 30),
+        duration_minutes=90, description="x" * 300,
+    )
+    payload = build_zeiterfassung_payload(entry, "a0Q000MAY26")
+    assert payload["Von_Stunde__c"] == 9 and payload["Von_Minute__c"] == "00"
+    assert payload["Bis_Stunde__c"] == 10 and payload["Bis_Minute__c"] == "30"
+    assert len(payload["Taetigkeitsbeschreibung__c"]) == 255
+    assert payload["Remote__c"] is False  # no remote value passed
+
+
 def test_describe_sobject_rejects_garbage_names():
     import pytest
     from app.services.salesforce import SalesforceClient, SalesforceError, describe_sobject
@@ -185,36 +239,53 @@ def _fake_client():
     return c
 
 
-def test_preview_renders_payload(client, monkeypatch):
+_FAKE_ASSIGNMENT = {
+    "id": "a01000000000001", "name": "PB-001",
+    "project_id": "a0P000000000001", "project_name": "Demo Project",
+    "resource_id": "0050000000RES", "resource_name": "Max Mustermann",
+    "is_external": False, "closed": False, "active": "Ja",
+}
+_FAKE_PERIOD = {
+    "id": "a0Q000MAY26", "name": "Kontierungsmonat 05/2026",
+    "start_date": "2026-05-01", "end_date": "2026-05-31",
+    "status": "offen", "closed": False,
+}
+
+
+def test_preview_renders_zeiterfassung_payload(client, monkeypatch):
     _login_session(client)
     _pid, eid = _make_project_and_entry(client, "SFPREV1")
 
     import app.services.salesforce as sfs
     monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
-    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: {
-        "id": aid, "name": "Demo Assignment",
-        "project_id": "a0P000000000001", "project_name": "Demo Project",
-        "resource_id": "0030000000RES", "resource_name": "Max Mustermann",
-        "closed": False,
-    })
-    monkeypatch.setattr(sfs, "get_monthly_time_period", lambda _c, _date: {
-        "id": "a0T000MAY26", "name": "Mai 2026",
-        "start_date": "2026-05-01", "end_date": "2026-05-31",
-    })
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
 
     r = client.post("/sync/salesforce/preview",
                     data={"entry_ids": str(eid)},
                     follow_redirects=False)
     assert r.status_code == 200, r.text
     body = r.text
-    # The preview shows resolved project + resource, the period, and the payload
+    # Header: project, employee, accounting month
     assert "Demo Project" in body
     assert "Max Mustermann" in body
-    assert "Mai 2026" in body
-    # weekday: 2026-05-27 is a Wednesday → Wednesday_Hours
-    assert "pse__Wednesday_Hours__c" in body
-    assert "a01000000000001" in body  # assignment id in payload
-    # no DML happened — preview banner still says it's a preview
+    assert "Kontierungsmonat 05/2026" in body
+    # Payload fields of Zeiterfassung__c
+    assert "Kontierungsmonat__c" in body
+    assert "Tag__c" in body
+    assert "Arbeitszeit__c" in body
+    assert "Arbeitszeit_Minuten__c" in body
+    assert "Von_Stunde__c" in body
+    assert "Bis_Stunde__c" in body
+    assert "Taetigkeitsbeschreibung__c" in body
+    assert "Pause__c" in body
+    assert "Remote__c" in body
+    # Default Remote (no override) ist false → "Vor Ort"-Badge
+    assert "Vor Ort" in body
+    # 90 Minuten ohne Start/Ende → Von_Stunde 0, Bis_Stunde 1, Bis_Minute 30
+    assert '"Von_Stunde__c": 0' in body
+    assert '"Bis_Stunde__c": 1' in body
+    assert '"Bis_Minute__c": "30"' in body
     assert "Push noch nicht aktiv" in body
 
 
@@ -225,12 +296,40 @@ def test_preview_skips_when_assignment_missing_in_sf(client, monkeypatch):
     import app.services.salesforce as sfs
     monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
     monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: None)  # not found
-    monkeypatch.setattr(sfs, "get_monthly_time_period", lambda _c, _date: {
-        "id": "p", "name": "M", "start_date": "x", "end_date": "y"})
+    monkeypatch.setattr(sfs, "get_monthly_period",
+                        lambda _c, _aid, _date: dict(_FAKE_PERIOD))
 
     r = client.post("/sync/salesforce/preview", data={"entry_ids": str(eid)})
     assert r.status_code == 200
-    assert "nicht gefunden" in r.text
+    assert "nicht in SF gefunden" in r.text
+
+
+def test_preview_remote_flag_from_sync_metadata(client, monkeypatch):
+    """A 'remote' value in sync_metadata_override.salesforce → Remote__c=True."""
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    pid = client.post("/api/v1/projects", json={
+        "name": "SF Remote", "code": "SFRMT",
+        "default_sync_target": "salesforce",
+        "sync_metadata": {"salesforce": {"assignment_id": "a01000000000001"}},
+    }, headers=h).json()["id"]
+    eid = client.post("/api/v1/time-entries", json={
+        "project_id": pid, "entry_date": "2026-05-27", "duration_minutes": 60,
+        "description": "remote demo",
+        "sync_metadata_override": {"salesforce": {"remote": "true"}},
+    }, headers=h).json()["id"]
+
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+
+    r = client.post("/sync/salesforce/preview", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    body = r.text
+    # Remote-Badge sichtbar UND Remote__c: true im Payload
+    assert "<span class=\"text-emerald-700" in body and "Remote</span>" in body
+    assert '"Remote__c": true' in body
 
 
 def test_preview_without_credentials_shows_hint(client):

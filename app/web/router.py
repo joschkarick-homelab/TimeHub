@@ -795,7 +795,12 @@ def sync_salesforce_preview(
     db: Session = Depends(get_db),
 ):
     """Resolve the selected entries against Salesforce (read-only) and render
-    a preview of the Timecard-Header payloads that would be written. No DML."""
+    a preview of the Zeiterfassung__c-Payloads that would be written. No DML.
+
+    Modell der mindsquare-Org: eine Zeiterfassung__c pro TimeHub-Eintrag, mit
+    Lookup auf den Kontierungsmonat__c, der wiederum zur Projektbesetzung__c
+    gehört. Wir gruppieren die Vorschau nach (Projektbesetzung × Kontierungsmonat)
+    zur Übersicht; geschrieben würde aber jeder Eintrag einzeln."""
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
@@ -855,81 +860,70 @@ def sync_salesforce_preview(
     except sf_svc.SalesforceError as e:
         sf_error = str(e)
 
-    # Step 2: monthly Time-Period per unique entry month.
-    periods: dict[str, dict] = {}  # keyed by YYYY-MM
-    if sf_error is None:
-        try:
-            for e in entries:
-                ym = e.entry_date.strftime("%Y-%m")
-                if ym in periods:
-                    continue
-                p = sf_svc.get_monthly_time_period(client, e.entry_date.isoformat())
-                if p is None:
-                    item_errors.append({"date": e.entry_date.isoformat(),
-                                        "error": "Kein Monats-Kontierungsmonat in Salesforce"})
-                else:
-                    periods[ym] = p
-        except sf_svc.SalesforceError as e:
-            sf_error = str(e)
-
-    # Step 3: group selectable entries by (assignment_id, ISO-week) and
-    # build the Timecard-Header payloads.
-    groups: list[dict] = []
+    # Step 2: pro Eintrag den Kontierungsmonat suchen (PB-spezifisch!) und
+    # gruppieren nach (Projektbesetzung × Kontierungsmonat).
+    grouped: dict[tuple[str, str], dict] = {}
     skipped: list[dict] = []
+    period_cache: dict[tuple[str, str], dict | None] = {}  # (aid, YYYY-MM) → period or None
     if sf_error is None:
-        grouped: dict[tuple[str, date], dict] = {}
-        weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday",
-                    "Friday", "Saturday", "Sunday"]
         for e in entries:
             aid = per_entry_assignment[e.id]
-            if not aid or aid not in assignments:
-                skipped.append({"entry": e, "reason": "keine Projektbesetzung gepflegt"
-                                if not aid else "Projektbesetzung nicht in SF"})
+            if not aid:
+                skipped.append({"entry": e, "reason": "keine Projektbesetzung gepflegt"})
                 continue
-            ym = e.entry_date.strftime("%Y-%m")
-            if ym not in periods:
-                skipped.append({"entry": e, "reason": f"Kontierungsmonat {ym} fehlt"})
+            if aid not in assignments:
+                skipped.append({"entry": e, "reason": "Projektbesetzung nicht in SF gefunden"})
                 continue
             assignment = assignments[aid]
             if assignment.get("closed"):
-                skipped.append({"entry": e,
-                                "reason": "Projektbesetzung in SF geschlossen für Zeiterfassung"})
+                skipped.append({"entry": e, "reason": "Projektbesetzung in SF geschlossen"})
                 continue
-            # Week containing the entry date (Monday = day 0).
-            wd = e.entry_date.weekday()
-            monday = e.entry_date - timedelta(days=wd)
-            sunday = monday + timedelta(days=6)
-            key = (aid, monday)
-            grp = grouped.get(key)
-            if grp is None:
-                grp = {
-                    "assignment": assignment,
-                    "assignment_id": aid,
-                    "week_start": monday,
-                    "week_end": sunday,
-                    "period": periods[ym],
-                    "hours_by_day": {d: 0.0 for d in weekdays},
-                    "entries": [],
-                }
-                grouped[key] = grp
-            grp["entries"].append(e)
-            grp["hours_by_day"][weekdays[wd]] += round(e.duration_minutes / 60, 4)
-        for grp in grouped.values():
-            payload = {
-                "pse__Resource__c": grp["assignment"]["resource_id"],
-                "pse__Project__c": grp["assignment"]["project_id"],
-                "pse__Assignment__c": grp["assignment_id"],
-                "pse__Time_Period__c": grp["period"]["id"],
-                "pse__Start_Date__c": grp["week_start"].isoformat(),
-                "pse__End_Date__c": grp["week_end"].isoformat(),
-                "pse__Status__c": "Saved",
-            }
-            for day, hours in grp["hours_by_day"].items():
-                if hours > 0:
-                    payload[f"pse__{day}_Hours__c"] = hours
-            grp["payload"] = payload
-            grp["total_hours"] = round(sum(grp["hours_by_day"].values()), 2)
-            groups.append(grp)
+
+            cache_key = (aid, e.entry_date.strftime("%Y-%m"))
+            if cache_key not in period_cache:
+                try:
+                    period_cache[cache_key] = sf_svc.get_monthly_period(
+                        client, aid, e.entry_date.isoformat()
+                    )
+                except sf_svc.SalesforceError as err:
+                    sf_error = str(err)
+                    break
+            period = period_cache[cache_key]
+            if period is None:
+                skipped.append({
+                    "entry": e,
+                    "reason": f"Kein Kontierungsmonat {e.entry_date.strftime('%m/%Y')} "
+                              f"für diese Projektbesetzung in SF",
+                })
+                continue
+            if period.get("closed"):
+                skipped.append({
+                    "entry": e,
+                    "reason": f"Kontierungsmonat {period.get('name') or e.entry_date.strftime('%m/%Y')} "
+                              f"ist abgeschlossen",
+                })
+                continue
+
+            project = proj_lookup.get(e.project_id)
+            remote_value = ((e.sync_metadata_override or {}).get("salesforce") or {}).get("remote")
+            if not remote_value and project is not None:
+                remote_value = ((project.sync_metadata or {}).get("salesforce") or {}).get("remote")
+            payload = sf_svc.build_zeiterfassung_payload(e, period["id"], remote_value)
+
+            group = grouped.setdefault((aid, period["id"]), {
+                "assignment": assignment,
+                "period": period,
+                "entries": [],
+                "total_hours": 0.0,
+            })
+            group["entries"].append({
+                "entry": e,
+                "payload": payload,
+                "remote_value": remote_value or "",
+            })
+            group["total_hours"] = round(group["total_hours"] + e.duration_minutes / 60.0, 2)
+
+    groups = list(grouped.values())
 
     return templates.TemplateResponse(
         "sync_salesforce_preview.html",

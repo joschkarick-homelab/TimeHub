@@ -45,41 +45,43 @@ nicht einen Monatszeitraum global suchen — die Abfrage muss IMMER
 `WHERE Projektbesetzung__c = '…' AND Monatsbeginn__c <= :tag AND
 Monatsende__c >= :tag` enthalten.
 
-## Feld-Mapping TimeHub → Zeiterfassung__c
+## Feld-Mapping TimeHub → Zeiterfassung__c (umgesetzt)
 
 | TimeHub | Zeiterfassung__c | Hinweis |
 | --- | --- | --- |
 | `entry_date` | `Tag__c` (date, **Pflicht**) | direkt |
-| `description` | `Taetigkeitsbeschreibung__c` (textarea 255, **Pflicht**) | bei >255 Zeichen kappen |
+| `description` (gekappt auf 255 Zeichen) | `Taetigkeitsbeschreibung__c` (**Pflicht**) | hartes Kappen, kein Ellipsis |
 | `duration_minutes` | `Arbeitszeit_Minuten__c` (double) | direkt |
-| `duration_minutes / 60` | `Arbeitszeit__c` (double) | beide setzen |
-| `start_time` (HH) | `Von_Stunde__c` (double, **Pflicht**) | falls leer: 0 |
-| `start_time` (MM, 00/15/30/45) | `Von_Minute__c` (picklist) | falls nicht im Raster: runden |
-| `end_time` (HH) | `Bis_Stunde__c` (double, **Pflicht**) | falls leer: `Von_Stunde__c + Arbeitszeit__c` |
-| `end_time` (MM, 00/15/30/45) | `Bis_Minute__c` (picklist) | |
-| `start_time` (datetime) | `Von__c` (datetime) | optional, mit Tag kombinieren |
-| `end_time` (datetime) | `Bis__c` (datetime) | optional |
-| (nicht in TimeHub) | `Pause__c` (double, **Pflicht**) | Default 0 |
-| (nicht in TimeHub) | `Remote__c` (boolean, **Pflicht**) | Default false; ggf. später als Eintrag-Feld konfigurierbar |
-| (gesetzt vom Lookup) | `Kontierungsmonat__c` (reference, **Pflicht**) | per SOQL ermittelt |
+| `duration_minutes / 60` | `Arbeitszeit__c` (double) | beide gesetzt |
+| `start_time.hour` | `Von_Stunde__c` (**Pflicht**) | wenn `start_time` leer: 0 |
+| `start_time.minute` (gesnappt) | `Von_Minute__c` (picklist 00/15/30/45) | nächste Viertelstunde |
+| `end_time.hour` | `Bis_Stunde__c` (**Pflicht**) | wenn `end_time` leer: Dauer-in-Stunden ab Mitternacht |
+| `end_time.minute` (gesnappt) | `Bis_Minute__c` (picklist) | nächste Viertelstunde |
+| (immer 0) | `Pause__c` (**Pflicht**) | TimeHub trackt keine Pausen |
+| `sync_metadata_override.salesforce.remote` | `Remote__c` (boolean) | lenient parsing: true/1/yes/ja/x/wahr → true |
+| (gesetzt vom Lookup) | `Kontierungsmonat__c` (reference, **Pflicht**) | per SOQL auf der zugehörigen Projektbesetzung gesucht |
 
-## Offene Punkte (für die nächste Iteration)
+Das `Remote__c`-Flag wird als Eintrag-Sync-Feld `sync:salesforce.remote`
+exponiert — sowohl für die manuelle Erfassung am Eintrag als auch für
+Import-Transformationen aus der Quell-CSV.
 
-1. **Pflichtfelder Von/Bis-Stunde:** TimeHub-Einträge ohne `start_time`/`end_time`
-   müssen einen Standard bekommen — z. B. `Von_Stunde__c=0`,
-   `Bis_Stunde__c=Arbeitszeit__c`. Ist das in eurer Org so akzeptiert oder
-   müssen die Zeiten echt sein?
-2. **Remote-Flag:** TimeHub kennt das aktuell nicht. Sollen wir das pro Eintrag
-   pflegbar machen (zusätzliches Sync-Feld) oder pro Projektbesetzung als
-   Default am Projekt hinterlegen?
-3. **Status des Kontierungsmonats:** Schreiben in einen geschlossenen Monat
-   (`Abgeschlossen__c=true` oder `Status__c=abgeschlossen/kontrolliert`)
-   sollte vermutlich blockiert werden. Welche Status-Werte gelten als
-   „schreibgeschützt"?
-4. **Bestehender Kontierungsmonat nicht da:** Soll TimeHub einen anlegen
-   (würde die Status-Logik in SF triggern) oder fehlen lassen und im Preview
-   melden „Kontierungsmonat anlegen lassen"?
-5. **Tätigkeitsbeschreibung-Limit (255 Zeichen):** Bei längeren Beschreibungen
-   in TimeHub — abschneiden + Ellipsis, oder den Sync verweigern?
-6. **Konfigurierbarkeit:** Die Feld-/Objektnamen sollten in den Admin-Settings
-   pflegbar sein, damit Schema-Änderungen keinen Code-Patch brauchen.
+## Skip-Regeln in der Vorschau
+
+Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
+
+- keine `salesforce.assignment_id` am Projekt gepflegt ist,
+- die Projektbesetzung in SF nicht gefunden wird,
+- die Projektbesetzung `Geschlossen__c=true` ist,
+- kein Kontierungsmonat für (Projektbesetzung × Tagesdatum) existiert,
+- der Kontierungsmonat `Abgeschlossen__c=true` ist.
+
+## Offene Punkte (für später)
+
+1. **Status des Kontierungsmonats:** Aktuell blockt nur `Abgeschlossen__c`.
+   Soll `Status__c in ('abgeschlossen','kontrolliert')` ebenfalls hart
+   blocken oder nur warnen?
+2. **Bestehender Kontierungsmonat nicht da:** Aktuell „skipped" mit Hinweis.
+   Soll TimeHub später einen anlegen können?
+3. **Konfigurierbarkeit:** Feld-/Objektnamen sind in der mindsquare-Org
+   hartcodiert. Wenn ihr in einer zweiten Org gegen ein anderes Schema
+   syncen wollt, wird das ein Admin-Setting.

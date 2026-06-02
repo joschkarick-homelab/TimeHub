@@ -202,25 +202,36 @@ def client_from_settings(db: Session) -> SalesforceClient | None:
 
 
 def get_assignment(client: SalesforceClient, assignment_id: str) -> dict | None:
+    """Look up a Projektbesetzung__c (mindsquare-Org Custom Object).
+
+    Liefert Projekt- und Mitarbeiterinfos zurück. Resource ist entweder
+    Mitarbeiter__c (interner User) oder Externe_Projektbesetzung__c (Contact)."""
     aid = _ensure_id(assignment_id)
     soql = (
-        "SELECT Id, Name, pse__Project__c, pse__Project__r.Name, "
-        "pse__Resource__c, pse__Resource__r.Name, pse__Closed_for_Time_Entry__c "
-        f"FROM pse__Assignment__c WHERE Id = '{aid}' LIMIT 1"
+        "SELECT Id, Name, Projekt__c, Projektbezeichnung__c, "
+        "Mitarbeiter__c, MitarbeiterName__c, Mitarbeiternachname__c, "
+        "Externe_Projektbesetzung__c, Externe_Projektbesetzung_Formel__c, "
+        "Geschlossen__c, Aktiv__c "
+        f"FROM Projektbesetzung__c WHERE Id = '{aid}' LIMIT 1"
     )
     res = client.query(soql)
     records = res.get("records") or []
     if not records:
         return None
     r = records[0]
+    name_parts = [r.get("MitarbeiterName__c"), r.get("Mitarbeiternachname__c")]
+    internal_name = " ".join(p for p in name_parts if p).strip()
+    resource_name = internal_name or (r.get("Externe_Projektbesetzung_Formel__c") or "")
     return {
         "id": r["Id"],
-        "name": r.get("Name"),
-        "project_id": r.get("pse__Project__c"),
-        "project_name": (r.get("pse__Project__r") or {}).get("Name"),
-        "resource_id": r.get("pse__Resource__c"),
-        "resource_name": (r.get("pse__Resource__r") or {}).get("Name"),
-        "closed": bool(r.get("pse__Closed_for_Time_Entry__c")),
+        "name": r.get("Name"),  # PB-Nummer
+        "project_id": r.get("Projekt__c"),
+        "project_name": r.get("Projektbezeichnung__c") or "",
+        "resource_id": r.get("Mitarbeiter__c") or r.get("Externe_Projektbesetzung__c"),
+        "resource_name": resource_name,
+        "is_external": bool(r.get("Externe_Projektbesetzung__c") and not r.get("Mitarbeiter__c")),
+        "closed": bool(r.get("Geschlossen__c")),
+        "active": r.get("Aktiv__c"),
     }
 
 
@@ -243,16 +254,21 @@ def describe_sobject(client: SalesforceClient, object_name: str) -> dict:
     return json.loads(body)
 
 
-def get_monthly_time_period(client: SalesforceClient, date_iso: str) -> dict | None:
-    # SOQL date literals: YYYY-MM-DD without quotes. We trust ISO format from
-    # date.isoformat() (validated upstream).
+def get_monthly_period(client: SalesforceClient, assignment_id: str,
+                       date_iso: str) -> dict | None:
+    """Finde den Kontierungsmonat__c, der für DIESE Projektbesetzung das
+    Tagesdatum enthält. In der mindsquare-Org ist der Kontierungsmonat pro
+    Projektbesetzung referenziert — globale Monatszeiträume gibt es nicht."""
+    aid = _ensure_id(assignment_id)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_iso):
-        raise SalesforceError(f"Ungültiges Datum für Time-Period-Abfrage: {date_iso!r}")
+        raise SalesforceError(f"Ungültiges Datum für Kontierungsmonat-Abfrage: {date_iso!r}")
     soql = (
-        "SELECT Id, Name, pse__Start_Date__c, pse__End_Date__c "
-        "FROM pse__Time_Period__c "
-        f"WHERE pse__Type__c = 'Month' AND pse__Start_Date__c <= {date_iso} "
-        f"AND pse__End_Date__c >= {date_iso} LIMIT 1"
+        "SELECT Id, Name, Monatsbeginn__c, Monatsende__c, Status__c, Abgeschlossen__c "
+        "FROM Kontierungsmonat__c "
+        f"WHERE Projektbesetzung__c = '{aid}' "
+        f"AND Monatsbeginn__c <= {date_iso} "
+        f"AND Monatsende__c >= {date_iso} "
+        "LIMIT 1"
     )
     res = client.query(soql)
     records = res.get("records") or []
@@ -262,8 +278,59 @@ def get_monthly_time_period(client: SalesforceClient, date_iso: str) -> dict | N
     return {
         "id": r["Id"],
         "name": r.get("Name"),
-        "start_date": r["pse__Start_Date__c"],
-        "end_date": r["pse__End_Date__c"],
+        "start_date": r["Monatsbeginn__c"],
+        "end_date": r["Monatsende__c"],
+        "status": r.get("Status__c"),
+        "closed": bool(r.get("Abgeschlossen__c")),
+    }
+
+
+def _coerce_bool(value) -> bool:
+    """Liberal boolean conversion for the Remote flag from import transforms.
+    Accepts true/1/yes/ja/x/wahr (case-insensitive); everything else is False."""
+    if value is None or value is False or value == "":
+        return False
+    if value is True:
+        return True
+    s = str(value).strip().lower()
+    return s in {"true", "1", "yes", "y", "ja", "j", "x", "wahr"}
+
+
+def _snap_quarter(hour: int, minute: int) -> tuple[int, str]:
+    """Snap (h, m) to the nearest 15-minute slot; return (hour:int, minute:str)
+    where minute is the picklist value '00'/'15'/'30'/'45'."""
+    total = max(0, hour * 60 + minute)
+    snapped = round(total / 15) * 15
+    snapped = min(snapped, 23 * 60 + 45)
+    return snapped // 60, f"{snapped % 60:02d}"
+
+
+def build_zeiterfassung_payload(entry, period_id: str,
+                                remote_value=None) -> dict:
+    """Construct the Zeiterfassung__c JSON for one TimeHub entry.
+
+    Default-Strategie für Einträge ohne Start/Ende: Von_Stunde__c=0,
+    Bis_Stunde__c = Dauer in Stunden. Pause ist immer 0 (TimeHub trackt
+    keine Pausen). Beschreibung wird auf 255 Zeichen begrenzt."""
+    if entry.start_time and entry.end_time:
+        von_h, von_m = _snap_quarter(entry.start_time.hour, entry.start_time.minute)
+        bis_h, bis_m = _snap_quarter(entry.end_time.hour, entry.end_time.minute)
+    else:
+        von_h, von_m = 0, "00"
+        bis_h, bis_m = _snap_quarter(0, entry.duration_minutes)
+
+    return {
+        "Kontierungsmonat__c": period_id,
+        "Tag__c": entry.entry_date.isoformat(),
+        "Arbeitszeit__c": round(entry.duration_minutes / 60.0, 4),
+        "Arbeitszeit_Minuten__c": entry.duration_minutes,
+        "Von_Stunde__c": von_h,
+        "Von_Minute__c": von_m,
+        "Bis_Stunde__c": bis_h,
+        "Bis_Minute__c": bis_m,
+        "Pause__c": 0,
+        "Taetigkeitsbeschreibung__c": (entry.description or "")[:255],
+        "Remote__c": _coerce_bool(remote_value),
     }
 
 
