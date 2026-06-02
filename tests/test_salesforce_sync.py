@@ -56,6 +56,36 @@ def test_parse_login_response_fault():
         _parse_login_response(_LOGIN_FAULT)
 
 
+def test_describe_sobject_hits_right_endpoint_and_parses(monkeypatch):
+    """describe_sobject uses /sobjects/<Name>/describe and returns the parsed JSON."""
+    from app.services import salesforce as sfs
+    captured = {}
+
+    def fake_http(method, url, **kw):
+        captured["method"] = method
+        captured["url"] = url
+        return 200, b'{"name":"Projektbesetzung__c","label":"Projektbesetzung","custom":true,"fields":[{"name":"Id","label":"ID","type":"id","nillable":false}]}'
+
+    client = sfs.SalesforceClient("u", "p", "")
+    client.session_id = "FAKE"
+    client.instance_url = "https://x.salesforce.com"
+    monkeypatch.setattr(sfs, "_http", fake_http)
+    meta = sfs.describe_sobject(client, "Projektbesetzung__c")
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/sobjects/Projektbesetzung__c/describe")
+    assert meta["name"] == "Projektbesetzung__c"
+    assert meta["fields"][0]["name"] == "Id"
+
+
+def test_describe_sobject_rejects_garbage_names():
+    import pytest
+    from app.services.salesforce import SalesforceClient, SalesforceError, describe_sobject
+    client = SalesforceClient("u", "p", "")
+    client.session_id = "x"; client.instance_url = "https://x"
+    with pytest.raises(SalesforceError):
+        describe_sobject(client, "Bad Name; DROP")
+
+
 def test_ensure_id_rejects_bad_input():
     import pytest
     from app.services.salesforce import _ensure_id, SalesforceError

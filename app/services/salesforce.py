@@ -35,6 +35,8 @@ _DEFAULT_LOGIN_URL = "https://login.salesforce.com"
 _DEFAULT_API_VERSION = "60.0"
 # Salesforce IDs are 15 or 18 case-sensitive alnum chars.
 _SF_ID_RE = re.compile(r"^[a-zA-Z0-9]{15,18}$")
+# sObject API names: letters/digits/underscore, ending with __c for custom.
+_SF_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
 
 
 class SalesforceError(RuntimeError):
@@ -92,6 +94,12 @@ def _ensure_id(value: str) -> str:
     values that pass the strict SF-ID shape."""
     if not _SF_ID_RE.fullmatch(value or ""):
         raise SalesforceError(f"Ungültige Salesforce-Id: {value!r}")
+    return value
+
+
+def _ensure_sobject_name(value: str) -> str:
+    if not _SF_NAME_RE.fullmatch(value or ""):
+        raise SalesforceError(f"Ungültiger sObject-Name: {value!r}")
     return value
 
 
@@ -214,6 +222,25 @@ def get_assignment(client: SalesforceClient, assignment_id: str) -> dict | None:
         "resource_name": (r.get("pse__Resource__r") or {}).get("Name"),
         "closed": bool(r.get("pse__Closed_for_Time_Entry__c")),
     }
+
+
+def describe_sobject(client: SalesforceClient, object_name: str) -> dict:
+    """Fetch the SF describe metadata for an sObject. Available to any API user
+    that can read the object — no admin/2FA required."""
+    name = _ensure_sobject_name(object_name)
+    client._ensure_login()
+    url = (f"{client.instance_url}/services/data/v{client.api_version}/"
+           f"sobjects/{name}/describe")
+    status, body = _http("GET", url, headers={
+        "Authorization": f"Bearer {client.session_id}",
+        "Accept": "application/json",
+    })
+    if status >= 400:
+        raise SalesforceError(
+            f"Describe '{name}' fehlgeschlagen (HTTP {status}): "
+            f"{body.decode('utf-8', errors='replace')[:300]}"
+        )
+    return json.loads(body)
 
 
 def get_monthly_time_period(client: SalesforceClient, date_iso: str) -> dict | None:

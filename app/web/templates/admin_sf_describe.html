@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">Salesforce-Schema-Inspektor</h1>
+  <a href="/users" class="text-sm text-slate-600 hover:underline">← zur Nutzerverwaltung</a>
+</div>
+
+<p class="text-sm text-slate-600 mb-4">
+  Nachfolgend die wichtigsten Metadaten pro Objekt — kopier den jeweiligen
+  Block (Tabelle + JSON unten) und sende ihn mir, damit ich die Sync-
+  Vorschau auf eure Objekte und Feldnamen anpassen kann.
+</p>
+
+{% for r in results %}
+  <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+    {% if r.error %}
+      <h2 class="font-semibold mb-2">{{ r.name }}</h2>
+      <div class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+        {{ r.error }}
+      </div>
+    {% else %}
+      <div class="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+        <h2 class="font-semibold">
+          {{ r.name }}
+          {% if r.label %}<span class="text-slate-500 font-normal text-sm">— {{ r.label }}</span>{% endif %}
+        </h2>
+        <span class="text-[11px] text-slate-500">
+          {{ r.fields|length }} Felder{% if r.custom %} · custom{% endif %}
+        </span>
+      </div>
+
+      <div class="overflow-x-auto text-xs">
+        <table class="w-full">
+          <thead class="text-slate-500 text-left">
+            <tr>
+              <th class="py-1 pr-3">API-Name</th>
+              <th class="py-1 pr-3">Label</th>
+              <th class="py-1 pr-3">Typ</th>
+              <th class="py-1 pr-3">Referenz auf</th>
+              <th class="py-1 pr-3">Pflicht</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in r.fields %}
+              <tr class="border-t border-slate-100 align-top">
+                <td class="py-1 pr-3 font-mono">{{ f.name }}</td>
+                <td class="py-1 pr-3 text-slate-700">{{ f.label }}</td>
+                <td class="py-1 pr-3 text-slate-600">
+                  {{ f.type }}{% if f.length and f.type == 'string' %} ({{ f.length }}){% endif %}
+                  {% if f.picklistValues %}
+                    <div class="text-[10px] text-slate-500">
+                      Werte: {% for p in f.picklistValues %}{{ p.value }}{% if not loop.last %}, {% endif %}{% endfor %}{% if r.fields|selectattr('name','equalto',f.name)|first %}{% endif %}
+                    </div>
+                  {% endif %}
+                </td>
+                <td class="py-1 pr-3 font-mono text-slate-600">
+                  {% if f.referenceTo %}{{ f.referenceTo|join(', ') }}{% endif %}
+                </td>
+                <td class="py-1 pr-3 text-slate-600">{% if not f.nillable %}ja{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <details class="mt-3">
+        <summary class="text-xs text-slate-500 cursor-pointer">Rohe Feldliste (JSON, zum Kopieren)</summary>
+        <pre class="text-[10px] bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto mt-1">{{ r.fields | tojson(indent=2) }}</pre>
+      </details>
+    {% endif %}
+  </section>
+{% endfor %}
+
+<a href="/users" class="text-sm text-indigo-600 hover:underline">← zurück</a>
+{% endblock %}

@@ -946,6 +946,72 @@ def sync_salesforce_preview(
     )
 
 
+@router.post("/admin/salesforce/describe", response_class=HTMLResponse)
+def admin_salesforce_describe(
+    request: Request,
+    object_names: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Schema-Inspektor: ruft pro angegebenem sObject die Describe-Metadaten
+    ab und rendert die wesentlichen Felder. Hilft beim Anpassen an Custom
+    Objects (keine Admin-Anmeldung in Salesforce nötig)."""
+    user = _maybe_user(request, db)
+    redir = _require_admin_or_redirect(user)
+    if redir is not None:
+        return redir
+    client = sf_svc.client_from_settings(db)
+    if client is None:
+        return RedirectResponse(
+            url="/users?error=Bitte+zuerst+Salesforce-Zugangsdaten+hinterlegen",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    raw_names = [n.strip() for n in object_names.replace(",", "\n").splitlines()]
+    names = [n for n in raw_names if n]
+    if not names:
+        return RedirectResponse(
+            url="/users?error=Mindestens+einen+sObject-Namen+eintragen",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    results: list[dict] = []
+    for n in names:
+        try:
+            meta = sf_svc.describe_sobject(client, n)
+        except sf_svc.SalesforceError as e:
+            results.append({"name": n, "error": str(e)})
+            continue
+        fields = []
+        for f in meta.get("fields", []):
+            picklist = [
+                {"value": p.get("value"), "label": p.get("label")}
+                for p in (f.get("picklistValues") or [])
+                if p.get("active")
+            ][:25]
+            fields.append({
+                "name": f.get("name"),
+                "label": f.get("label"),
+                "type": f.get("type"),
+                "length": f.get("length"),
+                "nillable": f.get("nillable"),
+                "custom": f.get("custom"),
+                "referenceTo": f.get("referenceTo") or [],
+                "relationshipName": f.get("relationshipName"),
+                "picklistValues": picklist,
+            })
+        results.append({
+            "name": meta.get("name") or n,
+            "label": meta.get("label"),
+            "custom": meta.get("custom"),
+            "fields": fields,
+        })
+
+    return templates.TemplateResponse(
+        "admin_sf_describe.html",
+        _ctx(request, user, results=results),
+    )
+
+
 @router.post("/settings/salesforce/test", response_class=HTMLResponse)
 def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
     """Try a SOAP login against the stored credentials and report the result."""

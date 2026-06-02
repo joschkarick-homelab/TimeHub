@@ -84,11 +84,29 @@
       </button>
     </div>
   </form>
-  <form method="post" action="/settings/salesforce/test" class="mt-2">
+  <form method="post" action="/settings/salesforce/test" class="mt-2 inline-block">
     <button class="h-8 px-3 border border-slate-300 rounded text-xs hover:bg-slate-50">
       Verbindung testen
     </button>
   </form>
+
+  <details class="mt-4">
+    <summary class="text-xs text-slate-500 cursor-pointer">Schema-Inspektor (für Custom Objects)</summary>
+    <p class="text-xs text-slate-500 my-2">
+      Ruft die Salesforce-Metadaten eines oder mehrerer sObjects ab (eines pro
+      Zeile oder kommagetrennt) — z. B. <code>Projektbesetzung__c</code>,
+      <code>Kontierungsmonat__c</code>, <code>Zeiterfassung__c</code>. Kein
+      Admin-Login in Salesforce nötig, der API-User reicht.
+    </p>
+    <form method="post" action="/admin/salesforce/describe" class="flex flex-wrap gap-2">
+      <textarea name="object_names" rows="2"
+                placeholder="Projektbesetzung__c&#10;Kontierungsmonat__c&#10;Zeiterfassung__c"
+                class="flex-1 min-w-[260px] border border-slate-300 rounded px-2 py-1.5 text-xs font-mono"></textarea>
+      <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium self-start">
+        Schema abrufen
+      </button>
+    </form>
+  </details>
 </section>
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
