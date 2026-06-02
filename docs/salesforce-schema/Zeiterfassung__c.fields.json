@@ -1,0 +1,40 @@
+[
+  {"custom": false, "label": "Datensatz-ID", "length": 18, "name": "Id", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "id"},
+  {"custom": false, "label": "Gelöscht", "length": 0, "name": "IsDeleted", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "boolean"},
+  {"custom": false, "label": "ZeiterfassungID", "length": 80, "name": "Name", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "string"},
+  {"custom": false, "label": "Erstelldatum", "length": 0, "name": "CreatedDate", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": false, "label": "Ersteller-ID", "length": 18, "name": "CreatedById", "nillable": false, "picklistValues": [], "referenceTo": ["User"], "relationshipName": "CreatedBy", "type": "reference"},
+  {"custom": false, "label": "Zuletzt geändert am", "length": 0, "name": "LastModifiedDate", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": false, "label": "ID für \"Zuletzt geändert von\"", "length": 18, "name": "LastModifiedById", "nillable": false, "picklistValues": [], "referenceTo": ["User"], "relationshipName": "LastModifiedBy", "type": "reference"},
+  {"custom": false, "label": "System Modstamp", "length": 0, "name": "SystemModstamp", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": false, "label": "Datum der letzten Ansicht", "length": 0, "name": "LastViewedDate", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": false, "label": "Datum der letzten Referenzierung", "length": 0, "name": "LastReferencedDate", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": true, "label": "Kontierungsmonat", "length": 18, "name": "Kontierungsmonat__c", "nillable": false, "picklistValues": [], "referenceTo": ["Kontierungsmonat__c"], "relationshipName": "Kontierungsmonat__r", "type": "reference"},
+  {"custom": true, "label": "Arbeitszeit", "length": 0, "name": "Arbeitszeit__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "double"},
+  {"custom": true, "label": "Bis (Minute)", "length": 255, "name": "Bis_Minute__c", "nillable": true, "picklistValues": [
+    {"label": "00", "value": "00"},
+    {"label": "15", "value": "15"},
+    {"label": "30", "value": "30"},
+    {"label": "45", "value": "45"}
+  ], "referenceTo": [], "relationshipName": null, "type": "picklist"},
+  {"custom": true, "label": "Bis (Stunde)", "length": 0, "name": "Bis_Stunde__c", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "double"},
+  {"custom": true, "label": "Bis", "length": 0, "name": "Bis__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": true, "label": "Consultant", "length": 1300, "name": "Consultant__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "string"},
+  {"custom": true, "label": "Pause", "length": 0, "name": "Pause__c", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "double"},
+  {"custom": true, "label": "Projekt", "length": 1300, "name": "Projekt__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "string"},
+  {"custom": true, "label": "Projektbezeichnung", "length": 1300, "name": "Projektbezeichnung__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "string"},
+  {"custom": true, "label": "Remote", "length": 0, "name": "Remote__c", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "boolean"},
+  {"custom": true, "label": "Tätigkeitsbeschreibung", "length": 255, "name": "Taetigkeitsbeschreibung__c", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "textarea"},
+  {"custom": true, "label": "Tag", "length": 0, "name": "Tag__c", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "date"},
+  {"custom": true, "label": "Von (Minute)", "length": 255, "name": "Von_Minute__c", "nillable": true, "picklistValues": [
+    {"label": "00", "value": "00"},
+    {"label": "15", "value": "15"},
+    {"label": "30", "value": "30"},
+    {"label": "45", "value": "45"}
+  ], "referenceTo": [], "relationshipName": null, "type": "picklist"},
+  {"custom": true, "label": "Von (Stunde)", "length": 0, "name": "Von_Stunde__c", "nillable": false, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "double"},
+  {"custom": true, "label": "Von", "length": 0, "name": "Von__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "datetime"},
+  {"custom": true, "label": "Wochentag", "length": 1300, "name": "Wochentag__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "string"},
+  {"custom": true, "label": "Arbeitszeit Minuten", "length": 0, "name": "Arbeitszeit_Minuten__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "double"},
+  {"custom": true, "label": "FB Kernteammitglied", "length": 1300, "name": "FB_Kernteammitglied__c", "nillable": true, "picklistValues": [], "referenceTo": [], "relationshipName": null, "type": "string"}
+]
