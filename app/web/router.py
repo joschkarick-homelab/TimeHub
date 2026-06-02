@@ -722,6 +722,7 @@ def settings_salesforce(
     sf_username: str = Form(""),
     sf_password: str = Form(""),
     sf_security_token: str = Form(""),
+    sf_clear_token: bool = Form(False),
     sf_login_url: str = Form(""),
     sf_api_version: str = Form(""),
     db: Session = Depends(get_db),
@@ -735,6 +736,7 @@ def settings_salesforce(
         username=sf_username,
         password=sf_password,
         security_token=sf_security_token,
+        clear_security_token=sf_clear_token,
         login_url=sf_login_url,
         api_version=sf_api_version,
     )

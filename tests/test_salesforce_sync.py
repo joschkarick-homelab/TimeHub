@@ -83,6 +83,29 @@ def test_credentials_round_trip(client):
         sfs.save_credentials(db, password="", security_token="")
         c2 = sfs.get_credentials(db)
         assert c2["password"] == "pw1" and c2["security_token"] == "tok1"
+        # explicit clear drops the stored token (for users that don't need one)
+        sfs.save_credentials(db, clear_security_token=True)
+        assert sfs.get_credentials(db)["security_token"] == ""
+
+
+def test_settings_route_can_clear_token(client):
+    _login_session(client)
+    # Seed a token first
+    client.post("/settings/salesforce", data={
+        "sf_username": "u", "sf_password": "p", "sf_security_token": "STALE",
+        "sf_login_url": "https://x", "sf_api_version": "60.0",
+    }, follow_redirects=False)
+    # Now drop it via the checkbox without touching the password
+    client.post("/settings/salesforce", data={
+        "sf_username": "u", "sf_password": "", "sf_security_token": "",
+        "sf_clear_token": "true",
+    }, follow_redirects=False)
+    from app.db import SessionLocal
+    from app.services import salesforce as sfs
+    with SessionLocal() as db:
+        c = sfs.get_credentials(db)
+        assert c["password"] == "p"  # preserved
+        assert c["security_token"] == ""  # cleared
 
 
 def test_settings_salesforce_route_persists(client):

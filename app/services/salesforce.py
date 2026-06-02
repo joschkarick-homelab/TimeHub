@@ -159,15 +159,20 @@ def credentials_configured(db: Session) -> bool:
 
 def save_credentials(db: Session, *, username: str | None = None,
                      password: str | None = None, security_token: str | None = None,
-                     login_url: str | None = None, api_version: str | None = None) -> None:
+                     login_url: str | None = None, api_version: str | None = None,
+                     clear_security_token: bool = False) -> None:
     """Persist credentials. Password/token only overwrite when a non-empty value
     is provided — empty fields keep the existing secret (so the admin form can
-    safely render empty password inputs)."""
+    safely render empty password inputs). Pass clear_security_token=True to
+    explicitly drop a previously stored token (e.g. when switching to an API
+    user whose org doesn't require one)."""
     if username is not None:
         app_settings_svc.set_setting(db, SF_USERNAME_KEY, username.strip())
     if password is not None and password.strip():
         app_settings_svc.set_setting(db, SF_PASSWORD_KEY, password)
-    if security_token is not None and security_token.strip():
+    if clear_security_token:
+        app_settings_svc.set_setting(db, SF_TOKEN_KEY, "")
+    elif security_token is not None and security_token.strip():
         app_settings_svc.set_setting(db, SF_TOKEN_KEY, security_token.strip())
     if login_url is not None:
         app_settings_svc.set_setting(db, SF_LOGIN_URL_KEY,
