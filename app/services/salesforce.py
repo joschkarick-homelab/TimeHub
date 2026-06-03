@@ -339,7 +339,12 @@ def build_zeiterfassung_payload(entry, period_id: str,
 
     Default-Strategie für Einträge ohne Start/Ende: Von_Stunde__c=0,
     Bis_Stunde__c = Dauer in Stunden. Pause ist immer 0 (TimeHub trackt
-    keine Pausen). Beschreibung wird auf 255 Zeichen begrenzt."""
+    keine Pausen). Beschreibung wird auf 255 Zeichen begrenzt.
+
+    Hinweis: `Arbeitszeit__c` und `Arbeitszeit_Minuten__c` sind in der
+    mindsquare-Org berechnete Felder (Formel aus Von/Bis und Pause) und
+    werden bewusst NICHT geschrieben — sonst kommt
+    INVALID_FIELD_FOR_INSERT_UPDATE."""
     if entry.start_time and entry.end_time:
         von_h, von_m = _snap_quarter(entry.start_time.hour, entry.start_time.minute)
         bis_h, bis_m = _snap_quarter(entry.end_time.hour, entry.end_time.minute)
@@ -350,8 +355,6 @@ def build_zeiterfassung_payload(entry, period_id: str,
     return {
         "Kontierungsmonat__c": period_id,
         "Tag__c": entry.entry_date.isoformat(),
-        "Arbeitszeit__c": round(entry.duration_minutes / 60.0, 4),
-        "Arbeitszeit_Minuten__c": entry.duration_minutes,
         "Von_Stunde__c": von_h,
         "Von_Minute__c": von_m,
         "Bis_Stunde__c": bis_h,

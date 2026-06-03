@@ -106,8 +106,10 @@ def test_build_zeiterfassung_payload_without_start_end():
     payload = build_zeiterfassung_payload(entry, "a0Q000MAY26", remote_value="true")
     assert payload["Kontierungsmonat__c"] == "a0Q000MAY26"
     assert payload["Tag__c"] == "2026-05-27"
-    assert payload["Arbeitszeit__c"] == 1.5
-    assert payload["Arbeitszeit_Minuten__c"] == 90
+    # Arbeitszeit__c / Arbeitszeit_Minuten__c sind in der mindsquare-Org
+    # berechnete Felder und werden NICHT geschrieben.
+    assert "Arbeitszeit__c" not in payload
+    assert "Arbeitszeit_Minuten__c" not in payload
     assert payload["Von_Stunde__c"] == 0 and payload["Von_Minute__c"] == "00"
     assert payload["Bis_Stunde__c"] == 1 and payload["Bis_Minute__c"] == "30"
     assert payload["Pause__c"] == 0
@@ -340,11 +342,12 @@ def test_preview_renders_zeiterfassung_payload(client, monkeypatch):
     assert "Demo Project" in body
     assert "Max Mustermann" in body
     assert "Kontierungsmonat 05/2026" in body
-    # Payload fields of Zeiterfassung__c
+    # Payload fields of Zeiterfassung__c — Arbeitszeit-Felder sind
+    # berechnet und tauchen im Payload nicht auf.
     assert "Kontierungsmonat__c" in body
     assert "Tag__c" in body
-    assert "Arbeitszeit__c" in body
-    assert "Arbeitszeit_Minuten__c" in body
+    assert "Arbeitszeit__c" not in body
+    assert "Arbeitszeit_Minuten__c" not in body
     assert "Von_Stunde__c" in body
     assert "Bis_Stunde__c" in body
     assert "Taetigkeitsbeschreibung__c" in body

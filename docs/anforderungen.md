@@ -542,3 +542,10 @@ Nicht in diesem Stand:
   weil sie im horizontal-scrollbaren Table am rechten Rand „abgeschnitten"
   wirken. Idee: für kleine Viewports Card-Layout statt Tabelle, mit
   inline-Aktionen pro Karte.
+- **FR-FUTURE-5** SF-Sync-Vorschau als kompakte Tabelle (alternativ zur
+  aktuellen Card-Ansicht): Spalten Projekt (Titel + Nummer), Account
+  (Kundenname), Projektbesetzung (Nummer), Kontierungsmonat, Tag,
+  Erfasste Stunden, Beschreibung, Remote/On-Site. Gerne gruppiert nach
+  den ersten vier Spalten (Projekt × Account × PB × Kontierungsmonat).
+  Voraussetzung: Account-Name aus SF holen (per Projektbesetzung →
+  Projekt → Account-Lookup), aktuell wird nur der Projektname mitgeladen.
