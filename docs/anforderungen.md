@@ -279,15 +279,16 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
 
 - **FR-MAP-1** Standard-Ziele: `entry_date`, `start_time`, `end_time`,
   `duration` (Auto, bevorzugt), `duration_minutes` (Minuten erzwingen),
-  `duration_hours` (Stunden erzwingen), `project_code`, **`customer`**,
+  `duration_hours` (Stunden erzwingen), `duration_human` (Jira-Text
+  „1w 2d 3h 4m" erzwingen; 1w = 5d, 1d = 8h), `project_code`, **`customer`**,
   `description`, `tags`, `sync_target`, `external_ref`.
 - **FR-MAP-2** Sync-Feld-Ziele: alle Eintrag-Ebenen-Sync-Felder als Token
   `sync:<ziel>.<key>` (z. B. `sync:jira.issue_key`, `sync:bcs.subject`,
   `sync:bcs.task`).
 - **FR-MAP-3** Lesbare Labels in der UI:
-  - Datum / Startzeit / Endzeit / Dauer (automatisch | in Minuten | in Stunden)
-    / Projekt (Code/Name) / Kunde / Beschreibung / Tags / Sync-Ziel (pro Zeile)
-    / Externe Referenz
+  - Datum / Startzeit / Endzeit / Dauer (automatisch | in Minuten | in Stunden
+    | als Text „1w 2d 3h 4m") / Projekt (Code/Name) / Kunde / Beschreibung /
+    Tags / Sync-Ziel (pro Zeile) / Externe Referenz
   - Sync: `<ziel>: <Feldlabel>`.
 - **FR-MAP-4** `column_map`-Form ziel-orientiert: `{Zielfeld: Quellspalte}`.
   Je Zielfeld genau eine Quelle; **eine Quelle darf mehrere Ziele speisen**.
@@ -296,9 +297,9 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
 - **FR-MAP-5** Ziel-orientierter Editor: linke Spalte = Zielfelder (statisch,
   eine Zeile je Feld), rechte = Quell-Dropdown („— keine —" + Spalten der
   Beispieldaten). Reihenfolge: Datum, Startzeit, Endzeit, **Dauer** (eine
-  Zeile mit Einheit-Auswahl auto/Min/Std → duration/duration_minutes/
-  duration_hours), Projekt, Kunde, Beschreibung, Tags, Sync-Ziel, Externe
-  Referenz. Danach Abschnitt **„Sync-Felder (zielabhängig)"**.
+  Zeile mit Einheit-Auswahl auto/Min/Std/Text → duration/duration_minutes/
+  duration_hours/duration_human), Projekt, Kunde, Beschreibung, Tags, Sync-Ziel,
+  Externe Referenz. Danach Abschnitt **„Sync-Felder (zielabhängig)"**.
 
 ---
 

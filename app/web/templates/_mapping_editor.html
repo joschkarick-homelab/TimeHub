@@ -10,8 +10,8 @@
   </select>
 {% endmacro %}
 
-{% set dur_src = mapping.get('duration') or mapping.get('duration_minutes') or mapping.get('duration_hours') or '' %}
-{% set dur_unit = 'duration' if mapping.get('duration') else ('duration_minutes' if mapping.get('duration_minutes') else ('duration_hours' if mapping.get('duration_hours') else 'duration')) %}
+{% set dur_src = mapping.get('duration') or mapping.get('duration_minutes') or mapping.get('duration_hours') or mapping.get('duration_human') or '' %}
+{% set dur_unit = 'duration' if mapping.get('duration') else ('duration_minutes' if mapping.get('duration_minutes') else ('duration_hours' if mapping.get('duration_hours') else ('duration_human' if mapping.get('duration_human') else 'duration'))) %}
 
 <div>
   <div class="text-sm font-medium mb-1">Spalten-Zuordnung</div>
@@ -39,6 +39,7 @@
               <option value="duration" {% if dur_unit == 'duration' %}selected{% endif %}>auto</option>
               <option value="duration_minutes" {% if dur_unit == 'duration_minutes' %}selected{% endif %}>Min</option>
               <option value="duration_hours" {% if dur_unit == 'duration_hours' %}selected{% endif %}>Std</option>
+              <option value="duration_human" {% if dur_unit == 'duration_human' %}selected{% endif %}>Text</option>
             </select>
           </div>
         </div>

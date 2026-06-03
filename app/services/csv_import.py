@@ -14,6 +14,7 @@ from app.services.transforms import (
     auto_duration_to_minutes,
     clock_duration_to_minutes,
     eval_target_rules,
+    humanized_duration_to_minutes,
 )
 
 
@@ -34,7 +35,7 @@ def _parse_duration_field(value: str, *, as_hours: bool) -> int | None:
 
 _BASE_TARGETS = {
     "entry_date", "start_time", "end_time",
-    "duration", "duration_minutes", "duration_hours",
+    "duration", "duration_minutes", "duration_hours", "duration_human",
     "project_code", "customer", "description", "tags",
     "sync_target", "external_ref",
 }
@@ -171,6 +172,8 @@ def import_csv(
             duration = None
             if mapped.get("duration"):
                 duration = auto_duration_to_minutes(mapped["duration"])
+            elif mapped.get("duration_human"):
+                duration = humanized_duration_to_minutes(mapped["duration_human"])
             elif mapped.get("duration_minutes"):
                 duration = _parse_duration_field(mapped["duration_minutes"], as_hours=False)
             elif mapped.get("duration_hours"):

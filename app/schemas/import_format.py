@@ -11,6 +11,7 @@ _BASE_TARGETS = {
     "duration",
     "duration_minutes",
     "duration_hours",
+    "duration_human",
     "project_code",
     "customer",
     "description",

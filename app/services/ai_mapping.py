@@ -55,9 +55,10 @@ Target fields (use these names ONLY as mapping/transform targets, skip columns t
   entry_date          required — the date of the work (calendar day)
   start_time          optional — wall-clock start, HH:MM
   end_time            optional — wall-clock end, HH:MM
-  duration            PREFERRED — a duration in ANY format ("90", "1,5", "01:30:00"); unit auto-detected
+  duration            PREFERRED — a duration in ANY format ("90", "1,5", "01:30:00", "1w 2d 3h 4m"); unit auto-detected
   duration_minutes    only to force the value to be read as minutes
   duration_hours      only to force the value to be read as decimal hours
+  duration_human      only to force a Jira-style "1w 2d 3h 4m" text duration (1w=5d, 1d=8h)
   project_code        the project's stable code/key
   customer            customer / client name (used when a project is auto-created on import)
   description         free-text description / task / ticket title
@@ -85,8 +86,10 @@ Example — pull "ABC-123" out of a Description like "Ticket ABC-123: did things
 IMPORTANT about durations: a value like "01:30:00" (or "01:30") is a clock-style
 duration meaning HH:MM:SS / HH:MM — i.e. 1 hour 30 minutes 0 seconds = 90 minutes,
 NOT 1 minute. Never read the first field as minutes. PREFER mapping the column to the
-single `duration` target (the unit is auto-detected for "90", "1,5" and "01:30:00").
-Only use duration_minutes/duration_hours when you must force a specific unit. A
+single `duration` target (the unit is auto-detected for "90", "1,5", "01:30:00"
+and Jira-style "1w 2d 3h 4m"). A humanized value like "1w 2d 3h 4m" uses work-time
+units (1 week = 5 days, 1 day = 8 hours). Only use duration_minutes/duration_hours/
+duration_human when you must force a specific unit. A
 transform op is unnecessary for standard durations:
   {"<Duration column>": "duration"}   // in column_map
 
