@@ -595,3 +595,121 @@ def test_execute_revalidates_period_status_before_write(client, monkeypatch):
     with SessionLocal() as db:
         e = db.get(TimeEntry, eid)
         assert e.sync_status == "failed"
+
+
+# ---------- Regressions / kleine Bugfixes ----------
+
+def test_preview_empty_selection_redirects_instead_of_500(client):
+    """Regression: leere Auswahl darf nicht in einen 500er laufen (iOS-Bug,
+    der durch lokales 'status'-Shadowing in der Route entstand)."""
+    _login_session(client)
+    r = client.post("/sync/salesforce/preview", data={}, follow_redirects=False)
+    assert r.status_code == 302
+    assert "/?error=" in (r.headers.get("location") or "")
+    # Folge der Redirect und prüfe, dass das Dashboard sauber rendert.
+    r2 = client.get(r.headers["location"])
+    assert r2.status_code == 200
+    assert "Keine Einträge" in r2.text
+
+
+def test_execute_empty_selection_redirects_instead_of_500(client):
+    _login_session(client)
+    r = client.post("/sync/salesforce/execute", data={}, follow_redirects=False)
+    assert r.status_code == 302
+    assert "/?error=" in (r.headers.get("location") or "")
+
+
+# ---------- Manuell-als-erfasst-Marker ----------
+
+def test_mark_entries_as_manually_synced_takes_them_out_of_selection(client):
+    """Nach dem Markieren ist sync_status='manually_synced', der Eintrag taucht
+    nicht mehr als 'sync-bereit' im Dashboard auf."""
+    _login_session(client)
+    from app.db import SessionLocal
+    from app.services import salesforce as sfs
+    with SessionLocal() as db:
+        sfs.save_credentials(db, username="u", password="p", security_token="t")
+    _pid, eid = _make_project_and_entry(client, "SFMARK", entry_date="2026-06-01")
+
+    page = client.get("/")
+    assert "Auswahl in Salesforce-Vorschau" in page.text
+
+    r = client.post("/entries/mark-synced", data={"entry_ids": str(eid)},
+                    follow_redirects=False)
+    assert r.status_code == 302
+    assert "flash=" in (r.headers.get("location") or "")
+
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "manually_synced"
+
+    page2 = client.get("/")
+    assert "manuell" in page2.text
+
+
+def test_unmark_entry_resets_to_pending(client):
+    """Undo-Button: manuell markierte Einträge können wieder geöffnet werden."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFUNMARK", entry_date="2026-06-02")
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        e.sync_status = "manually_synced"
+        db.add(e); db.commit()
+
+    r = client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
+    assert r.status_code == 302
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "pending"
+
+
+def test_unmark_does_not_touch_real_synced_entries(client):
+    """Sicherheits-Guard: echte SF-Syncs (sync_status='synced') dürfen NICHT
+    über den Undo-Button rückgängig gemacht werden — sonst riskiert man
+    Duplikate in Salesforce."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFNOUNDO", entry_date="2026-06-03")
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        e.sync_status = "synced"
+        e.sync_metadata_override = {"salesforce": {"zeiterfassung_id": "a0Z000REAL"}}
+        db.add(e); db.commit()
+
+    r = client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
+    assert r.status_code == 302
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "synced"
+        assert ((e.sync_metadata_override or {}).get("salesforce") or {}).get("zeiterfassung_id") == "a0Z000REAL"
+
+
+def test_execute_skips_manually_synced_entries(client, monkeypatch):
+    """manually_synced verhält sich für den Push wie synced: kein POST."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFMSEX", entry_date="2026-06-04")
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        e.sync_status = "manually_synced"
+        db.add(e); db.commit()
+
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+
+    def must_not_call(_c, _p):
+        raise AssertionError("create_zeiterfassung must not be called for manually_synced entries")
+    monkeypatch.setattr(sfs, "create_zeiterfassung", must_not_call)
+
+    r = client.post("/sync/salesforce/execute", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    assert "manuell" in r.text

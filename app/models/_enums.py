@@ -13,6 +13,7 @@ class SyncStatus(StrEnum):
     PENDING = "pending"
     EXPORTED = "exported"
     SYNCED = "synced"
+    MANUALLY_SYNCED = "manually_synced"
     FAILED = "failed"
     SKIPPED = "skipped"
 

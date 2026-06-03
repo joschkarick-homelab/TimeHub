@@ -458,11 +458,12 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   geschlossen; Kontierungsmonat existiert + nicht abgeschlossen +
   `Status__c=offen`). SOQL-Lookups werden pro Request über PB- und Period-
   Caches gebündelt, sodass jede PB/Period nur einmal abgefragt wird.
-  Idempotenz: Einträge mit `sync_status=synced` werden übersprungen
-  (kein POST). Pro-Eintrag-Fehler (PB weg, Status geändert, SF-Validation-
-  Error) markieren nur den Eintrag (`sync_status=failed`) und unterbrechen
-  den Stapel nicht; ein SF-Verbindungsfehler bricht hingegen ab und stoppt
-  den Rest. Bei Erfolg wird die neue SF-Id in
+  Idempotenz: Einträge mit `sync_status` ∈ {`synced`, `manually_synced`}
+  werden übersprungen (kein POST). Pro-Eintrag-Fehler (PB weg, Status
+  geändert, SF-Validation-Error) markieren nur den Eintrag
+  (`sync_status=failed`) und unterbrechen den Stapel nicht; ein SF-
+  Verbindungsfehler bricht hingegen ab und stoppt den Rest. Bei Erfolg
+  wird die neue SF-Id in
   `time_entries.sync_metadata_override.salesforce.zeiterfassung_id`
   persistiert und `sync_status=synced` gesetzt. Die Ergebnisseite zeigt
   pro Eintrag den Status (✓ synced + Deep-Link auf den SF-Record / ✗
@@ -472,6 +473,16 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   und mindestens ein Eintrag des Nutzers sync-bereit ist; im Sync-Center
   unabhängig sichtbar, der Button erscheint aber nur bei Sync-bereiten
   Einträgen.
+- **FR-SF-7** Manuell-als-erfasst-Marker: Im Dashboard bietet die SF-
+  Auswahlleiste neben „Vorschau" einen zweiten Button „✓ als manuell
+  erfasst markieren" (`POST /entries/mark-synced` mit `entry_ids`). Damit
+  werden alte Einträge (z.B. solche aus bereits geschlossenen
+  Kontierungsmonaten, die direkt in SF erfasst wurden) auf
+  `sync_status=manually_synced` gesetzt und verschwinden aus der Sync-
+  Auswahl und aus Vorschau/Push. Pro Zeile gibt es einen Undo-Button
+  „↶ wieder öffnen" (`POST /entries/{id}/unmark-synced`), der den Status
+  auf `pending` zurückstellt — **nur** für `manually_synced`-Einträge,
+  echte SF-Syncs bleiben unangetastet, um Duplikate zu vermeiden.
 
 ---
 
@@ -525,3 +536,8 @@ Nicht in diesem Stand:
   (`claude/timehub-tracking-app-IgbZv` → ff-merge nach `main`), Test-Befehl
   (`python -m pytest`), „immer Tests grün vor Commit", deutscher UI-Text,
   Verweis auf `docs/anforderungen.md` als Single-Source-of-Truth.
+- **FR-FUTURE-4** Mobile CRUD: Auf iOS/Android fehlen aktuell die Aktions-
+  Buttons (bearbeiten/löschen pro Eintrag, Anlegen/Bearbeiten von Projekten),
+  weil sie im horizontal-scrollbaren Table am rechten Rand „abgeschnitten"
+  wirken. Idee: für kleine Viewports Card-Layout statt Tabelle, mit
+  inline-Aktionen pro Karte.

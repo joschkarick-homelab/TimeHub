@@ -5,6 +5,11 @@
     {{ error | replace('+', ' ') }}
   </div>
 {% endif %}
+{% if flash %}
+  <div class="mb-4 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+    {{ flash | replace('+', ' ') }}
+  </div>
+{% endif %}
 <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-6">
   <div class="bg-white border border-slate-200 rounded-lg p-4">
     <div class="text-sm text-slate-500">Gefilterte Einträge</div>
@@ -131,9 +136,15 @@
     <div class="flex items-center gap-3 flex-wrap">
       {% if sf_configured and sf_selectable_count %}
         <form id="sf-sync-form" method="post" action="/sync/salesforce/preview"
-              class="flex items-center gap-2">
+              class="flex items-center gap-2 flex-wrap">
           <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
             ↗ Auswahl in Salesforce-Vorschau
+          </button>
+          <button type="submit" formaction="/entries/mark-synced" formnovalidate
+                  class="h-9 px-3 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded text-sm font-medium"
+                  onclick="return confirm('Auswahl als bereits manuell erfasst markieren? Diese Einträge werden dann nicht mehr im Sync vorgeschlagen.');"
+                  title="Z.B. für alte Monate, die schon direkt in Salesforce erfasst wurden">
+            ✓ als manuell erfasst markieren
           </button>
           <span class="text-xs text-slate-500">
             {{ sf_selectable_count }} sync-bereit
@@ -208,11 +219,21 @@
               {% if st and st.needs_sync and not st.ready %}
                 <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
                       title="Fehlt: {{ st.missing | join(', ') }}">⚠ {{ st.missing | join(', ') }}</span>
+              {% elif e.sync_status == "manually_synced" %}
+                <span class="text-slate-700 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
+                      title="Manuell als bereits erfasst markiert">✓ manuell</span>
               {% else %}
                 {{ e.sync_status }}
               {% endif %}
             </td>
             <td class="px-4 py-2 space-x-2 whitespace-nowrap text-right">
+              {% if e.sync_status == "manually_synced" %}
+                <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
+                      onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
+                  <button class="text-xs text-slate-600 hover:underline"
+                          title="Wieder als offen markieren">↶ wieder öffnen</button>
+                </form>
+              {% endif %}
               <a href="/entries/{{ e.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
               <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
                     onsubmit="return confirm('Eintrag wirklich löschen?');">

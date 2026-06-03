@@ -93,6 +93,7 @@ def index(
     date_to: str | None = None,
     project_id: str | None = None,
     error: str | None = None,
+    flash: str | None = None,
 ):
     user = _maybe_user(request, db)
     if user is None:
@@ -149,7 +150,7 @@ def index(
         e.id: (
             entry_status.get(e.id, {}).get("target") == "salesforce"
             and entry_status.get(e.id, {}).get("ready") is True
-            and e.sync_status != "synced"
+            and e.sync_status not in ("synced", "manually_synced")
         )
         for e in entries
     }
@@ -179,6 +180,7 @@ def index(
             project_id=project_id_int or "",
             formats=formats,
             error=error,
+            flash=flash,
         ),
     )
 
@@ -448,6 +450,54 @@ def delete_entry(request: Request, entry_id: int, db: Session = Depends(get_db))
     entry = _owned_entry_or_404(db, entry_id, user)
     db.delete(entry)
     db.commit()
+    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/entries/mark-synced", response_class=HTMLResponse)
+def mark_entries_manually_synced(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Markiere die ausgewählten Einträge als 'manuell erfasst' (sync_status=
+    manually_synced). Damit verschwinden sie aus der Sync-Auswahl und werden
+    auch vom Stapel-Push übersprungen — gedacht für alte Monate, die schon
+    direkt in Salesforce erfasst wurden."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    if not entry_ids:
+        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+    stmt = select(TimeEntry).where(
+        TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id,
+    )
+    n = 0
+    for e in db.execute(stmt).scalars():
+        if e.sync_status in ("synced", "manually_synced"):
+            continue
+        e.sync_status = "manually_synced"
+        db.add(e)
+        n += 1
+    db.commit()
+    return RedirectResponse(url=f"/?flash={n}+Einträge+als+manuell+erfasst+markiert",
+                            status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/entries/{entry_id}/unmark-synced", response_class=HTMLResponse)
+def unmark_entry_manually_synced(
+    request: Request, entry_id: int, db: Session = Depends(get_db),
+):
+    """Rückgängig: zurück auf pending. Nur erlaubt, wenn der Eintrag manuell
+    markiert war (echte Salesforce-Syncs lassen sich hier nicht zurücksetzen)."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    entry = _owned_entry_or_404(db, entry_id, user)
+    if entry.sync_status == "manually_synced":
+        entry.sync_status = "pending"
+        db.add(entry)
+        db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
 
@@ -770,7 +820,7 @@ def sync_center(request: Request, db: Session = Depends(get_db)):
         t = st["target"]
         if t not in counts:
             continue
-        if e.sync_status == "synced":
+        if e.sync_status in ("synced", "manually_synced"):
             counts[t]["synced"] += 1
         elif st["ready"]:
             counts[t]["ready_ids"].append(e.id)
@@ -899,7 +949,7 @@ def sync_salesforce_preview(
                 })
                 continue
             period_name = period.get("name") or e.entry_date.strftime("%m/%Y")
-            status = (period.get("status") or "").strip()
+            period_status = (period.get("status") or "").strip()
             # Nur 'offen' lassen wir schreiben — alles andere (Kundengenehmigung,
             # in Bearbeitung, abgeschlossen, kontrolliert, Öffnung beantragt) gilt
             # als bereits eingereicht oder gesperrt.
@@ -907,10 +957,10 @@ def sync_salesforce_preview(
                 skipped.append({"entry": e,
                                 "reason": f"Kontierungsmonat {period_name} ist abgeschlossen"})
                 continue
-            if status.lower() != "offen":
+            if period_status.lower() != "offen":
                 skipped.append({"entry": e,
                                 "reason": f"Kontierungsmonat {period_name} ist nicht offen"
-                                          f" (Status: {status or '—'})"})
+                                          f" (Status: {period_status or '—'})"})
                 continue
 
             project = proj_lookup.get(e.project_id)
@@ -1001,10 +1051,13 @@ def sync_salesforce_execute(
         results.append({"entry": e, "status": "failed", "error": error})
 
     for entry in entries:
-        if entry.sync_status == "synced":
+        if entry.sync_status in ("synced", "manually_synced"):
             existing = ((entry.sync_metadata_override or {}).get("salesforce") or {}).get("zeiterfassung_id")
+            reason = ("bereits manuell als erfasst markiert"
+                      if entry.sync_status == "manually_synced"
+                      else "bereits synchronisiert")
             results.append({"entry": entry, "status": "skipped",
-                            "reason": "bereits synchronisiert", "id": existing})
+                            "reason": reason, "id": existing})
             continue
 
         project = proj_lookup.get(entry.project_id)
