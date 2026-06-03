@@ -422,7 +422,7 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
 
 ---
 
-## 21. Salesforce-Sync (Vorschau-Stand)
+## 21. Salesforce-Sync
 
 - **FR-SF-1** Zugangsdaten admin-pflegbar (siehe FR-SET-3). Auth: SOAP-Login
   an `/services/Soap/u/<api>` mit Username + (Passwort + Security-Token); die
@@ -450,8 +450,25 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   gepflegt / PB nicht in SF / PB geschlossen / Kontierungsmonat fehlt /
   Kontierungsmonat `Abgeschlossen__c=true` / `Status__c` ≠ `offen` (alles
   außer „offen" gilt als bereits eingereicht). **Es wird nichts geschrieben**
-  — „Push noch nicht aktiv"-Hinweis am Ende.
-- **FR-SF-5** Sichtbarkeit: SF-UI im Dashboard nur, wenn Credentials hinterlegt
+  — am Ende eine Bestätigungs-Form mit Confirm-Dialog zu FR-SF-5.
+- **FR-SF-5** Echter Push: `POST /sync/salesforce/execute` mit `entry_ids`
+  legt pro Eintrag eine `Zeiterfassung__c` in Salesforce an
+  (REST `POST /services/data/v<api>/sobjects/Zeiterfassung__c`). Vor dem
+  Insert wird pro Eintrag re-validiert (Projektbesetzung existiert + nicht
+  geschlossen; Kontierungsmonat existiert + nicht abgeschlossen +
+  `Status__c=offen`). SOQL-Lookups werden pro Request über PB- und Period-
+  Caches gebündelt, sodass jede PB/Period nur einmal abgefragt wird.
+  Idempotenz: Einträge mit `sync_status=synced` werden übersprungen
+  (kein POST). Pro-Eintrag-Fehler (PB weg, Status geändert, SF-Validation-
+  Error) markieren nur den Eintrag (`sync_status=failed`) und unterbrechen
+  den Stapel nicht; ein SF-Verbindungsfehler bricht hingegen ab und stoppt
+  den Rest. Bei Erfolg wird die neue SF-Id in
+  `time_entries.sync_metadata_override.salesforce.zeiterfassung_id`
+  persistiert und `sync_status=synced` gesetzt. Die Ergebnisseite zeigt
+  pro Eintrag den Status (✓ synced + Deep-Link auf den SF-Record / ✗
+  failed + SF-Fehler / – skipped + Grund) und eine Zusammenfassung
+  (synced / failed / skipped).
+- **FR-SF-6** Sichtbarkeit: SF-UI im Dashboard nur, wenn Credentials hinterlegt
   und mindestens ein Eintrag des Nutzers sync-bereit ist; im Sync-Center
   unabhängig sichtbar, der Button erscheint aber nur bei Sync-bereiten
   Einträgen.
@@ -489,7 +506,7 @@ Nicht eingeloggt: Login + API. Mobil als Hamburger.
 
 Nicht in diesem Stand:
 
-- Echter Push nach Jira/Salesforce/BCS (nur Salesforce-**Vorschau** implementiert).
+- Echter Push nach Jira/BCS (Salesforce-Push ist live, siehe FR-SF-5).
 - OAuth/SSO (Microsoft/Authentik).
 - Eigene Tag-/Kunden-Verwaltung (Tags = freie Liste; Kunde = Projektfeld,
   beim Import auto-pflegbar).

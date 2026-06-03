@@ -357,7 +357,9 @@ def test_preview_renders_zeiterfassung_payload(client, monkeypatch):
     assert '"Von_Stunde__c": 0' in body
     assert '"Bis_Stunde__c": 1' in body
     assert '"Bis_Minute__c": "30"' in body
-    assert "Push noch nicht aktiv" in body
+    # Confirm-Form für /sync/salesforce/execute (Push aktiv)
+    assert 'action="/sync/salesforce/execute"' in body
+    assert "Synchronisieren bestätigen" in body
 
 
 def test_preview_skips_when_assignment_missing_in_sf(client, monkeypatch):
@@ -428,3 +430,168 @@ def test_dashboard_shows_sync_button_when_configured(client):
     _make_project_and_entry(client, "SFDASH", entry_date="2026-06-01")
     page = client.get("/")
     assert "Auswahl in Salesforce-Vorschau" in page.text
+
+
+# ---------- create_zeiterfassung (REST POST) ----------
+
+def test_create_zeiterfassung_returns_id_on_success(monkeypatch):
+    """201 success → URL + headers stimmen, neue Id wird zurückgegeben."""
+    from app.services import salesforce as sfs
+    captured = {}
+
+    def fake_http(method, url, *, data=None, headers=None, timeout=30):
+        captured["method"] = method
+        captured["url"] = url
+        captured["data"] = data
+        captured["headers"] = headers
+        return 201, b'{"id":"a0Z000000000ABC","success":true,"errors":[]}'
+
+    monkeypatch.setattr(sfs, "_http", fake_http)
+    c = sfs.SalesforceClient("u", "p", "")
+    c.session_id = "SESSION"
+    c.instance_url = "https://test.salesforce.com"
+    new_id = sfs.create_zeiterfassung(c, {"Tag__c": "2026-05-27", "Arbeitszeit__c": 1.5})
+    assert new_id == "a0Z000000000ABC"
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/sobjects/Zeiterfassung__c")
+    assert captured["headers"]["Authorization"] == "Bearer SESSION"
+    assert captured["headers"]["Content-Type"] == "application/json"
+    import json as _json
+    sent = _json.loads(captured["data"])
+    assert sent["Tag__c"] == "2026-05-27"
+    assert sent["Arbeitszeit__c"] == 1.5
+
+
+def test_create_zeiterfassung_raises_with_formatted_error(monkeypatch):
+    """400 mit SF-Errors-Array → SalesforceError mit Code + Message + Felder."""
+    from app.services import salesforce as sfs
+    err_body = (b'[{"message":"Required field missing: Tag__c",'
+                b'"errorCode":"REQUIRED_FIELD_MISSING","fields":["Tag__c"]}]')
+    monkeypatch.setattr(sfs, "_http", lambda *a, **kw: (400, err_body))
+    c = sfs.SalesforceClient("u", "p", "")
+    c.session_id = "SESSION"
+    c.instance_url = "https://test.salesforce.com"
+    try:
+        sfs.create_zeiterfassung(c, {"foo": "bar"})
+    except sfs.SalesforceError as e:
+        msg = str(e)
+        assert "REQUIRED_FIELD_MISSING" in msg
+        assert "Required field missing" in msg
+        assert "Tag__c" in msg
+    else:
+        raise AssertionError("Expected SalesforceError")
+
+
+# ---------- /sync/salesforce/execute (stubbed client + create) ----------
+
+def test_execute_creates_and_marks_synced(client, monkeypatch):
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFEXEC1")
+
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+    monkeypatch.setattr(sfs, "create_zeiterfassung", lambda _c, _payload: "a0Z000000000XYZ")
+
+    r = client.post("/sync/salesforce/execute",
+                    data={"entry_ids": str(eid)}, follow_redirects=False)
+    assert r.status_code == 200, r.text
+    body = r.text
+    assert "Ergebnis" in body
+    assert "a0Z000000000XYZ" in body
+
+    # Persistenz prüfen: sync_status=synced, Id im sync_metadata_override
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "synced"
+        meta = (e.sync_metadata_override or {}).get("salesforce") or {}
+        assert meta.get("zeiterfassung_id") == "a0Z000000000XYZ"
+
+
+def test_execute_marks_failed_on_sf_error_per_entry(client, monkeypatch):
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFEXECFAIL")
+
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+
+    def boom(_c, _payload):
+        raise sfs.SalesforceError("[FIELD_INTEGRITY_EXCEPTION] kaputt")
+
+    monkeypatch.setattr(sfs, "create_zeiterfassung", boom)
+
+    r = client.post("/sync/salesforce/execute", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    assert "FIELD_INTEGRITY_EXCEPTION" in r.text
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "failed"
+        meta = (e.sync_metadata_override or {}).get("salesforce") or {}
+        assert "zeiterfassung_id" not in meta
+
+
+def test_execute_skips_already_synced_entries(client, monkeypatch):
+    """Bereits synchronisierte Einträge werden idempotent übersprungen,
+    create_zeiterfassung darf gar nicht aufgerufen werden."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFEXECSKIP")
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        e.sync_status = "synced"
+        e.sync_metadata_override = {"salesforce": {"zeiterfassung_id": "a0Z000000000OLD"}}
+        db.add(e); db.commit()
+
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+
+    def must_not_call(_c, _p):
+        raise AssertionError("create_zeiterfassung must not be called for synced entries")
+
+    monkeypatch.setattr(sfs, "create_zeiterfassung", must_not_call)
+
+    r = client.post("/sync/salesforce/execute", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    body = r.text
+    assert "bereits synchronisiert" in body
+    assert "a0Z000000000OLD" in body
+
+
+def test_execute_revalidates_period_status_before_write(client, monkeypatch):
+    """Auch wenn die Vorschau bestanden wurde: ändert sich der Kontierungsmonat-Status
+    auf z.B. 'in Bearbeitung', wird der Eintrag mit Fehler markiert (kein POST)."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFEXECREVAL")
+
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period",
+                        lambda _c, _aid, _date: dict(_FAKE_PERIOD, status="in Bearbeitung"))
+
+    def must_not_call(_c, _p):
+        raise AssertionError("create_zeiterfassung must not be called when period is not open")
+
+    monkeypatch.setattr(sfs, "create_zeiterfassung", must_not_call)
+
+    r = client.post("/sync/salesforce/execute", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    assert "nicht offen" in r.text
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "failed"

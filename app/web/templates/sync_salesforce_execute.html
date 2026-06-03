@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">Salesforce-Sync — Ergebnis</h1>
+  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+</div>
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error }}
+  </div>
+{% endif %}
+{% if sf_error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    <strong>Salesforce-Verbindungsfehler:</strong> {{ sf_error }}
+    <p class="text-xs mt-1 text-rose-600">
+      Restliche Einträge wurden nicht verarbeitet. Bitte später erneut versuchen.
+    </p>
+  </div>
+{% endif %}
+
+{% if results %}
+  <section class="bg-white border border-slate-200 rounded-lg p-5 mb-4">
+    <div class="grid grid-cols-3 gap-4 text-center">
+      <div>
+        <div class="text-3xl font-semibold text-emerald-600 tabular-nums">{{ synced }}</div>
+        <div class="text-xs text-slate-500">erfolgreich angelegt</div>
+      </div>
+      <div>
+        <div class="text-3xl font-semibold text-rose-600 tabular-nums">{{ failed }}</div>
+        <div class="text-xs text-slate-500">fehlgeschlagen</div>
+      </div>
+      <div>
+        <div class="text-3xl font-semibold text-slate-500 tabular-nums">{{ skipped }}</div>
+        <div class="text-xs text-slate-500">übersprungen</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-white border border-slate-200 rounded-lg p-5">
+    <h2 class="font-semibold mb-3">Details</h2>
+    <ul class="text-sm divide-y divide-slate-100">
+      {% for r in results %}
+        <li class="py-2 flex flex-wrap items-baseline justify-between gap-3">
+          <div class="flex items-baseline gap-2 min-w-0">
+            {% if r.status == "synced" %}
+              <span class="text-emerald-600 font-semibold">✓</span>
+            {% elif r.status == "failed" %}
+              <span class="text-rose-600 font-semibold">✗</span>
+            {% else %}
+              <span class="text-slate-400 font-semibold">–</span>
+            {% endif %}
+            <span class="font-mono text-slate-500">#{{ r.entry.id }}</span>
+            <span>{{ r.entry.entry_date }}</span>
+            <span class="tabular-nums">{{ '%.2f'|format(r.entry.duration_minutes / 60) }} h</span>
+            {% if r.entry.description %}
+              <span class="text-slate-600 truncate">— {{ r.entry.description }}</span>
+            {% endif %}
+          </div>
+          <div class="text-xs">
+            {% if r.status == "synced" %}
+              <span class="text-emerald-700">
+                Salesforce-Id:
+                {% if instance_url %}
+                  <a href="{{ instance_url }}/{{ r.id }}" target="_blank" rel="noopener"
+                     class="font-mono hover:underline">{{ r.id }}</a>
+                {% else %}
+                  <span class="font-mono">{{ r.id }}</span>
+                {% endif %}
+              </span>
+            {% elif r.status == "failed" %}
+              <span class="text-rose-700">{{ r.error }}</span>
+            {% else %}
+              <span class="text-slate-500">
+                {{ r.reason }}{% if r.id %} (Id: <span class="font-mono">{{ r.id }}</span>){% endif %}
+              </span>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <div class="mt-4 flex gap-3">
+    <a href="/" class="h-9 px-3 inline-flex items-center bg-slate-100 hover:bg-slate-200 rounded text-sm">
+      ← zum Dashboard
+    </a>
+    <a href="/sync" class="h-9 px-3 inline-flex items-center bg-slate-100 hover:bg-slate-200 rounded text-sm">
+      Sync-Center
+    </a>
+  </div>
+{% elif not sf_error and not error %}
+  <p class="text-sm text-slate-500">Keine Einträge verarbeitet.</p>
+{% endif %}
+
+{% endblock %}

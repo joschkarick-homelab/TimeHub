@@ -936,6 +936,7 @@ def sync_salesforce_preview(
             group["total_hours"] = round(group["total_hours"] + e.duration_minutes / 60.0, 2)
 
     groups = list(grouped.values())
+    pushable_count = sum(len(g["entries"]) for g in groups)
 
     return templates.TemplateResponse(
         "sync_salesforce_preview.html",
@@ -947,6 +948,149 @@ def sync_salesforce_preview(
             item_errors=item_errors,
             sf_error=sf_error,
             entries=entries,
+            pushable_count=pushable_count,
+            error=None,
+        ),
+    )
+
+
+@router.post("/sync/salesforce/execute", response_class=HTMLResponse)
+def sync_salesforce_execute(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Pushe die ausgewählten Einträge tatsächlich nach Salesforce. Pro Eintrag
+    wird vor dem Insert nochmal voll validiert (PB, Kontierungsmonat-Status etc.);
+    bereits synchronisierte Einträge werden idempotent übersprungen. Pro-Eintrag-
+    Fehler brechen den Rest nicht ab."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    if not entry_ids:
+        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+
+    client = sf_svc.client_from_settings(db)
+    if client is None:
+        return templates.TemplateResponse(
+            "sync_salesforce_execute.html",
+            _ctx(request, user, results=[], sf_error=None, error=(
+                "Salesforce-Zugangsdaten sind nicht hinterlegt. "
+                "Admin: unter Nutzer → Salesforce-Integration eintragen."
+            )),
+        )
+
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id)
+        .order_by(TimeEntry.entry_date, TimeEntry.id)
+    )
+    entries = list(db.execute(stmt).scalars())
+    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+    remote_field = next((f for f in sf.entry_fields("salesforce") if f.key == "remote"), None)
+
+    results: list[dict] = []
+    assignments_cache: dict[str, dict | None] = {}
+    period_cache: dict[tuple[str, str], dict | None] = {}
+    sf_error: str | None = None
+
+    def _fail(e, error: str) -> None:
+        e.sync_status = "failed"
+        db.add(e)
+        results.append({"entry": e, "status": "failed", "error": error})
+
+    for entry in entries:
+        if entry.sync_status == "synced":
+            existing = ((entry.sync_metadata_override or {}).get("salesforce") or {}).get("zeiterfassung_id")
+            results.append({"entry": entry, "status": "skipped",
+                            "reason": "bereits synchronisiert", "id": existing})
+            continue
+
+        project = proj_lookup.get(entry.project_id)
+        aid = sf_svc.assignment_id_for(entry, project) if project else None
+        if not aid:
+            _fail(entry, "keine Projektbesetzung am Projekt gepflegt")
+            continue
+
+        # Assignment (gecached)
+        if aid not in assignments_cache:
+            try:
+                assignments_cache[aid] = sf_svc.get_assignment(client, aid)
+            except sf_svc.SalesforceError as e:
+                sf_error = str(e)
+                break
+        assignment = assignments_cache[aid]
+        if assignment is None:
+            _fail(entry, "Projektbesetzung in SF nicht gefunden")
+            continue
+        if assignment.get("closed"):
+            _fail(entry, "Projektbesetzung in SF geschlossen")
+            continue
+
+        # Kontierungsmonat (PB-spezifisch gecached)
+        cache_key = (aid, entry.entry_date.strftime("%Y-%m"))
+        if cache_key not in period_cache:
+            try:
+                period_cache[cache_key] = sf_svc.get_monthly_period(
+                    client, aid, entry.entry_date.isoformat()
+                )
+            except sf_svc.SalesforceError as e:
+                sf_error = str(e)
+                break
+        period = period_cache[cache_key]
+        if period is None:
+            _fail(entry, f"Kein Kontierungsmonat {entry.entry_date.strftime('%m/%Y')} "
+                         f"für diese Projektbesetzung")
+            continue
+        period_name = period.get("name") or entry.entry_date.strftime("%m/%Y")
+        if period.get("closed"):
+            _fail(entry, f"Kontierungsmonat {period_name} ist abgeschlossen")
+            continue
+        if (period.get("status") or "").strip().lower() != "offen":
+            _fail(entry, f"Kontierungsmonat {period_name} ist nicht offen "
+                         f"(Status: {period.get('status') or '—'})")
+            continue
+
+        # Payload + POST
+        remote_value = (
+            sf.entry_value(entry, project, remote_field, "salesforce")
+            if remote_field and project else None
+        )
+        payload = sf_svc.build_zeiterfassung_payload(entry, period["id"], remote_value)
+        try:
+            new_id = sf_svc.create_zeiterfassung(client, payload)
+        except sf_svc.SalesforceError as e:
+            _fail(entry, str(e))
+            continue
+
+        # Persistiere Id + sync_status. JSON-Spalte → neues Dict zuweisen.
+        meta = dict(entry.sync_metadata_override or {})
+        sf_meta = dict(meta.get("salesforce") or {})
+        sf_meta["zeiterfassung_id"] = new_id
+        meta["salesforce"] = sf_meta
+        entry.sync_metadata_override = meta
+        entry.sync_status = "synced"
+        db.add(entry)
+        results.append({"entry": entry, "status": "synced", "id": new_id,
+                        "assignment": assignment, "period": period})
+
+    db.commit()
+
+    synced = sum(1 for r in results if r["status"] == "synced")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    skipped_count = sum(1 for r in results if r["status"] == "skipped")
+    return templates.TemplateResponse(
+        "sync_salesforce_execute.html",
+        _ctx(
+            request,
+            user,
+            results=results,
+            sf_error=sf_error,
+            synced=synced,
+            failed=failed,
+            skipped=skipped_count,
+            instance_url=client.instance_url,
             error=None,
         ),
     )

@@ -362,6 +362,51 @@ def build_zeiterfassung_payload(entry, period_id: str,
     }
 
 
+def _format_create_error(content: bytes) -> str:
+    """Decode the Salesforce error array `[{message, errorCode, fields}]` into
+    a single readable string."""
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return content.decode("utf-8", errors="replace")[:300]
+    if isinstance(data, list) and data:
+        parts: list[str] = []
+        for e in data:
+            code = e.get("errorCode") or "ERROR"
+            msg = e.get("message") or ""
+            fields = e.get("fields") or []
+            suffix = f" (Felder: {', '.join(fields)})" if fields else ""
+            parts.append(f"[{code}] {msg}{suffix}")
+        return "; ".join(parts)[:600]
+    if isinstance(data, dict):
+        return (data.get("message") or json.dumps(data))[:300]
+    return str(data)[:300]
+
+
+def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
+    """POST eine Zeiterfassung__c in Salesforce und gib die neue Datensatz-Id
+    zurück. Bei einem 4xx-Antwortcode wird der SF-Fehler in einen
+    SalesforceError verpackt — die Fehlermeldung enthält Code + Beschreibung."""
+    client._ensure_login()
+    url = (f"{client.instance_url}/services/data/v{client.api_version}/"
+           "sobjects/Zeiterfassung__c")
+    body = json.dumps(payload).encode("utf-8")
+    status_code, content = _http("POST", url, data=body, headers={
+        "Authorization": f"Bearer {client.session_id}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    })
+    if status_code >= 400:
+        raise SalesforceError(_format_create_error(content))
+    try:
+        res = json.loads(content)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise SalesforceError(f"Unverständliche Salesforce-Antwort: {e}") from e
+    if not res.get("success") or not res.get("id"):
+        raise SalesforceError(_format_create_error(content))
+    return res["id"]
+
+
 def assignment_id_for(entry, project) -> str | None:
     """Resolve the assignment ID for an entry: entry override beats project
     default, both under sync_metadata[`salesforce`]`assignment_id`."""

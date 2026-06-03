@@ -99,13 +99,21 @@
     {% endfor %}
   </div>
 
-  <section class="mt-6 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm">
-    <div class="font-semibold mb-1">Push noch nicht aktiv</div>
-    <p class="text-slate-600">
-      Sobald du die Payload-Form in deiner Org bestätigt hast, schalte ich den
-      „Synchronisieren bestätigen"-Schritt frei.
+  <form method="post" action="/sync/salesforce/execute"
+        class="mt-6 bg-sky-50 border border-sky-300 rounded-lg p-4"
+        data-loading-message="Salesforce wird beschrieben …"
+        onsubmit="return confirm('Wirklich {{ pushable_count }} Einträge nach Salesforce schreiben? Das ist nicht rückgängig zu machen.');">
+    {% for g in groups %}{% for item in g.entries %}<input type="hidden" name="entry_ids" value="{{ item.entry.id }}" />{% endfor %}{% endfor %}
+    <p class="text-sm text-sky-900 mb-3">
+      Mit dem Klick werden in Salesforce <strong>{{ pushable_count }} Zeiterfassung__c</strong>-Records
+      angelegt. Vor dem Schreiben wird pro Eintrag nochmal re-validiert
+      (Projektbesetzung, Kontierungsmonat-Status). Bereits synchronisierte
+      Einträge bleiben unverändert.
     </p>
-  </section>
+    <button class="h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded font-medium">
+      ↗ Synchronisieren bestätigen ({{ pushable_count }})
+    </button>
+  </form>
 {% elif not item_errors and not skipped and not sf_error %}
   <p class="text-sm text-slate-500">Nichts zu zeigen.</p>
 {% endif %}
