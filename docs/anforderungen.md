@@ -520,3 +520,8 @@ Nicht in diesem Stand:
 - **FR-FUTURE-2** Gleiches beim **manuellen Projekt-Anlegen** im UI: Eingabe
   des Namens triggert Vorschläge passender SF-Projektbesetzungen samt
   Übernahme der `assignment_id`.
+- **FR-FUTURE-3** `CLAUDE.md` für TimeHub anlegen, damit Claude-Code-on-the-Web-
+  Sessions (z.B. via Issue-Trigger) die Hausregeln kennen: Branch-Konvention
+  (`claude/timehub-tracking-app-IgbZv` → ff-merge nach `main`), Test-Befehl
+  (`python -m pytest`), „immer Tests grün vor Commit", deutscher UI-Text,
+  Verweis auf `docs/anforderungen.md` als Single-Source-of-Truth.
