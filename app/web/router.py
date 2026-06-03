@@ -1280,6 +1280,7 @@ _TARGET_LABELS = {
     "duration": "Dauer (automatisch)",
     "duration_minutes": "Dauer in Minuten",
     "duration_hours": "Dauer in Stunden",
+    "duration_human": "Dauer als Text (1w 2d 3h 4m)",
     "project_code": "Projekt (Code/Name)",
     "customer": "Kunde",
     "description": "Beschreibung",

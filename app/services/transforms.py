@@ -109,14 +109,68 @@ def clock_duration_to_minutes(txt: str) -> int | None:
     return None
 
 
+# Jira-style work-time units for the humanized "1w 2d 3h 4m" duration format:
+# a work week is 5 work days, a work day is 8 work hours.
+HOURS_PER_DAY = 8
+DAYS_PER_WEEK = 5
+_MINUTES_PER_DAY = HOURS_PER_DAY * 60
+_MINUTES_PER_WEEK = DAYS_PER_WEEK * _MINUTES_PER_DAY
+_HUMAN_UNIT_MINUTES = {"w": _MINUTES_PER_WEEK, "d": _MINUTES_PER_DAY, "h": 60, "m": 1}
+_HUMAN_TOKEN_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*([wdhm])", re.IGNORECASE)
+
+
+def humanized_duration_to_minutes(txt: str) -> int | None:
+    """Parse a Jira-style humanized duration like "1w 2d 3h 4m" into whole
+    minutes, using work-time units (1w = 5d, 1d = 8h). Accepts any subset and
+    order of week/day/hour/minute tokens ("3h", "2d 4h", "90m"); tokens may be
+    space-separated or run together ("1w2d3h4m"). Returns None when the text
+    holds no recognisable token or contains stray non-token characters."""
+    v = (txt or "").strip()
+    if not v:
+        return None
+    matches = list(_HUMAN_TOKEN_RE.finditer(v))
+    if not matches:
+        return None
+    # Only whitespace may separate tokens — reject garbage like "1h banana 2m"
+    # rather than silently swallowing the bits we happen to recognise.
+    if _HUMAN_TOKEN_RE.sub("", v).strip():
+        return None
+    total = 0.0
+    for num, unit in (m.groups() for m in matches):
+        total += float(num.replace(",", ".")) * _HUMAN_UNIT_MINUTES[unit.lower()]
+    return int(round(total))
+
+
+def minutes_to_humanized(minutes: int) -> str:
+    """Render whole minutes as a Jira-style "1w 2d 3h 4m" string using work-time
+    units (1w = 5d, 1d = 8h). Emits only the non-zero parts, largest unit first;
+    0 (or less) renders as "0m"."""
+    minutes = int(minutes)
+    if minutes <= 0:
+        return "0m"
+    weeks, rem = divmod(minutes, _MINUTES_PER_WEEK)
+    days, rem = divmod(rem, _MINUTES_PER_DAY)
+    hours, mins = divmod(rem, 60)
+    parts = []
+    for value, suffix in ((weeks, "w"), (days, "d"), (hours, "h"), (mins, "m")):
+        if value:
+            parts.append(f"{value}{suffix}")
+    return " ".join(parts) if parts else "0m"
+
+
 def auto_duration_to_minutes(value: str) -> int | None:
     """Normalize a duration in any common format to whole minutes:
-    "01:30:00"/"01:30" → clock, "1.5"/"1,5" → decimal hours, "90" → minutes."""
+    "01:30:00"/"01:30" → clock, "1w 2d 3h 4m"/"90m" → humanized work-time units,
+    "1.5"/"1,5" → decimal hours, "90" → minutes."""
     v = (value or "").strip()
     if not v:
         return None
     if ":" in v:
         return clock_duration_to_minutes(v)
+    # A unit letter (w/d/h/m) means the Jira-style humanized format; this takes
+    # precedence over the bare-number paths so "1,5h" reads as 90, not 1.5.
+    if re.search(r"[wdhm]", v, re.IGNORECASE):
+        return humanized_duration_to_minutes(v)
     if "." in v or "," in v:
         try:
             return int(round(float(v.replace(",", ".")) * 60))
