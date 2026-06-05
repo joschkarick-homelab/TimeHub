@@ -337,20 +337,26 @@ def build_zeiterfassung_payload(entry, period_id: str,
                                 remote_value=None) -> dict:
     """Construct the Zeiterfassung__c JSON for one TimeHub entry.
 
-    Default-Strategie für Einträge ohne Start/Ende: Von_Stunde__c=0,
-    Bis_Stunde__c = Dauer in Stunden. Pause ist immer 0 (TimeHub trackt
-    keine Pausen). Beschreibung wird auf 255 Zeichen begrenzt.
+    Strategie: Von_Stunde__c=0, Bis_Stunde__c = Dauer in Stunden — die
+    maßgebliche `duration_minutes` wird IMMER über das Von/Bis-Intervall
+    transportiert, unabhängig davon, ob der Eintrag echte Start-/Endzeiten
+    hat. Pause ist immer 0 (TimeHub trackt keine Pausen). Beschreibung wird
+    auf 255 Zeichen begrenzt.
 
-    Hinweis: `Arbeitszeit__c` und `Arbeitszeit_Minuten__c` sind in der
-    mindsquare-Org berechnete Felder (Formel aus Von/Bis und Pause) und
-    werden bewusst NICHT geschrieben — sonst kommt
-    INVALID_FIELD_FOR_INSERT_UPDATE."""
-    if entry.start_time and entry.end_time:
-        von_h, von_m = _snap_quarter(entry.start_time.hour, entry.start_time.minute)
-        bis_h, bis_m = _snap_quarter(entry.end_time.hour, entry.end_time.minute)
-    else:
-        von_h, von_m = 0, "00"
-        bis_h, bis_m = _snap_quarter(0, entry.duration_minutes)
+    Hintergrund: `Arbeitszeit__c` und `Arbeitszeit_Minuten__c` sind in der
+    mindsquare-Org berechnete Felder (read-only) und werden bewusst NICHT
+    geschrieben — sonst kommt INVALID_FIELD_FOR_INSERT_UPDATE. Salesforce
+    leitet die Arbeitszeit selbst aus dem Von/Bis-Intervall ab. Wir dürfen
+    deshalb NICHT die echten Uhrzeiten (z.B. 09:00–11:00) schreiben: die
+    abgeleitete Arbeitszeit wäre dann die Enduhrzeit (11) statt der Dauer
+    (2 Std.). Stattdessen kodieren wir die Dauer als Intervall ab Mitternacht
+    (00:00 → Dauer).
+
+    Der Workaround ist nötig, weil die interne Zeiterfassung in Salesforce
+    nur die Bis-Zeit nutzt und anzeigt (das Von wird nicht abgezogen). Indem
+    wir Von auf 00:00 setzen, ist die angezeigte Bis-Zeit genau die Dauer."""
+    von_h, von_m = 0, "00"
+    bis_h, bis_m = _snap_quarter(0, entry.duration_minutes)
 
     return {
         "Kontierungsmonat__c": period_id,

@@ -51,15 +51,25 @@ Monatsende__c >= :tag` enthalten.
 | --- | --- | --- |
 | `entry_date` | `Tag__c` (date, **Pflicht**) | direkt |
 | `description` (gekappt auf 255 Zeichen) | `Taetigkeitsbeschreibung__c` (**Pflicht**) | hartes Kappen, kein Ellipsis |
-| `duration_minutes` | `Arbeitszeit_Minuten__c` (double) | direkt |
-| `duration_minutes / 60` | `Arbeitszeit__c` (double) | beide gesetzt |
-| `start_time.hour` | `Von_Stunde__c` (**Pflicht**) | wenn `start_time` leer: 0 |
-| `start_time.minute` (gesnappt) | `Von_Minute__c` (picklist 00/15/30/45) | nächste Viertelstunde |
-| `end_time.hour` | `Bis_Stunde__c` (**Pflicht**) | wenn `end_time` leer: Dauer-in-Stunden ab Mitternacht |
-| `end_time.minute` (gesnappt) | `Bis_Minute__c` (picklist) | nächste Viertelstunde |
+| `duration_minutes` | `Arbeitszeit__c` / `Arbeitszeit_Minuten__c` | **nicht geschrieben** — sind in der Org berechnete (read-only) Felder; SF leitet die Arbeitszeit aus dem Von/Bis-Intervall ab |
+| (immer 0) | `Von_Stunde__c` (**Pflicht**) | Dauer wird als Intervall ab Mitternacht kodiert |
+| (immer "00") | `Von_Minute__c` (picklist 00/15/30/45) | |
+| `duration_minutes` (in Stunden, gesnappt) | `Bis_Stunde__c` (**Pflicht**) | Dauer-in-Stunden ab Mitternacht |
+| `duration_minutes` (Rest, gesnappt) | `Bis_Minute__c` (picklist) | nächste Viertelstunde |
 | (immer 0) | `Pause__c` (**Pflicht**) | TimeHub trackt keine Pausen |
 | `sync_metadata_override.salesforce.remote` | `Remote__c` (boolean) | lenient parsing: true/1/yes/ja/x/wahr → true |
 | (gesetzt vom Lookup) | `Kontierungsmonat__c` (reference, **Pflicht**) | per SOQL auf der zugehörigen Projektbesetzung gesucht |
+
+> **Wichtig:** Die echten Start-/Endzeiten eines Eintrags werden bewusst
+> **nicht** als Von/Bis-Uhrzeit nach SF geschrieben. `Arbeitszeit__c` ist ein
+> berechnetes Feld, das aus dem Von/Bis-Intervall abgeleitet wird — würden wir
+> z. B. 09:00–11:00 schreiben, käme als Arbeitszeit die Enduhrzeit (11) statt
+> der Dauer (2 Std.) heraus. Deshalb kodieren wir die maßgebliche
+> `duration_minutes` immer als Intervall `00:00 → Dauer`.
+>
+> Der Workaround ist nötig, weil die interne Zeiterfassung in Salesforce nur
+> die **Bis-Zeit** nutzt und anzeigt (das Von wird nicht abgezogen). Mit
+> `Von = 00:00` entspricht die angezeigte Bis-Zeit damit exakt der Dauer.
 
 Das `Remote__c`-Flag wird als Eintrag-Sync-Feld `sync:salesforce.remote`
 exponiert — sowohl für die manuelle Erfassung am Eintrag als auch für
