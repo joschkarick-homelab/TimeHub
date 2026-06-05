@@ -66,7 +66,8 @@
 
 <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
   {% if projects %}
-  <table class="w-full text-sm">
+  {# Desktop: Tabelle (ab md). #}
+  <table class="hidden md:table w-full text-sm">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
         <th class="px-4 py-2">Code</th>
@@ -115,6 +116,46 @@
       {% endfor %}
     </tbody>
   </table>
+
+  {# Mobile: gestapelte Karten je Projekt (unter md). #}
+  <div class="md:hidden divide-y divide-slate-100">
+    {% for p in projects %}
+      <div class="p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-medium truncate">{{ p.name }}</div>
+            <div class="font-mono text-xs text-slate-500 mt-0.5 truncate">
+              <span class="inline-block w-2 h-2 rounded-full align-middle mr-1"
+                    style="background: {{ p.color }}"></span>
+              {{ p.code }}{% if p.customer %} <span class="font-sans">· {{ p.customer }}</span>{% endif %}
+            </div>
+          </div>
+          {% if p.status == 'active' %}
+            <span class="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5 text-xs whitespace-nowrap">aktiv</span>
+          {% else %}
+            <span class="text-slate-600 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 text-xs whitespace-nowrap">{{ p.status }}</span>
+          {% endif %}
+        </div>
+        <div class="flex items-center gap-2 flex-wrap mt-2 text-xs text-slate-500">
+          <span>Ziel: {{ p.default_sync_target }}</span>
+          {% set st = project_status.get(p.id) %}
+          {% if st and st.needs_sync and not st.ready %}
+            <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
+                  title="Fehlt: {{ st.missing | join(', ') }}">⚠ unvollständig</span>
+          {% endif %}
+        </div>
+        {% if user.is_admin %}
+          <div class="flex items-center gap-4 mt-3">
+            <a href="/projects/{{ p.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
+            <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
+                  onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
+              <button class="text-sm text-rose-600 hover:underline">löschen</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
   {% else %}
     <p class="px-5 py-6 text-slate-500">
       Noch keine Projekte.{% if user.is_admin %} Leg oben das erste an.{% endif %}
