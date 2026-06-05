@@ -117,7 +117,10 @@ def test_build_zeiterfassung_payload_without_start_end():
     assert payload["Remote__c"] is True
 
 
-def test_build_zeiterfassung_payload_with_start_end_clips_long_description():
+def test_build_zeiterfassung_payload_with_start_end_uses_duration_not_clock():
+    """Auch mit echten Start-/Endzeiten kodiert die Payload die DAUER ins
+    Von/Bis-Intervall (00:00 → Dauer), nicht die Uhrzeit. Sonst leitet SF die
+    Arbeitszeit als Enduhrzeit (10) statt als Dauer (1,5 Std.) ab."""
     from datetime import date as _date, time as _time
     from types import SimpleNamespace
     from app.services.salesforce import build_zeiterfassung_payload
@@ -127,8 +130,8 @@ def test_build_zeiterfassung_payload_with_start_end_clips_long_description():
         duration_minutes=90, description="x" * 300,
     )
     payload = build_zeiterfassung_payload(entry, "a0Q000MAY26")
-    assert payload["Von_Stunde__c"] == 9 and payload["Von_Minute__c"] == "00"
-    assert payload["Bis_Stunde__c"] == 10 and payload["Bis_Minute__c"] == "30"
+    assert payload["Von_Stunde__c"] == 0 and payload["Von_Minute__c"] == "00"
+    assert payload["Bis_Stunde__c"] == 1 and payload["Bis_Minute__c"] == "30"
     assert len(payload["Taetigkeitsbeschreibung__c"]) == 255
     assert payload["Remote__c"] is False  # no remote value passed
 

@@ -442,10 +442,14 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   Projektbesetzung aufgelöst und der Kontierungsmonat__c gesucht
   (`WHERE Projektbesetzung__c = '…' AND Monatsbeginn__c ≤ Tag AND
   Monatsende__c ≥ Tag`). Payload: `Kontierungsmonat__c`, `Tag__c`,
-  `Arbeitszeit__c` / `Arbeitszeit_Minuten__c`,
   `Von_Stunde__c` / `Von_Minute__c` / `Bis_Stunde__c` / `Bis_Minute__c`
-  (Default `0` bzw. Dauer-in-Stunden für Einträge ohne Uhrzeit; Minuten auf
-  Viertelstunden-Picklist gesnappt), `Pause__c=0`,
+  (Dauer als Intervall ab Mitternacht: `Von=0`, `Bis = duration_minutes`,
+  Minuten auf Viertelstunden-Picklist gesnappt — die echte Uhrzeit wird
+  bewusst nicht geschrieben, da `Arbeitszeit__c`/`Arbeitszeit_Minuten__c`
+  berechnete read-only-Felder sind, die SF aus dem Intervall ableitet; der
+  Workaround ist nötig, weil die interne SF-Zeiterfassung nur die Bis-Zeit
+  nutzt und anzeigt — mit `Von=0` ist die Bis-Zeit gleich der Dauer),
+  `Pause__c=0`,
   `Taetigkeitsbeschreibung__c` (auf 255 Zeichen gekappt) und `Remote__c`
   (aus dem Eintrag-Sync-Feld). Übersprungen wird, wenn: keine Assignment
   gepflegt / PB nicht in SF / PB geschlossen / Kontierungsmonat fehlt /
