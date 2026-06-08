@@ -9,7 +9,6 @@
   <div class="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
 {% endif %}
 
-{% if user.is_admin %}
 <section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
   <h2 class="font-semibold mb-3">Neues Projekt</h2>
   <form method="post" action="/projects" class="grid sm:grid-cols-6 gap-3 items-end">
@@ -62,7 +61,6 @@
     update();
   })();
 </script>
-{% endif %}
 
 <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
   {% if projects %}
@@ -75,7 +73,7 @@
         <th class="px-4 py-2">Kunde</th>
         <th class="px-4 py-2">Ziel</th>
         <th class="px-4 py-2">Status</th>
-        {% if user.is_admin %}<th class="px-4 py-2">Aktionen</th>{% endif %}
+        <th class="px-4 py-2">Aktionen</th>
       </tr>
     </thead>
     <tbody>
@@ -103,15 +101,13 @@
               <span class="text-slate-600 bg-slate-100 border border-slate-200 rounded px-2 py-0.5 text-xs">{{ p.status }}</span>
             {% endif %}
           </td>
-          {% if user.is_admin %}
-            <td class="px-4 py-2 space-x-3 whitespace-nowrap">
-              <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
-              <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
-                    onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
-                <button class="text-xs text-rose-600 hover:underline">löschen</button>
-              </form>
-            </td>
-          {% endif %}
+          <td class="px-4 py-2 space-x-3 whitespace-nowrap">
+            <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+            <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
+                  onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
+              <button class="text-xs text-rose-600 hover:underline">löschen</button>
+            </form>
+          </td>
         </tr>
       {% endfor %}
     </tbody>
@@ -144,21 +140,19 @@
                   title="Fehlt: {{ st.missing | join(', ') }}">⚠ unvollständig</span>
           {% endif %}
         </div>
-        {% if user.is_admin %}
-          <div class="flex items-center gap-4 mt-3">
-            <a href="/projects/{{ p.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
-            <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
-                  onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
-              <button class="text-sm text-rose-600 hover:underline">löschen</button>
-            </form>
-          </div>
-        {% endif %}
+        <div class="flex items-center gap-4 mt-3">
+          <a href="/projects/{{ p.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
+          <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
+                onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
+            <button class="text-sm text-rose-600 hover:underline">löschen</button>
+          </form>
+        </div>
       </div>
     {% endfor %}
   </div>
   {% else %}
     <p class="px-5 py-6 text-slate-500">
-      Noch keine Projekte.{% if user.is_admin %} Leg oben das erste an.{% endif %}
+      Noch keine Projekte. Leg oben das erste an.
     </p>
   {% endif %}
 </section>

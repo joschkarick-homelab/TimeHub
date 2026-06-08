@@ -86,13 +86,14 @@ def list_time_entries(
 def _create_entry(
     db: Session, current_user: User, payload: TimeEntryCreate, rules=()
 ) -> TimeEntry:
-    project = db.get(Project, payload.project_id)
-    if project is None:
-        raise HTTPException(status_code=400, detail=f"project {payload.project_id} not found")
-
     target_user_id = payload.user_id or current_user.id
     if target_user_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="cannot create entries for other users")
+
+    project = db.get(Project, payload.project_id)
+    # Projects are per-user: an entry may only reference its owner's project.
+    if project is None or project.user_id != target_user_id:
+        raise HTTPException(status_code=400, detail=f"project {payload.project_id} not found")
 
     entry = TimeEntry(
         user_id=target_user_id,

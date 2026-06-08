@@ -109,11 +109,12 @@ def index(
             project_id_int = int(project_id)
         except ValueError:
             project_id_int = None
-    # Default filter window: this month, so the list is bounded but still useful.
+    # Default filter window: the current week (Mon–Sun), so the list is tightly
+    # bounded to what you're most likely working on right now.
     if df is None and dt is None and project_id_int is None:
         today = date.today()
-        df = today.replace(day=1)
-        dt = today
+        df = today - timedelta(days=today.weekday())
+        dt = df + timedelta(days=6)
 
     stmt = (
         select(TimeEntry)
@@ -132,10 +133,17 @@ def index(
     days = _group_by_day(entries)
 
     projects = list(
-        db.execute(select(Project).where(Project.status == "active").order_by(Project.code)).scalars()
+        db.execute(
+            select(Project)
+            .where(Project.user_id == user.id, Project.status == "active")
+            .order_by(Project.code)
+        ).scalars()
     )
-    # All projects (incl. inactive) so we can resolve sync status for every entry.
-    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+    # All of the user's projects (incl. inactive) so sync status resolves for every entry.
+    proj_lookup = {
+        p.id: p
+        for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
+    }
     projects_by_id = {p.id: p for p in projects}
     total_minutes = sum(e.duration_minutes for e in entries)
 
@@ -332,9 +340,7 @@ async def create_entry(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=400, detail="project not found")
+    project = _owned_project_or_404(db, project_id, user)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
     try:
@@ -377,6 +383,14 @@ def _owned_entry_or_404(db: Session, entry_id: int, user: User) -> TimeEntry:
     return entry
 
 
+def _owned_project_or_404(db: Session, project_id: int, user: User) -> Project:
+    """Projects are per-user; only the owner may reference or manage one."""
+    project = db.get(Project, project_id)
+    if project is None or project.user_id != user.id:
+        raise HTTPException(status_code=404, detail="project not found")
+    return project
+
+
 def _safe_next(target: str | None, fallback: str = "/") -> str:
     """Only allow same-site relative redirects (avoid open-redirects)."""
     if target and target.startswith("/") and not target.startswith("//"):
@@ -394,7 +408,9 @@ def edit_entry_form(
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     entry = _owned_entry_or_404(db, entry_id, user)
     projects = list(
-        db.execute(select(Project).order_by(Project.code)).scalars()
+        db.execute(
+            select(Project).where(Project.user_id == user.id).order_by(Project.code)
+        ).scalars()
     )
     return templates.TemplateResponse(
         "entry_edit.html",
@@ -431,9 +447,7 @@ async def edit_entry_submit(
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     entry = _owned_entry_or_404(db, entry_id, user)
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=400, detail="project not found")
+    project = _owned_project_or_404(db, project_id, user)
     next_url = _safe_next(next)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
@@ -599,10 +613,17 @@ def calendar_page(
     entries = list(db.execute(stmt).scalars())
 
     projects = list(
-        db.execute(select(Project).where(Project.status == "active").order_by(Project.code)).scalars()
+        db.execute(
+            select(Project)
+            .where(Project.user_id == user.id, Project.status == "active")
+            .order_by(Project.code)
+        ).scalars()
     )
-    # All projects (incl. inactive) so sync status resolves for every entry.
-    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+    # All of the user's projects (incl. inactive) so sync status resolves for every entry.
+    proj_lookup = {
+        p.id: p
+        for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
+    }
 
     today = date.today()
     columns = []
@@ -678,7 +699,7 @@ async def calendar_create(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"error": "Datum oder Projekt fehlt"}, status_code=400)
 
     project = db.get(Project, project_id)
-    if project is None:
+    if project is None or project.user_id != user.id:
         return JSONResponse({"error": "Projekt nicht gefunden"}, status_code=400)
 
     start = _parse_time(data.get("start_time"))
@@ -848,7 +869,9 @@ def sync_center(
             .order_by(TimeEntry.entry_date, TimeEntry.id)
         ).scalars()
     )
-    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+    proj_lookup = {
+        p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
+    }
     buckets = es_svc.wizard_buckets(entries, proj_lookup)
 
     formats = _visible_formats(db, user)
@@ -939,7 +962,9 @@ def sync_salesforce_preview(
             url="/?error=Keine+gültigen+Einträge+gefunden",
             status_code=status.HTTP_302_FOUND,
         )
-    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+    proj_lookup = {
+        p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
+    }
 
     client = sf_svc.client_from_settings(db)
     if client is None:
@@ -1100,7 +1125,9 @@ def sync_salesforce_execute(
         .order_by(TimeEntry.entry_date, TimeEntry.id)
     )
     entries = list(db.execute(stmt).scalars())
-    proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
+    proj_lookup = {
+        p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
+    }
     remote_field = next((f for f in sf.entry_fields("salesforce") if f.key == "remote"), None)
 
     results: list[dict] = []
@@ -2132,14 +2159,19 @@ _KNOWN_SYNC_TARGETS = ["intern", "jira", "salesforce", "bcs", "none"]
 _KNOWN_STATUSES = ["active", "inactive"]
 
 
-def _unique_project_code(db: Session, name: str) -> str:
+def _unique_project_code(db: Session, name: str, user_id: int) -> str:
     """Derive a stable, unique code from the project name so users only have to
     enter a name. Normalizes the same way the importer matches codes, so an
-    auto-code stays compatible with importing the plain name."""
+    auto-code stays compatible with importing the plain name. Uniqueness is
+    per-user, matching the (user_id, code) constraint."""
     import re as _re
 
     base = _re.sub(r"[^A-Za-z0-9]+", "-", (name or "").strip()).strip("-").upper()[:60] or "PROJEKT"
-    existing = {c for (c,) in db.execute(select(Project.code)).all()}
+    existing = {
+        c for (c,) in db.execute(
+            select(Project.code).where(Project.user_id == user_id)
+        ).all()
+    }
     if base not in existing:
         return base
     i = 2
@@ -2158,7 +2190,11 @@ def projects_page(
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    projects = list(db.execute(select(Project).order_by(Project.code)).scalars())
+    projects = list(
+        db.execute(
+            select(Project).where(Project.user_id == user.id).order_by(Project.code)
+        ).scalars()
+    )
     project_status = {p.id: sf.project_sync_status(p) for p in projects}
     return templates.TemplateResponse(
         "projects.html",
@@ -2189,13 +2225,13 @@ async def projects_create(
     db: Session = Depends(get_db),
 ):
     user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
     # Code is optional — derive a unique one from the name when left blank.
-    final_code = code.strip() or _unique_project_code(db, name)
+    final_code = code.strip() or _unique_project_code(db, name, user.id)
     p = Project(
+        user_id=user.id,
         name=name.strip(),
         code=final_code,
         customer=(customer.strip() or None),
@@ -2226,12 +2262,9 @@ async def projects_create(
 @router.get("/projects/{project_id}/edit", response_class=HTMLResponse)
 def projects_edit_form(request: Request, project_id: int, db: Session = Depends(get_db)):
     user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Not found")
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    project = _owned_project_or_404(db, project_id, user)
     return templates.TemplateResponse(
         "project_edit.html",
         _ctx(
@@ -2260,15 +2293,12 @@ async def projects_update(
     db: Session = Depends(get_db),
 ):
     user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Not found")
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    project = _owned_project_or_404(db, project_id, user)
     project.name = name.strip()
     # Code optional: keep the existing one when the field is left blank.
-    project.code = code.strip() or project.code or _unique_project_code(db, name)
+    project.code = code.strip() or project.code or _unique_project_code(db, name, user.id)
     project.customer = customer.strip() or None
     project.color = color or "#6366f1"
     target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
@@ -2297,12 +2327,9 @@ async def projects_update(
 @router.post("/projects/{project_id}/delete", response_class=HTMLResponse)
 def projects_delete(request: Request, project_id: int, db: Session = Depends(get_db)):
     user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Not found")
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    project = _owned_project_or_404(db, project_id, user)
     try:
         db.delete(project)
         db.commit()
@@ -2442,7 +2469,12 @@ def reports_page(
     rows = list(db.execute(stmt).all())
     report = rb.build_report(rows, active_group_by, detailed=active_detailed)
 
-    projects = list(db.execute(select(Project).order_by(Project.code)).scalars())
+    # Project filter mirrors the entry scoping above: non-admins only see their
+    # own projects; an admin keeps the cross-user view for reporting.
+    proj_stmt = select(Project).order_by(Project.code)
+    if not user.is_admin:
+        proj_stmt = proj_stmt.where(Project.user_id == user.id)
+    projects = list(db.execute(proj_stmt).scalars())
     customers = sorted({p.customer for p in projects if p.customer})
     users = (
         list(db.execute(select(User).order_by(User.full_name)).scalars())

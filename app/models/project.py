@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, String, func
+from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -9,10 +9,15 @@ from app.models._enums import ProjectStatus, SyncTarget
 
 class Project(Base):
     __tablename__ = "projects"
+    # Projects are per-user: the same code may exist once per owner.
+    __table_args__ = (UniqueConstraint("user_id", "code", name="uq_projects_user_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     customer: Mapped[str | None] = mapped_column(String(255), nullable=True)
     color: Mapped[str] = mapped_column(String(16), nullable=False, default="#6366f1")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=ProjectStatus.ACTIVE)

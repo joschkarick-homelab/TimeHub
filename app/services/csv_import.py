@@ -99,10 +99,11 @@ def import_csv(
     errors: list[dict] = []
     created_projects: list[str] = []
     project_cache: dict[str, Project] = {}
-    # Map of normalized code -> existing Project, so "ACME 1" matches "acme-1"
+    # Map of normalized code -> existing Project (scoped to the importing user,
+    # since projects are per-user), so "ACME 1" matches "acme-1".
     norm_index: dict[str, Project] = {
         _normalize_code(p.code): p
-        for p in db.execute(select(Project)).scalars()
+        for p in db.execute(select(Project).where(Project.user_id == user_id)).scalars()
     }
 
     def get_or_create_project(code: str | None, customer: str | None = None) -> Project | None:
@@ -124,10 +125,12 @@ def import_csv(
         existing = norm_index.get(normalized)
         if existing is None:
             existing = db.execute(
-                select(Project).where(func.upper(Project.code) == code.upper())
+                select(Project).where(
+                    Project.user_id == user_id, func.upper(Project.code) == code.upper()
+                )
             ).scalar_one_or_none()
         if existing is None and auto_create_projects:
-            existing = Project(code=code, name=code, customer=cust)
+            existing = Project(code=code, name=code, customer=cust, user_id=user_id)
             db.add(existing)
             db.flush()
             norm_index[normalized] = existing
