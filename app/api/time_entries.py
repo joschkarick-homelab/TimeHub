@@ -8,6 +8,8 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import Project, TimeEntry, User
 from app.models._enums import EntrySource
+from app.services.entry_sync import reconcile_entry_syncs
+from app.services.sync_rules import load_rules
 from app.schemas.time_entry import (
     BulkResult,
     TimeEntryBulkCreate,
@@ -81,7 +83,9 @@ def list_time_entries(
     return items
 
 
-def _create_entry(db: Session, current_user: User, payload: TimeEntryCreate) -> TimeEntry:
+def _create_entry(
+    db: Session, current_user: User, payload: TimeEntryCreate, rules=()
+) -> TimeEntry:
     project = db.get(Project, payload.project_id)
     if project is None:
         raise HTTPException(status_code=400, detail=f"project {payload.project_id} not found")
@@ -105,6 +109,8 @@ def _create_entry(db: Session, current_user: User, payload: TimeEntryCreate) -> 
         source=EntrySource.MANUAL,
     )
     db.add(entry)
+    db.flush()  # assign id so sync rows can reference it
+    reconcile_entry_syncs(db, entry, project, rules)
     return entry
 
 
@@ -114,7 +120,7 @@ def create_time_entry(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    entry = _create_entry(db, current_user, payload)
+    entry = _create_entry(db, current_user, payload, load_rules(db))
     db.commit()
     db.refresh(entry)
     return entry
@@ -128,10 +134,10 @@ def bulk_create(
 ):
     created_ids: list[int] = []
     errors: list[dict] = []
+    rules = load_rules(db)
     for idx, item in enumerate(payload.entries):
         try:
-            entry = _create_entry(db, current_user, item)
-            db.flush()
+            entry = _create_entry(db, current_user, item, rules)
             created_ids.append(entry.id)
         except HTTPException as e:
             errors.append({"index": idx, "error": e.detail})
@@ -170,6 +176,8 @@ def update_entry(
             entry.start_time.hour * 60 + entry.start_time.minute
         )
     db.add(entry)
+    db.flush()
+    reconcile_entry_syncs(db, entry, entry.project, load_rules(db))
     db.commit()
     db.refresh(entry)
     return entry

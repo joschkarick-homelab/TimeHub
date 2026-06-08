@@ -20,6 +20,9 @@ class Project(Base):
     default_sync_target: Mapped[str] = mapped_column(
         String(32), nullable=False, default=SyncTarget.INTERN
     )
+    # Default target set for this project's entries (multi-target). When empty,
+    # callers fall back to the single `default_sync_target` above for back-compat.
+    sync_targets: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     # Per-target metadata, e.g. {"jira": {"project_key": "ABC", "default_issue": "ABC-1"},
     #                            "salesforce": {"project_id": "..."},
     #                            "bcs": {"project_no": "..."}}

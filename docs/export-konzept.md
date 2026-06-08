@@ -217,10 +217,16 @@ Bis die API-Clients stehen, leisten die Jira/BCS-Karten in v1 nur
 
 ## 8. Bau-Reihenfolge (Phasen)
 
-- **Phase 0 — Fundament (unsichtbar, entsperrt alles):**
-  `EntrySync`-Tabelle, `sync_targets`-Listen, Migration/Backfill,
-  `sync_fields` auf Mengen umstellen, `sync_rules`-Service mit minimalem
-  Bedingungs-Vokabular.
+- **Phase 0 — Fundament (unsichtbar, entsperrt alles): ✅ umgesetzt.**
+  `EntrySync`- und `SyncRule`-Modell, `Project.sync_targets` /
+  `TimeEntry.sync_targets_override`, Migration `0008` mit Backfill,
+  `sync_fields` um `effective_targets`/`status_for_target`/
+  `entry_sync_statuses` erweitert (alt-Funktionen unverändert),
+  `sync_rules`-Service (`resolve_targets` + Vokabular `always`/`has_tag`/
+  `project_code`) und `entry_sync.reconcile_entry_syncs`. Materialisierung
+  ist in die API-Erstell-/Update-Pfade und den CSV-Import verdrahtet.
+  *Noch offen für eine Folge-Phase:* Verdrahtung der Web-Formular-Pfade
+  (Dashboard/Kalender-Erstellung) — folgt mit der Matrix in Phase 1.
 - **Phase 1 — Matrix:** read-only Statusübersicht im Dashboard. Sofortiger
   Nutzen: man *sieht* erstmals, was offen/blockiert ist.
 - **Phase 2 — Wizard:** SF-Flow generalisieren, Hybrid-Korrektur. Salesforce

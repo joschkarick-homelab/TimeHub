@@ -128,6 +128,31 @@ def effective_target(entry, project) -> str:
     return entry.sync_target_override or project.default_sync_target
 
 
+def project_targets(project) -> list[str]:
+    """The project's default target set. Falls back to the single
+    `default_sync_target` when the multi-target list is empty (back-compat).
+    Non-sync targets (intern/none) are dropped."""
+    raw = list(getattr(project, "sync_targets", None) or [])
+    if not raw:
+        dt = getattr(project, "default_sync_target", None)
+        raw = [dt] if dt else []
+    return [t for t in raw if t not in NON_SYNC_TARGETS]
+
+
+def effective_targets(entry, project) -> list[str]:
+    """Effective target *set* for an entry, without applying rules.
+
+    A per-entry override (multi or legacy single) wins; otherwise the project
+    default set. For the rule-aware resolution use services.sync_rules."""
+    override = getattr(entry, "sync_targets_override", None)
+    if override:
+        return sorted({t for t in override if t not in NON_SYNC_TARGETS})
+    if getattr(entry, "sync_target_override", None):
+        t = entry.sync_target_override
+        return [] if t in NON_SYNC_TARGETS else [t]
+    return project_targets(project)
+
+
 def _get(md: dict | None, target: str, key: str) -> str | None:
     val = ((md or {}).get(target) or {}).get(key)
     return val or None
@@ -185,13 +210,12 @@ def apply_fields(
     return md, warnings
 
 
-def entry_sync_status(entry, project) -> dict:
-    """Whether an entry has everything its effective target needs to sync.
+def status_for_target(entry, project, target: str) -> dict:
+    """Whether an entry has everything a *given* target needs to sync.
 
     Considers both project-level and entry-level required fields, plus format
     validity of any value that is present. intern/none never need a push.
     """
-    target = effective_target(entry, project)
     if target in NON_SYNC_TARGETS:
         return {"target": target, "needs_sync": False, "ready": True, "missing": []}
 
@@ -206,6 +230,16 @@ def entry_sync_status(entry, project) -> dict:
         elif val and validate_value(f, val):
             missing.append(f"{f.label} (Format)")
     return {"target": target, "needs_sync": True, "ready": not missing, "missing": missing}
+
+
+def entry_sync_status(entry, project) -> dict:
+    """Sync-readiness for the entry's single effective target (legacy view)."""
+    return status_for_target(entry, project, effective_target(entry, project))
+
+
+def entry_sync_statuses(entry, project, targets) -> dict[str, dict]:
+    """Sync-readiness per target for a multi-target entry, keyed by target."""
+    return {t: status_for_target(entry, project, t) for t in targets}
 
 
 def project_sync_status(project) -> dict:
