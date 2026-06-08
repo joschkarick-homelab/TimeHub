@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.models import Project, TimeEntry
 from app.models._enums import EntrySource, SyncTarget
 from app.services import sync_fields as sf
+from app.services.entry_sync import reconcile_entry_syncs
+from app.services.sync_rules import load_rules
 from app.services.transforms import (
     apply_transforms,
     auto_duration_to_minutes,
@@ -137,6 +139,7 @@ def import_csv(
             project_cache[code] = existing
         return existing
 
+    rules = load_rules(db)
     for row_no, raw_row in enumerate(reader, start=2):
         try:
             mapped: dict = {}
@@ -221,6 +224,7 @@ def import_csv(
             )
             db.add(entry)
             db.flush()
+            reconcile_entry_syncs(db, entry, project, rules)
             created_ids.append(entry.id)
         except Exception as e:  # noqa: BLE001
             errors.append({"row": row_no, "error": str(e), "data": raw_row})
