@@ -198,7 +198,10 @@
         <th class="px-4 py-2">Dauer</th>
         <th class="px-4 py-2">Beschreibung</th>
         {% for t, label in matrix_targets %}
-          <th class="px-2 py-2 text-center" title="Sync-Status {{ label }}">{{ label }}</th>
+          <th class="px-2 py-2 text-center">
+            <a href="/sync" class="hover:underline text-indigo-600"
+               title="{{ label }} im Export-Wizard öffnen">{{ label }}</a>
+          </th>
         {% endfor %}
         <th class="px-4 py-2"></th>
       </tr>
