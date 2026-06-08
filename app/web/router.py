@@ -377,9 +377,17 @@ def _owned_entry_or_404(db: Session, entry_id: int, user: User) -> TimeEntry:
     return entry
 
 
+def _safe_next(target: str | None, fallback: str = "/") -> str:
+    """Only allow same-site relative redirects (avoid open-redirects)."""
+    if target and target.startswith("/") and not target.startswith("//"):
+        return target
+    return fallback
+
+
 @router.get("/entries/{entry_id}/edit", response_class=HTMLResponse)
 def edit_entry_form(
-    request: Request, entry_id: int, db: Session = Depends(get_db), error: str | None = None
+    request: Request, entry_id: int, db: Session = Depends(get_db),
+    error: str | None = None, next: str | None = None,
 ):
     user = _maybe_user(request, db)
     if user is None:
@@ -395,6 +403,7 @@ def edit_entry_form(
             user,
             entry=entry,
             projects=projects,
+            next_url=_safe_next(next),
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("entry"),
             project_targets={p.id: p.default_sync_target for p in projects},
@@ -415,6 +424,7 @@ async def edit_entry_submit(
     end_time: str = Form(""),
     description: str = Form(""),
     sync_target_override: str = Form(""),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _maybe_user(request, db)
@@ -424,13 +434,14 @@ async def edit_entry_submit(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=400, detail="project not found")
+    next_url = _safe_next(next)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
     try:
         duration = _resolve_duration(start, end, duration_minutes)
     except ValueError as e:
         return RedirectResponse(
-            url=f"/entries/{entry_id}/edit?error={e}".replace(" ", "+"),
+            url=f"/entries/{entry_id}/edit?error={e}&next={next_url}".replace(" ", "+"),
             status_code=status.HTTP_302_FOUND,
         )
     entry.entry_date = date.fromisoformat(entry_date)
@@ -454,7 +465,7 @@ async def edit_entry_submit(
     db.flush()
     es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
-    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=next_url, status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/entries/{entry_id}/delete", response_class=HTMLResponse)
@@ -818,33 +829,27 @@ def settings_salesforce(
 
 
 @router.get("/sync", response_class=HTMLResponse)
-def sync_center(request: Request, db: Session = Depends(get_db)):
-    """Hub for sync actions. Lists per-target counts and a 'preview ready
-    entries' button per implemented target, plus the CSV-Export."""
+def sync_center(
+    request: Request, db: Session = Depends(get_db),
+    flash: str | None = None, error: str | None = None,
+):
+    """Export-Wizard hub: one actionable card per target, fed by the
+    materialized EntrySync rows. Salesforce delegates to the live preview/
+    execute flow; Jira/BCS can be ticked off as manually handled until their
+    push clients land. Blocked entries are listed with a correction deep-link."""
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     entries = list(
-        db.execute(select(TimeEntry).where(TimeEntry.user_id == user.id)).scalars()
+        db.execute(
+            select(TimeEntry)
+            .where(TimeEntry.user_id == user.id)
+            .options(selectinload(TimeEntry.entry_syncs))
+            .order_by(TimeEntry.entry_date, TimeEntry.id)
+        ).scalars()
     )
     proj_lookup = {p.id: p for p in db.execute(select(Project)).scalars()}
-
-    targets = ("jira", "salesforce", "bcs")
-    counts: dict[str, dict] = {t: {"ready_ids": [], "pending": 0, "synced": 0} for t in targets}
-    for e in entries:
-        project = proj_lookup.get(e.project_id)
-        if project is None:
-            continue
-        st = sf.entry_sync_status(e, project)
-        t = st["target"]
-        if t not in counts:
-            continue
-        if e.sync_status in ("synced", "manually_synced"):
-            counts[t]["synced"] += 1
-        elif st["ready"]:
-            counts[t]["ready_ids"].append(e.id)
-        else:
-            counts[t]["pending"] += 1
+    buckets = es_svc.wizard_buckets(entries, proj_lookup)
 
     formats = _visible_formats(db, user)
     return templates.TemplateResponse(
@@ -852,10 +857,49 @@ def sync_center(request: Request, db: Session = Depends(get_db)):
         _ctx(
             request,
             user,
-            counts=counts,
+            buckets=buckets,
+            cards=[(t, es_svc.TARGET_LABELS[t]) for t in es_svc.DISPLAY_TARGETS],
+            projects_by_id=proj_lookup,
             sf_configured=sf_svc.credentials_configured(db),
             formats=formats,
+            flash=flash,
+            error=error,
         ),
+    )
+
+
+@router.post("/sync/{target}/mark-done", response_class=HTMLResponse)
+def sync_mark_target_done(
+    request: Request,
+    target: str,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Tick off one target for the selected entries (EntrySync → manually_synced).
+    Used for targets without a live push, and as the wizard's 'abnicken' action."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    if target not in es_svc.DISPLAY_TARGETS:
+        return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
+                                status_code=status.HTTP_302_FOUND)
+    if not entry_ids:
+        return RedirectResponse(url="/sync?error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id)
+        .options(selectinload(TimeEntry.entry_syncs))
+    )
+    n = 0
+    for e in db.execute(stmt).scalars():
+        if es_svc.mark_target_done(db, e, target):
+            n += 1
+    db.commit()
+    label = es_svc.TARGET_LABELS.get(target, target)
+    return RedirectResponse(
+        url=f"/sync?flash={n}+Einträge+für+{label}+als+erledigt+markiert",
+        status_code=status.HTTP_302_FOUND,
     )
 
 

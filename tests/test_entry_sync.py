@@ -135,6 +135,33 @@ def test_matrix_cell_yellow_when_pending_and_ready():
     assert es.matrix_cell(e, _proj(), "jira")["state"] == "yellow"
 
 
+# ---------- wizard buckets ----------
+
+def _full_ent(eid, pid, minutes, syncs, metadata=None):
+    return SimpleNamespace(
+        id=eid, project_id=pid, duration_minutes=minutes, entry_syncs=syncs,
+        sync_metadata_override=metadata or {}, sync_targets_override=None,
+        sync_target_override=None, tags=[],
+    )
+
+
+def test_wizard_buckets_groups_ready_blocked_done():
+    p = _proj(targets=["jira", "bcs"])  # id=1
+    proj_lookup = {1: p}
+    e1 = _full_ent(1, 1, 120, [_es("jira", "pending"), _es("bcs", "pending")],
+                   metadata={"jira": {"issue_key": "ABC-1"}})
+    e2 = _full_ent(2, 1, 60, [_es("jira", "synced")])
+    e3 = _full_ent(3, 1, 30, [_es("jira", "failed", last_error="kaputt")])
+    b = es.wizard_buckets([e1, e2, e3], proj_lookup)
+    assert [x.id for x in b["jira"]["ready"]] == [1]
+    assert b["jira"]["ready_minutes"] == 120
+    assert b["jira"]["done"] == 1
+    assert len(b["jira"]["blocked"]) == 1 and "kaputt" in b["jira"]["blocked"][0]["reason"]
+    # bcs: entry 1 is blocked (subject/task missing)
+    assert len(b["bcs"]["blocked"]) == 1
+    assert b["bcs"]["ready"] == []
+
+
 # ---------- materialization through the real API ----------
 
 def _token(client) -> str:
@@ -254,3 +281,53 @@ def test_mark_synced_flips_matrix_to_green(client):
     # undo restores pending
     client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
     assert _entry_syncs(eid) == {"salesforce": "pending"}
+
+
+# ---------- export wizard (web) ----------
+
+def _jira_ready_entry(client, code):
+    pid = _project_id(client, code, target="jira")
+    return client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60,
+              "sync_metadata_override": {"jira": {"issue_key": "ABC-1"}}},
+        headers=_h(client),
+    ).json()["id"]
+
+
+def test_wizard_renders_target_cards(client):
+    _web_login(client)
+    _jira_ready_entry(client, "WIZJIRA")
+    r = client.get("/sync")
+    assert r.status_code == 200
+    assert "Export-Wizard" in r.text
+    for label in ("Jira", "BCS", "Salesforce"):
+        assert label in r.text
+    assert "Als erledigt markieren" in r.text  # jira entry is ready
+
+
+def test_wizard_mark_done_sets_target_manually_synced(client):
+    _web_login(client)
+    eid = _jira_ready_entry(client, "WIZMARK")
+    assert _entry_syncs(eid) == {"jira": "pending"}
+    r = client.post("/sync/jira/mark-done", data={"entry_ids": eid}, follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("/sync")
+    assert _entry_syncs(eid) == {"jira": "manually_synced"}
+
+
+def test_wizard_unknown_target_rejected(client):
+    _web_login(client)
+    r = client.post("/sync/bogus/mark-done", data={"entry_ids": 1}, follow_redirects=False)
+    assert r.status_code == 302 and "error" in r.headers["location"]
+
+
+def test_edit_next_redirects_back_to_wizard(client):
+    _web_login(client)
+    eid = _jira_ready_entry(client, "WIZEDIT")
+    r = client.post(
+        f"/entries/{eid}/edit",
+        data={"entry_date": "2026-05-28", "project_id": _project_id(client, "WIZEDIT", "jira"),
+              "duration_minutes": 90, "next": "/sync"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302 and r.headers["location"] == "/sync"

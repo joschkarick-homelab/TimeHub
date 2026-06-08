@@ -236,8 +236,15 @@ Bis die API-Clients stehen, leisten die Jira/BCS-Karten in v1 nur
   materialisiert, und die realen Schreibpfade (Salesforce-Push, manuell-
   erledigt-Markierung + Undo) sind auf `EntrySync` gebrückt, damit die Matrix
   der Realität entspricht.
-- **Phase 2 — Wizard:** SF-Flow generalisieren, Hybrid-Korrektur. Salesforce
-  sofort „echt".
+- **Phase 2 — Wizard: ✅ umgesetzt.** Das Sync-Center ist zum Export-Wizard
+  ausgebaut: eine Karte pro Ziel, gespeist aus den `EntrySync`-Buckets
+  (`entry_sync.wizard_buckets`) mit bereit/blockiert/erledigt + Stunden.
+  Salesforce delegiert an den bestehenden Live-`preview → execute`-Flow;
+  Jira/BCS werden über `POST /sync/{target}/mark-done` als manuell erledigt
+  abgehakt (bis die Push-Clients stehen). Blockierte Einträge listen den
+  Grund und einen Korrektur-Deeplink (`/entries/{id}/edit?next=/sync`), der
+  nach dem Speichern wieder im Wizard landet (Hybrid-Korrektur). Einstieg
+  aus der Matrix: die Spaltenköpfe im Dashboard verlinken auf den Wizard.
 - **Phase 3 — Jira/BCS-Push-Clients:** echte API-Integrationen, unabhängig
   parallelisierbar.
 

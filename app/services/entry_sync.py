@@ -125,3 +125,52 @@ def matrix_row(entry, project) -> list[dict]:
     """One status cell per display target for an entry."""
     return [matrix_cell(entry, project, t) for t in DISPLAY_TARGETS]
 
+
+def wizard_buckets(entries, proj_lookup) -> dict[str, dict]:
+    """Group the user's entries into per-target wizard buckets, driven by the
+    materialized EntrySync rows.
+
+    Per target: `ready` (pending + locally sync-ready, with total minutes),
+    `blocked` (pending but missing fields, or last push failed — each with a
+    reason), and `done` (count of synced / manually marked)."""
+    buckets = {
+        t: {"ready": [], "ready_minutes": 0, "blocked": [], "done": 0}
+        for t in DISPLAY_TARGETS
+    }
+    for e in entries:
+        project = proj_lookup.get(e.project_id)
+        if project is None:
+            continue
+        for row in (e.entry_syncs or []):
+            t = row.target
+            if t not in buckets:
+                continue
+            if row.status in _PROTECTED:
+                buckets[t]["done"] += 1
+            elif row.status == SyncStatus.SKIPPED:
+                continue
+            elif row.status == SyncStatus.FAILED:
+                buckets[t]["blocked"].append(
+                    {"entry": e, "reason": row.last_error or "Letzter Sync fehlgeschlagen"}
+                )
+            else:  # pending / exported
+                st = sf.status_for_target(e, project, t)
+                if st["ready"]:
+                    buckets[t]["ready"].append(e)
+                    buckets[t]["ready_minutes"] += e.duration_minutes
+                else:
+                    buckets[t]["blocked"].append(
+                        {"entry": e, "reason": "Fehlt: " + ", ".join(st["missing"])}
+                    )
+    return buckets
+
+
+def mark_target_done(db: Session, entry, target: str) -> bool:
+    """Flag one target of an entry as manually handled, if it isn't already
+    done. Returns True when a change was applied."""
+    row = _find_row(entry, target)
+    if row is not None and row.status in _PROTECTED:
+        return False
+    set_target_status(db, entry, target, SyncStatus.MANUALLY_SYNCED)
+    return True
+
