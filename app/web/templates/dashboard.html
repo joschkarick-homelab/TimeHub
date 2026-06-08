@@ -174,6 +174,19 @@
   </div>
 
   {% if days %}
+  {# Ampel-Punkt einer Matrix-Zelle: grün=erledigt, gelb=offen/bereit,
+     rot=blockiert/fehlgeschlagen, grau=nicht relevant. Tooltip trägt den Grund. #}
+  {% set DOT_CLASS = {"green": "bg-emerald-500", "yellow": "bg-amber-400", "red": "bg-rose-500"} %}
+  {% set DOT_GLYPH = {"green": "✓", "yellow": "●", "red": "!"} %}
+  {% macro status_dot(cell) %}
+    {% if cell.state == "grey" %}
+      <span class="inline-block w-4 h-4 rounded-full bg-slate-100 border border-slate-200 align-middle"
+            title="{{ cell.tooltip }}"></span>
+    {% else %}
+      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold align-middle {{ DOT_CLASS[cell.state] }}"
+            title="{{ cell.tooltip }}" aria-label="{{ cell.tooltip }}">{{ DOT_GLYPH[cell.state] }}</span>
+    {% endif %}
+  {% endmacro %}
   {# Desktop: breite Tabelle (ab md), horizontal scrollbar als Fallback. #}
   <div class="hidden md:block overflow-x-auto">
   <table class="w-full text-sm min-w-[640px]">
@@ -184,8 +197,9 @@
         <th class="px-4 py-2">Projekt</th>
         <th class="px-4 py-2">Dauer</th>
         <th class="px-4 py-2">Beschreibung</th>
-        <th class="px-4 py-2">Ziel</th>
-        <th class="px-4 py-2">Status</th>
+        {% for t, label in matrix_targets %}
+          <th class="px-2 py-2 text-center" title="Sync-Status {{ label }}">{{ label }}</th>
+        {% endfor %}
         <th class="px-4 py-2"></th>
       </tr>
     </thead>
@@ -214,19 +228,9 @@
             </td>
             <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
             <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
-            <td class="px-4 py-2">{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</td>
-            <td class="px-4 py-2">
-              {% set st = entry_status.get(e.id) %}
-              {% if st and st.needs_sync and not st.ready %}
-                <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
-                      title="Fehlt: {{ st.missing | join(', ') }}">⚠ {{ st.missing | join(', ') }}</span>
-              {% elif e.sync_status == "manually_synced" %}
-                <span class="text-slate-700 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
-                      title="Manuell als bereits erfasst markiert">✓ manuell</span>
-              {% else %}
-                {{ e.sync_status }}
-              {% endif %}
-            </td>
+            {% for cell in entry_matrix.get(e.id, []) %}
+              <td class="px-2 py-2 text-center">{{ status_dot(cell) }}</td>
+            {% endfor %}
             <td class="px-4 py-2 space-x-2 whitespace-nowrap text-right">
               {% if e.sync_status == "manually_synced" %}
                 <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
@@ -250,7 +254,7 @@
           <td class="px-4 py-1.5 tabular-nums font-semibold">
             {{ '%.2f'|format(day.total_minutes / 60) }} h
           </td>
-          <td colspan="4"></td>
+          <td colspan="5"></td>
         </tr>
       {% endfor %}
     </tbody>
@@ -292,17 +296,13 @@
               {% if e.description %}
                 <div class="text-sm text-slate-600 mt-0.5 break-words">{{ e.description }}</div>
               {% endif %}
-              <div class="flex items-center gap-2 flex-wrap mt-2 text-xs text-slate-500">
+              <div class="flex items-center gap-3 flex-wrap mt-2 text-xs text-slate-500">
                 <span>{{ e.entry_date }}</span>
-                <span aria-hidden="true">·</span>
-                <span>{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</span>
-                {% set st = entry_status.get(e.id) %}
-                {% if st and st.needs_sync and not st.ready %}
-                  <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
-                        title="Fehlt: {{ st.missing | join(', ') }}">⚠ {{ st.missing | join(', ') }}</span>
-                {% elif e.sync_status == "manually_synced" %}
-                  <span class="text-slate-700 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">✓ manuell</span>
-                {% endif %}
+                {% for cell in entry_matrix.get(e.id, []) %}
+                  <span class="inline-flex items-center gap-1">
+                    {{ status_dot(cell) }}<span>{{ matrix_targets[loop.index0][1] }}</span>
+                  </span>
+                {% endfor %}
               </div>
               <div class="flex items-center gap-4 mt-3">
                 <a href="/entries/{{ e.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>

@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import get_db
@@ -20,6 +20,8 @@ from app.services import app_settings as app_settings_svc
 from app.services import reports as report_svc
 from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
+from app.services import entry_sync as es_svc
+from app.services.sync_rules import load_rules
 from app.services.transforms import clean_target_rules, clean_transforms
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
@@ -116,6 +118,7 @@ def index(
     stmt = (
         select(TimeEntry)
         .where(TimeEntry.user_id == user.id)
+        .options(selectinload(TimeEntry.entry_syncs))
         .order_by(TimeEntry.entry_date.desc(), TimeEntry.id.desc())
     )
     if df is not None:
@@ -138,6 +141,12 @@ def index(
 
     entry_status = {
         e.id: sf.entry_sync_status(e, proj_lookup[e.project_id])
+        for e in entries
+        if e.project_id in proj_lookup
+    }
+    # Per-target traffic-light cells for the dashboard status matrix.
+    entry_matrix = {
+        e.id: es_svc.matrix_row(e, proj_lookup[e.project_id])
         for e in entries
         if e.project_id in proj_lookup
     }
@@ -167,6 +176,8 @@ def index(
             projects=projects,
             projects_by_id=projects_by_id,
             entry_status=entry_status,
+            entry_matrix=entry_matrix,
+            matrix_targets=[(t, es_svc.TARGET_LABELS[t]) for t in es_svc.DISPLAY_TARGETS],
             sf_selectable=sf_selectable,
             sf_selectable_count=sf_selectable_count,
             sf_configured=sf_configured,
@@ -351,6 +362,8 @@ async def create_entry(
             entry.sync_metadata_override, target, fields, values
         )
     db.add(entry)
+    db.flush()
+    es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -438,6 +451,8 @@ async def edit_entry_submit(
             entry.sync_metadata_override, target, fields, values
         )
     db.add(entry)
+    db.flush()
+    es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
@@ -477,6 +492,7 @@ def mark_entries_manually_synced(
         if e.sync_status in ("synced", "manually_synced"):
             continue
         e.sync_status = "manually_synced"
+        es_svc.mark_all_manually_synced(db, e)
         db.add(e)
         n += 1
     db.commit()
@@ -496,6 +512,7 @@ def unmark_entry_manually_synced(
     entry = _owned_entry_or_404(db, entry_id, user)
     if entry.sync_status == "manually_synced":
         entry.sync_status = "pending"
+        es_svc.unmark_manually_synced(db, entry)
         db.add(entry)
         db.commit()
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
@@ -677,6 +694,8 @@ async def calendar_create(request: Request, db: Session = Depends(get_db)):
             entry.sync_metadata_override, target, fields, meta_values
         )
     db.add(entry)
+    db.flush()
+    es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
     db.refresh(entry)
     return JSONResponse(_cal_entry(entry, project), status_code=201)
@@ -1047,6 +1066,7 @@ def sync_salesforce_execute(
 
     def _fail(e, error: str) -> None:
         e.sync_status = "failed"
+        es_svc.set_target_status(db, e, "salesforce", "failed", error=error)
         db.add(e)
         results.append({"entry": e, "status": "failed", "error": error})
 
@@ -1124,6 +1144,7 @@ def sync_salesforce_execute(
         meta["salesforce"] = sf_meta
         entry.sync_metadata_override = meta
         entry.sync_status = "synced"
+        es_svc.set_target_status(db, entry, "salesforce", "synced", external_ref=new_id)
         db.add(entry)
         results.append({"entry": entry, "status": "synced", "id": new_id,
                         "assignment": assignment, "period": period})

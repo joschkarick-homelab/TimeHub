@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from app.services import entry_sync as es
 from app.services import sync_fields as sf
 from app.services.sync_rules import resolve_targets
 
@@ -91,6 +92,49 @@ def test_entry_sync_statuses_reports_missing_per_target():
     assert "BCS Subject" in statuses["bcs"]["missing"]
 
 
+# ---------- status-matrix cell logic ----------
+
+def _es(target, status="pending", last_error=None):
+    return SimpleNamespace(target=target, status=status, last_error=last_error)
+
+
+def _ent_syncs(syncs, metadata=None):
+    return SimpleNamespace(
+        entry_syncs=syncs, sync_metadata_override=metadata or {},
+        sync_targets_override=None, sync_target_override=None, tags=[],
+    )
+
+
+def test_matrix_cell_grey_when_target_not_applicable():
+    cell = es.matrix_cell(_ent_syncs([]), _proj(), "jira")
+    assert cell["state"] == "grey"
+
+
+def test_matrix_cell_green_for_synced_and_manual():
+    assert es.matrix_cell(_ent_syncs([_es("salesforce", "synced")]), _proj(), "salesforce")["state"] == "green"
+    assert es.matrix_cell(_ent_syncs([_es("bcs", "manually_synced")]), _proj(), "bcs")["state"] == "green"
+
+
+def test_matrix_cell_grey_for_skipped():
+    assert es.matrix_cell(_ent_syncs([_es("jira", "skipped")]), _proj(), "jira")["state"] == "grey"
+
+
+def test_matrix_cell_red_failed_surfaces_error():
+    cell = es.matrix_cell(_ent_syncs([_es("salesforce", "failed", last_error="boom")]), _proj(), "salesforce")
+    assert cell["state"] == "red" and "boom" in cell["tooltip"]
+
+
+def test_matrix_cell_red_when_pending_but_blocked():
+    # salesforce needs a project assignment_id that _proj() lacks
+    cell = es.matrix_cell(_ent_syncs([_es("salesforce", "pending")]), _proj(), "salesforce")
+    assert cell["state"] == "red"
+
+
+def test_matrix_cell_yellow_when_pending_and_ready():
+    e = _ent_syncs([_es("jira", "pending")], metadata={"jira": {"issue_key": "ABC-1"}})
+    assert es.matrix_cell(e, _proj(), "jira")["state"] == "yellow"
+
+
 # ---------- materialization through the real API ----------
 
 def _token(client) -> str:
@@ -166,3 +210,47 @@ def test_multi_target_project_materializes_each_target(client):
         headers=_h(client),
     )
     assert _entry_syncs(r.json()["id"]) == {"jira": "pending", "bcs": "pending"}
+
+
+# ---------- dashboard rendering + manual-mark bridge (web) ----------
+
+def _web_login(client):
+    r = client.post(
+        "/login",
+        data={"email": "admin@example.com", "password": "testpass"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+
+
+def test_dashboard_renders_matrix_columns(client):
+    _web_login(client)
+    pid = _project_id(client, "DASHMAT", target="salesforce")
+    client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60},
+        headers=_h(client),
+    )
+    r = client.get("/?date_from=2026-05-01&date_to=2026-05-31")
+    assert r.status_code == 200
+    for label in ("Jira", "BCS", "Salesforce"):
+        assert label in r.text
+
+
+def test_mark_synced_flips_matrix_to_green(client):
+    _web_login(client)
+    pid = _project_id(client, "MARKGRN", target="salesforce")
+    eid = client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60},
+        headers=_h(client),
+    ).json()["id"]
+    assert _entry_syncs(eid) == {"salesforce": "pending"}
+
+    r = client.post("/entries/mark-synced", data={"entry_ids": eid}, follow_redirects=False)
+    assert r.status_code == 302
+    assert _entry_syncs(eid) == {"salesforce": "manually_synced"}
+
+    # undo restores pending
+    client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
+    assert _entry_syncs(eid) == {"salesforce": "pending"}

@@ -227,8 +227,15 @@ Bis die API-Clients stehen, leisten die Jira/BCS-Karten in v1 nur
   ist in die API-Erstell-/Update-Pfade und den CSV-Import verdrahtet.
   *Noch offen für eine Folge-Phase:* Verdrahtung der Web-Formular-Pfade
   (Dashboard/Kalender-Erstellung) — folgt mit der Matrix in Phase 1.
-- **Phase 1 — Matrix:** read-only Statusübersicht im Dashboard. Sofortiger
-  Nutzen: man *sieht* erstmals, was offen/blockiert ist.
+- **Phase 1 — Matrix: ✅ umgesetzt.** Read-only Statusübersicht im Dashboard:
+  drei Ziel-Spalten (Jira/BCS/Salesforce) mit Ampelpunkt pro Eintrag (Desktop-
+  Tabelle und Mobile-Karten), Tooltip trägt den Grund (fehlende Felder bzw.
+  Fehlertext). `entry_sync.matrix_cell/matrix_row` leiten die Farbe aus
+  `EntrySync.status` + `status_for_target` ab. Die in Phase 0 vertagten
+  Web-Formular-Pfade (Dashboard-/Kalender-Erstellung, Edit) sind jetzt
+  materialisiert, und die realen Schreibpfade (Salesforce-Push, manuell-
+  erledigt-Markierung + Undo) sind auf `EntrySync` gebrückt, damit die Matrix
+  der Realität entspricht.
 - **Phase 2 — Wizard:** SF-Flow generalisieren, Hybrid-Korrektur. Salesforce
   sofort „echt".
 - **Phase 3 — Jira/BCS-Push-Clients:** echte API-Integrationen, unabhängig
