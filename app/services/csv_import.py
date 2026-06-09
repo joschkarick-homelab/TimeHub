@@ -99,12 +99,17 @@ def import_csv(
     errors: list[dict] = []
     created_projects: list[str] = []
     project_cache: dict[str, Project] = {}
-    # Map of normalized code -> existing Project (scoped to the importing user,
-    # since projects are per-user), so "ACME 1" matches "acme-1".
-    norm_index: dict[str, Project] = {
-        _normalize_code(p.code): p
-        for p in db.execute(select(Project).where(Project.user_id == user_id)).scalars()
-    }
+    # Indices of existing projects (scoped to the importing user, since projects
+    # are per-user) for loose matching. Code is the primary key; name is a
+    # fallback so a Clockify tag carrying the *project name* (e.g. "Acme Corp")
+    # still routes to the existing project instead of auto-creating a duplicate.
+    # "ACME 1" matches "acme-1" via the normalized form.
+    norm_index: dict[str, Project] = {}
+    name_index: dict[str, Project] = {}
+    for p in db.execute(select(Project).where(Project.user_id == user_id)).scalars():
+        norm_index[_normalize_code(p.code)] = p
+        # First project wins on a name collision; don't clobber a real match.
+        name_index.setdefault(_normalize_code(p.name or ""), p)
 
     def get_or_create_project(code: str | None, customer: str | None = None) -> Project | None:
         if not code:
@@ -129,11 +134,15 @@ def import_csv(
                     Project.user_id == user_id, func.upper(Project.code) == code.upper()
                 )
             ).scalar_one_or_none()
+        # Fall back to a name match (tag = project name convention).
+        if existing is None and normalized:
+            existing = name_index.get(normalized)
         if existing is None and auto_create_projects:
             existing = Project(code=code, name=code, customer=cust, user_id=user_id)
             db.add(existing)
             db.flush()
             norm_index[normalized] = existing
+            name_index.setdefault(normalized, existing)
             created_projects.append(code)
         elif existing is not None and cust and not existing.customer:
             existing.customer = cust

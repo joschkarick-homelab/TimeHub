@@ -363,9 +363,17 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   Zeilennummer, Fehlertext, Rohdaten; neu angelegte Projekte werden gelistet.
 - **FR-RUN-3** Projekt-Auto-Anlage: unbekannte `project_code` werden (per
   Default) angelegt; Matching gegen normalisierten Code (Groß/Klein,
-  Leerzeichen/`-`/`_` ignoriert). Wenn `customer` gemappt ist, wird er beim
-  Anlegen direkt mit gepflegt; bei bestehenden Projekten ohne Kunde wird er
-  ergänzt (vorhandener Kunde bleibt unverändert).
+  Leerzeichen/`-`/`_` ignoriert), mit **Namens-Fallback** (matcht auch den
+  normalisierten Projekt**namen**, falls kein Code passt — beides nutzerbezogen).
+  Wenn `customer` gemappt ist, wird er beim Anlegen direkt mit gepflegt; bei
+  bestehenden Projekten ohne Kunde wird er ergänzt (vorhandener Kunde bleibt
+  unverändert).
+- **FR-RUN-3a** Tag-basiertes Routing (z. B. Clockify „alles in einem Projekt,
+  Kunde je Tag"): Wird die Tag-Spalte auf `project_code` gemappt (direkt oder
+  per `split`-Transform, der den Kunden-Tag herausgreift), routet der Tag dank
+  Code-/Namens-Matching (FR-RUN-3) in das passende Projekt. Das **Exportziel**
+  ergibt sich anschließend automatisch aus den `sync_targets` des Projekts
+  (kein Eintrags-Override nötig).
 - **FR-RUN-4** Beispieldaten merken: hochgeladene CSV (gekürzt auf 30 Zeilen)
   wird am Format als `sample_data` gespeichert, nur wenn dort noch keine
   vorhanden ist. Spätere Importe überschreiben es nicht.

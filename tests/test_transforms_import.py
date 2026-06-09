@@ -201,6 +201,89 @@ def test_web_format_save_drops_invalid_rules(client):
     assert fmt["transforms"] == [] and fmt["target_rules"] == []
 
 
+# ---------- Clockify workflow: one project, customer per tag ----------
+
+def test_clockify_tag_routes_to_project_and_sets_export_target(client):
+    """Workflow: alle Stunden in EINEM Clockify-Projekt, Kunde je Tag. Beim Import
+    routet der Tag (= Projektcode ODER -name) in das passende TimeHub-Projekt, und
+    das Exportziel kommt automatisch aus dem Projekt-Default — kein Eintrag-Override
+    nötig. Kein Doppel-Projekt wird angelegt."""
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    # Zwei Kundenprojekte mit unterschiedlichem Exportziel (eindeutige Codes/Namen,
+    # da die Test-DB session-weit geteilt ist).
+    pa = client.post("/api/v1/projects", json={
+        "name": "Clockify Acme", "code": "CLKACME", "default_sync_target": "salesforce",
+        "sync_metadata": {"salesforce": {"assignment_id": "a01000000000001"}},
+    }, headers=h).json()
+    pb = client.post("/api/v1/projects", json={
+        "name": "Clockify Beta", "code": "CLKB999", "default_sync_target": "jira",
+    }, headers=h).json()
+    assert "id" in pa and "id" in pb, (pa, pb)
+
+    # Importformat: der Clockify-Export hat den Kunden in der Tags-Spalte. Tags
+    # füttern sowohl die Projekt-Zuordnung (project_code) als auch das tags-Feld.
+    fmt_id = client.post("/api/v1/import-formats", json={
+        "name": "Clockify Tags", "separator": ",", "date_format": "%Y-%m-%d",
+        "column_map": {"entry_date": "Date", "duration_hours": "Hours",
+                       "project_code": "Tags", "tags": "Tags"},
+    }, headers=h).json()["id"]
+    csv = ("Date,Hours,Tags\n"
+           "2027-03-15,1.5,CLKACME\n"           # matcht Projekt A per Code
+           "2027-03-16,2,Clockify Beta\n")      # matcht Projekt B per Name (Fallback)
+    r = client.post(f"/api/v1/import-formats/{fmt_id}/run",
+                    files={"file": ("clockify.csv", csv, "text/csv")}, headers=h)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["created"] == 2
+    assert body["created_projects"] == []  # nichts neu angelegt, beide gematcht
+
+    # Nur die Einträge dieses Tests (die DB ist session-weit geteilt).
+    entries = client.get("/api/v1/time-entries", headers=h).json()
+    mine = {e["project_id"]: e for e in entries
+            if e["project_id"] in (pa["id"], pb["id"])}
+    assert mine[pa["id"]]["entry_date"] == "2027-03-15"
+    assert mine[pa["id"]]["tags"] == ["CLKACME"]
+    assert mine[pb["id"]]["entry_date"] == "2027-03-16"
+
+    # Exportziel kommt aus dem Projekt-Default → materialisierte EntrySync-Zeile.
+    from app.db import SessionLocal
+    from app.models import EntrySync
+    with SessionLocal() as db:
+        def targets(entry_id):
+            return {es.target for es in db.query(EntrySync).filter(
+                EntrySync.entry_id == entry_id).all()}
+        assert targets(mine[pa["id"]]["id"]) == {"salesforce"}
+        assert targets(mine[pb["id"]]["id"]) == {"jira"}
+
+
+def test_clockify_multi_tag_cell_split_to_project(client):
+    """Mehrere Tags pro Zelle (Clockify komma-separiert): ein split-Transform
+    greift den Kunden-Tag heraus und routet ihn ins Projekt."""
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    client.post("/api/v1/projects", json={
+        "name": "Clockify Gamma", "code": "CLKGAMMA", "default_sync_target": "bcs",
+    }, headers=h)
+    fmt_id = client.post("/api/v1/import-formats", json={
+        "name": "Clockify Split", "separator": ",", "date_format": "%Y-%m-%d",
+        "column_map": {"entry_date": "Date", "duration_hours": "Hours"},
+        "transforms": [{"target": "project_code", "op": "split",
+                        "source": "Tags", "sep": "|", "index": 0}],
+    }, headers=h).json()["id"]
+    # Tags-Zelle (eigener Separator |, damit das CSV-Komma nicht stört).
+    csv = "Date,Hours,Tags\n2027-03-17,1,CLKGAMMA|billable\n"
+    r = client.post(f"/api/v1/import-formats/{fmt_id}/run",
+                    files={"file": ("c.csv", csv, "text/csv")}, headers=h)
+    assert r.status_code == 201 and r.json()["created"] == 1, r.text
+    assert r.json()["created_projects"] == []
+    pgamma = next(p for p in client.get("/api/v1/projects", headers=h).json()
+                  if p["code"] == "CLKGAMMA")
+    entries = client.get("/api/v1/time-entries", headers=h).json()
+    e = next(e for e in entries if e["project_id"] == pgamma["id"])
+    assert e["entry_date"] == "2027-03-17"
+
+
 # ---------- export round-trip for sync fields ----------
 
 def test_export_emits_sync_field_value():
