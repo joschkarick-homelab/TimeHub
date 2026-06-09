@@ -392,13 +392,14 @@ def _format_create_error(content: bytes) -> str:
     return str(data)[:300]
 
 
-def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
-    """POST eine Zeiterfassung__c in Salesforce und gib die neue Datensatz-Id
-    zurück. Bei einem 4xx-Antwortcode wird der SF-Fehler in einen
-    SalesforceError verpackt — die Fehlermeldung enthält Code + Beschreibung."""
+def _create_sobject(client: SalesforceClient, object_name: str, payload: dict) -> str:
+    """POST einen beliebigen sObject-Record und gib die neue Id zurück. Bei
+    einem 4xx-Antwortcode wird der SF-Fehler (Code + Beschreibung + Felder) in
+    einen SalesforceError verpackt."""
+    name = _ensure_sobject_name(object_name)
     client._ensure_login()
     url = (f"{client.instance_url}/services/data/v{client.api_version}/"
-           "sobjects/Zeiterfassung__c")
+           f"sobjects/{name}")
     body = json.dumps(payload).encode("utf-8")
     status_code, content = _http("POST", url, data=body, headers={
         "Authorization": f"Bearer {client.session_id}",
@@ -414,6 +415,37 @@ def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
     if not res.get("success") or not res.get("id"):
         raise SalesforceError(_format_create_error(content))
     return res["id"]
+
+
+def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
+    """POST eine Zeiterfassung__c in Salesforce und gib die neue Datensatz-Id
+    zurück."""
+    return _create_sobject(client, "Zeiterfassung__c", payload)
+
+
+def create_monthly_period(client: SalesforceClient, assignment_id: str,
+                          start_iso: str, end_iso: str, *,
+                          status: str = "offen") -> str:
+    """Lege einen Kontierungsmonat__c für die gegebene Projektbesetzung an
+    (`Monatsbeginn__c`/`Monatsende__c` umspannen i. d. R. den ganzen Monat) und
+    gib die neue Id zurück. Status default `offen`, damit anschließend direkt
+    Zeiterfassungen hineingeschrieben werden können.
+
+    Nur die bekannten Pflicht-/Steuerfelder werden gesetzt. Verlangt die Org
+    weitere Pflichtfelder (z. B. einen nicht auto-generierten Namen), antwortet
+    SF mit REQUIRED_FIELD_MISSING — der Fehler wird unverändert durchgereicht,
+    es entsteht kein halbgarer Datensatz."""
+    aid = _ensure_id(assignment_id)
+    for d in (start_iso, end_iso):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):
+            raise SalesforceError(f"Ungültiges Datum für Kontierungsmonat: {d!r}")
+    payload = {
+        "Projektbesetzung__c": aid,
+        "Monatsbeginn__c": start_iso,
+        "Monatsende__c": end_iso,
+        "Status__c": status,
+    }
+    return _create_sobject(client, "Kontierungsmonat__c", payload)
 
 
 def assignment_id_for(entry, project) -> str | None:

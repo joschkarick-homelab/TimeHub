@@ -1,3 +1,4 @@
+import calendar
 import json
 import logging
 from datetime import date, datetime, timedelta
@@ -985,42 +986,20 @@ def sync_mark_target_done(
     )
 
 
-@router.post("/sync/salesforce/preview", response_class=HTMLResponse)
-def sync_salesforce_preview(
-    request: Request,
-    entry_ids: list[int] = Form(default_factory=list),
-    db: Session = Depends(get_db),
-):
-    """Resolve the selected entries against Salesforce (read-only) and render
-    a preview of the Zeiterfassung__c-Payloads that would be written. No DML.
+def _render_sf_preview(request, user, db, entries, *, flash: str | None = None,
+                       error: str | None = None):
+    """Resolve the given entries against Salesforce (read-only) and render the
+    preview of the Zeiterfassung__c-Payloads that would be written. No DML.
 
     Modell der mindsquare-Org: eine Zeiterfassung__c pro TimeHub-Eintrag, mit
     Lookup auf den Kontierungsmonat__c, der wiederum zur Projektbesetzung__c
     gehört. Wir gruppieren die Vorschau nach (Projektbesetzung × Kontierungsmonat)
-    zur Übersicht; geschrieben würde aber jeder Eintrag einzeln."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    if not entry_ids:
-        return RedirectResponse(
-            url="/?error=Keine+Einträge+ausgewählt",
-            status_code=status.HTTP_302_FOUND,
-        )
+    zur Übersicht; geschrieben würde aber jeder Eintrag einzeln.
 
-    # Restrict to the user's own entries (admin sees only their own here too —
-    # syncing on behalf of others requires explicit assignment data we don't
-    # have yet).
-    stmt = (
-        select(TimeEntry)
-        .where(TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id)
-        .order_by(TimeEntry.entry_date, TimeEntry.id)
-    )
-    entries = list(db.execute(stmt).scalars())
-    if not entries:
-        return RedirectResponse(
-            url="/?error=Keine+gültigen+Einträge+gefunden",
-            status_code=status.HTTP_302_FOUND,
-        )
+    Zwei Sonderfälle sind hier als „lösbar" aufbereitet (Phase 2c):
+      * Projektbesetzung geschlossen → kopierbare PM-Nachricht (`closed_assignments`)
+      * kein Kontierungsmonat → „anlegen"-Button pro (PB × Monat) (`period_gaps`)
+    Die übrigen Gründe bleiben als reine `skipped`-Liste stehen."""
     proj_lookup = {
         p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
     }
@@ -1063,6 +1042,8 @@ def sync_salesforce_preview(
     # gruppieren nach (Projektbesetzung × Kontierungsmonat).
     grouped: dict[tuple[str, str], dict] = {}
     skipped: list[dict] = []
+    closed_assignments: dict[str, dict] = {}  # aid → {project_name, message, entry_count}
+    period_gaps: dict[tuple[str, str], dict] = {}  # (aid, YYYY-MM) → create-period prompt
     period_cache: dict[tuple[str, str], dict | None] = {}  # (aid, YYYY-MM) → period or None
     if sf_error is None:
         for e in entries:
@@ -1075,7 +1056,19 @@ def sync_salesforce_preview(
                 continue
             assignment = assignments[aid]
             if assignment.get("closed"):
-                skipped.append({"entry": e, "reason": "Projektbesetzung in SF geschlossen"})
+                # Case 2: kann der Nutzer nicht selbst lösen — der PM muss die
+                # Projektbesetzung verlängern. Eine kopierbare Bitte vorbereiten.
+                proj_name = (assignment.get("project_name") or assignment.get("name")
+                             or "(unbekannt)")
+                gap = closed_assignments.get(aid)
+                if gap is None:
+                    gap = {
+                        "project_name": proj_name,
+                        "message": f"Hi. Kannst du bitte Projekt {proj_name} verlängern?",
+                        "entry_count": 0,
+                    }
+                    closed_assignments[aid] = gap
+                gap["entry_count"] += 1
                 continue
 
             cache_key = (aid, e.entry_date.strftime("%Y-%m"))
@@ -1089,11 +1082,26 @@ def sync_salesforce_preview(
                     break
             period = period_cache[cache_key]
             if period is None:
-                skipped.append({
-                    "entry": e,
-                    "reason": f"Kein Kontierungsmonat {e.entry_date.strftime('%m/%Y')} "
-                              f"für diese Projektbesetzung in SF",
-                })
+                # Case 3: kein Kontierungsmonat — bieten an, einen für den ganzen
+                # Monat anzulegen (ein Button entsperrt alle Einträge der PB×Monat).
+                month_label = e.entry_date.strftime("%m/%Y")
+                gap = period_gaps.get(cache_key)
+                if gap is None:
+                    first = e.entry_date.replace(day=1)
+                    last = e.entry_date.replace(
+                        day=calendar.monthrange(e.entry_date.year, e.entry_date.month)[1]
+                    )
+                    gap = {
+                        "assignment_id": aid,
+                        "assignment_name": assignment.get("name") or aid,
+                        "project_name": assignment.get("project_name") or "",
+                        "month_label": month_label,
+                        "start_date": first.isoformat(),
+                        "end_date": last.isoformat(),
+                        "entry_count": 0,
+                    }
+                    period_gaps[cache_key] = gap
+                gap["entry_count"] += 1
                 continue
             period_name = period.get("name") or e.entry_date.strftime("%m/%Y")
             period_status = (period.get("status") or "").strip()
@@ -1142,12 +1150,94 @@ def sync_salesforce_preview(
             user,
             groups=groups,
             skipped=skipped,
+            closed_assignments=list(closed_assignments.values()),
+            period_gaps=list(period_gaps.values()),
             item_errors=item_errors,
             sf_error=sf_error,
             entries=entries,
+            entry_ids=[e.id for e in entries],
             pushable_count=pushable_count,
-            error=None,
+            flash=flash,
+            error=error,
         ),
+    )
+
+
+def _owned_entries_for_sync(db, user, entry_ids):
+    """Fetch the user's own entries for the given ids, date-ordered."""
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id)
+        .order_by(TimeEntry.entry_date, TimeEntry.id)
+    )
+    return list(db.execute(stmt).scalars())
+
+
+@router.post("/sync/salesforce/preview", response_class=HTMLResponse)
+def sync_salesforce_preview(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Read-only Vorschau der ausgewählten Einträge gegen Salesforce."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    if not entry_ids:
+        return RedirectResponse(
+            url="/?error=Keine+Einträge+ausgewählt",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Restrict to the user's own entries (admin sees only their own here too —
+    # syncing on behalf of others requires explicit assignment data we don't
+    # have yet).
+    entries = _owned_entries_for_sync(db, user, entry_ids)
+    if not entries:
+        return RedirectResponse(
+            url="/?error=Keine+gültigen+Einträge+gefunden",
+            status_code=status.HTTP_302_FOUND,
+        )
+    return _render_sf_preview(request, user, db, entries)
+
+
+@router.post("/sync/salesforce/create-period", response_class=HTMLResponse)
+def sync_salesforce_create_period(
+    request: Request,
+    assignment_id: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Lege einen Kontierungsmonat für die Projektbesetzung an (Phase 2c, Fall 3)
+    und render danach die Vorschau erneut, damit die freigeschalteten Einträge
+    in eine reguläre Gruppe rutschen."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    if not entry_ids:
+        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+    entries = _owned_entries_for_sync(db, user, entry_ids)
+    if not entries:
+        return RedirectResponse(url="/?error=Keine+gültigen+Einträge+gefunden",
+                                status_code=status.HTTP_302_FOUND)
+
+    client = sf_svc.client_from_settings(db)
+    if client is None:
+        return _render_sf_preview(request, user, db, entries)
+
+    try:
+        sf_svc.create_monthly_period(client, assignment_id, start_date, end_date)
+    except sf_svc.SalesforceError as e:
+        # Nothing was written — re-render the preview with the SF error surfaced.
+        return _render_sf_preview(
+            request, user, db, entries,
+            error=f"Kontierungsmonat konnte nicht angelegt werden: {e}",
+        )
+    return _render_sf_preview(
+        request, user, db, entries, flash="Kontierungsmonat in Salesforce angelegt.",
     )
 
 

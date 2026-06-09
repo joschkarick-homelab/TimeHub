@@ -258,24 +258,26 @@ Bis die API-Clients stehen, leisten die Jira/BCS-Karten in v1 nur
   schreiben über `apply_fields` und berühren nur die abgesendeten Felder.
   Fehlgeschlagene Pushs (mit Fehlertext) bleiben als nicht-inline-fixbar
   gelistet (Deeplink zum Eintrag).
-- **Phase 2c — Salesforce-spezifische Fehlerfälle im Vorschau-Dialog (Idee, noch offen).**
-  Im SF-`preview`-Flow gibt es drei Klassen von übersprungenen Einträgen, die
-  der Nutzer heute ohne Systemwechsel nicht lösen kann. In Prioritätsreihenfolge:
+- **Phase 2c — Salesforce-spezifische Fehlerfälle im Vorschau-Dialog: ✅ umgesetzt.**
+  Drei Klassen von übersprungenen Einträgen aus dem SF-`preview`-Flow sind jetzt
+  ohne Systemwechsel lösbar:
 
-  1. **Keine Projektbesetzung hinterlegt** — bereits gelöst (Inline-Dropdown mit
-     Live-SOQL-Vorschlag im Wizard-Blockiert-Bereich).
+  1. **Keine Projektbesetzung hinterlegt** — gelöst über Phase 2b (Inline-Dropdown
+     mit Live-SOQL-Vorschlag im Wizard-Blockiert-Bereich).
 
   2. **Projektbesetzung vorhanden, aber geschlossen** (`Geschlossen__c = true`).
-     Muss vom PM verlängert werden. Idee: kopierbare Nachricht im Vorschau-Dialog
-     anbieten, z. B. *„Hi. Kannst du bitte Projekt \<Projektname\> verlängern?"*
-     mit dem SF-Projektnamen vorausgefüllt (kein API-Schreibzugriff nötig).
+     Muss vom PM verlängert werden. Die Vorschau zeigt eine **kopierbare
+     Nachricht** (*„Hi. Kannst du bitte Projekt \<Projektname\> verlängern?"*) mit
+     dem SF-Projektnamen vorausgefüllt — ein Klick legt sie in die Zwischenablage
+     (kein API-Schreibzugriff, dedupliziert pro Projektbesetzung).
 
   3. **Kein Kontierungsmonat zur Projektbesetzung** (`get_monthly_period` → None).
-     Idee: direkt aus dem Vorschau-Dialog einen Kontierungsmonat anlegen
-     (`POST Kontierungsmonat__c` mit `Projektbesetzung__c`, `Monatsbeginn__c`
-     = erster des Monats, `Monatsende__c` = letzter des Monats,
-     `Status__c = "offen"`), danach Vorschau neu laden. Einträge desselben
-     (PB × Monat) werden gruppiert — ein Button entsperrt alle auf einmal.
+     Die Vorschau bietet pro (PB × Monat) einen **„Kontierungsmonat anlegen"**-Button
+     (`POST /sync/salesforce/create-period` → `salesforce.create_monthly_period`:
+     `Projektbesetzung__c`, `Monatsbeginn__c` = erster, `Monatsende__c` = letzter
+     des Monats, `Status__c = "offen"`). Danach lädt die Vorschau neu, die
+     freigeschalteten Einträge rutschen in eine reguläre Gruppe. Verlangt die Org
+     weitere Pflichtfelder, wird der SF-Fehler angezeigt und nichts geschrieben.
 - **Phase 3 — Jira/BCS-Push-Clients:** echte API-Integrationen, unabhängig
   parallelisierbar.
 

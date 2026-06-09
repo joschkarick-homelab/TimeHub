@@ -150,6 +150,140 @@ def test_preview_skips_when_kontierungsmonat_not_open(client, monkeypatch):
     assert "in Bearbeitung" in r.text
 
 
+def test_preview_closed_assignment_offers_copyable_pm_message(client, monkeypatch):
+    """Fall 2 (Phase 2c): ist die Projektbesetzung geschlossen, bietet die
+    Vorschau eine kopierbare PM-Bitte mit dem Projektnamen statt nur 'skipped'."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFCLOSED")
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment",
+                        lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid, closed=True))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+    r = client.post("/sync/salesforce/preview", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    body = r.text
+    assert "Projektbesetzung geschlossen" in body
+    # Vorgefüllte Bitte mit Projektnamen, kopierbar
+    assert "Kannst du bitte Projekt Demo Project verlängern" in body
+    assert "kopieren" in body
+
+
+def test_preview_missing_period_offers_create_button(client, monkeypatch):
+    """Fall 3 (Phase 2c): fehlt der Kontierungsmonat, bietet die Vorschau einen
+    'anlegen'-Button mit Monatsanfang/-ende und der Projektbesetzung."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFNOPERIOD", entry_date="2026-05-27")
+    import app.services.salesforce as sfs
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: None)
+    r = client.post("/sync/salesforce/preview", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    body = r.text
+    assert "Kontierungsmonat fehlt" in body
+    assert 'action="/sync/salesforce/create-period"' in body
+    # Ganzer Monat: Mai 2026 → 01.–31.
+    assert 'value="2026-05-01"' in body
+    assert 'value="2026-05-31"' in body
+    assert 'value="a01000000000001"' in body  # Projektbesetzung
+
+
+def test_create_period_posts_and_reloads_preview(client, monkeypatch):
+    """Der 'anlegen'-Button legt den Kontierungsmonat an und rendert die Vorschau
+    erneut. Nach dem Anlegen findet der Lookup einen offenen Monat → Eintrag wird
+    schreibbar."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFCREATEPERIOD", entry_date="2026-05-27")
+    import app.services.salesforce as sfs
+    captured = {}
+
+    def fake_create_period(_c, aid, start, end, status="offen"):
+        captured["args"] = (aid, start, end, status)
+        return "a0Q000NEWPERIOD"
+
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "create_monthly_period", fake_create_period)
+    # Nach dem Anlegen liefert der Lookup einen offenen Monat.
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: dict(_FAKE_PERIOD))
+
+    r = client.post("/sync/salesforce/create-period", data={
+        "assignment_id": "a01000000000001",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31",
+        "entry_ids": str(eid),
+    })
+    assert r.status_code == 200
+    assert captured["args"] == ("a01000000000001", "2026-05-01", "2026-05-31", "offen")
+    body = r.text
+    assert "Kontierungsmonat in Salesforce angelegt" in body
+    # Eintrag ist jetzt schreibbar → Vorschau-Gruppe sichtbar
+    assert "Synchronisieren bestätigen" in body
+
+
+def test_create_period_surfaces_sf_error_without_writing_entry(client, monkeypatch):
+    """Schlägt das Anlegen fehl (z. B. fehlendes Pflichtfeld in der Org), wird der
+    SF-Fehler angezeigt und kein Eintrag synchronisiert."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFCREATEFAIL", entry_date="2026-05-27")
+    import app.services.salesforce as sfs
+
+    def boom(_c, _aid, _s, _e, status="offen"):
+        raise sfs.SalesforceError("[REQUIRED_FIELD_MISSING] Name")
+
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(_FAKE_ASSIGNMENT, id=aid))
+    monkeypatch.setattr(sfs, "create_monthly_period", boom)
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: None)
+
+    r = client.post("/sync/salesforce/create-period", data={
+        "assignment_id": "a01000000000001",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31",
+        "entry_ids": str(eid),
+    })
+    assert r.status_code == 200
+    assert "konnte nicht angelegt werden" in r.text
+    assert "REQUIRED_FIELD_MISSING" in r.text
+
+
+def test_create_monthly_period_posts_expected_payload(monkeypatch):
+    """create_monthly_period POSTet auf Kontierungsmonat__c mit PB + Monatsspanne."""
+    from app.services import salesforce as sfs
+    captured = {}
+
+    def fake_http(method, url, *, data=None, headers=None, timeout=30):
+        captured["method"] = method
+        captured["url"] = url
+        captured["data"] = data
+        return 201, b'{"id":"a0Q000NEW","success":true,"errors":[]}'
+
+    monkeypatch.setattr(sfs, "_http", fake_http)
+    c = sfs.SalesforceClient("u", "p", "")
+    c.session_id = "SESSION"
+    c.instance_url = "https://test.salesforce.com"
+    new_id = sfs.create_monthly_period(c, "a01000000000001", "2026-05-01", "2026-05-31")
+    assert new_id == "a0Q000NEW"
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/sobjects/Kontierungsmonat__c")
+    import json as _json
+    sent = _json.loads(captured["data"])
+    assert sent["Projektbesetzung__c"] == "a01000000000001"
+    assert sent["Monatsbeginn__c"] == "2026-05-01"
+    assert sent["Monatsende__c"] == "2026-05-31"
+    assert sent["Status__c"] == "offen"
+
+
+def test_create_monthly_period_rejects_bad_dates():
+    import pytest
+    from app.services import salesforce as sfs
+    c = sfs.SalesforceClient("u", "p", "")
+    c.session_id = "x"; c.instance_url = "https://x"
+    with pytest.raises(sfs.SalesforceError):
+        sfs.create_monthly_period(c, "a01000000000001", "2026-5-1", "2026-05-31")
+
+
 def test_preview_explicit_vor_ort_overrides_default(client, monkeypatch):
     _login_session(client)
     h = {"Authorization": f"Bearer {_token(client)}"}

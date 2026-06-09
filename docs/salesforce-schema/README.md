@@ -81,11 +81,15 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
 
 - keine `salesforce.assignment_id` am Projekt gepflegt ist,
 - die Projektbesetzung in SF nicht gefunden wird,
-- die Projektbesetzung `Geschlossen__c=true` ist,
-- kein Kontierungsmonat für (Projektbesetzung × Tagesdatum) existiert,
 - der Kontierungsmonat `Abgeschlossen__c=true` ist,
 - der Kontierungsmonat einen Status ≠ `offen` hat (also bereits eingereicht
   / in Bearbeitung / kontrolliert / Öffnung beantragt).
+
+Zwei vormals reine Skip-Gründe sind jetzt in der Vorschau **direkt lösbar**
+(siehe „Offene Punkte" #2):
+
+- Projektbesetzung `Geschlossen__c=true` → kopierbare PM-Bitte zum Verlängern,
+- kein Kontierungsmonat für (Projektbesetzung × Tagesdatum) → „anlegen"-Button.
 
 ## UI
 
@@ -104,8 +108,11 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
    und beim manuellen Projekt-Anlegen sollen passende Salesforce-
    Projektbesetzungen aus den aktiven PBs des Users als Vorschlag angeboten
    werden (Match z. B. über Namensähnlichkeit / Projektbezeichnung).
-2. **Bestehender Kontierungsmonat nicht da:** Aktuell „skipped" mit Hinweis.
-   Soll TimeHub später einen anlegen können?
+2. ~~**Bestehender Kontierungsmonat nicht da:** Aktuell „skipped" mit Hinweis.
+   Soll TimeHub später einen anlegen können?~~ ✅ Umgesetzt: die SF-Vorschau
+   bietet pro (Projektbesetzung × Monat) einen „Kontierungsmonat anlegen"-Button
+   (`create_monthly_period`, Status `offen`, ganzer Monat). Geschlossene
+   Projektbesetzungen zeigen stattdessen eine kopierbare PM-Bitte zum Verlängern.
 3. **Konfigurierbarkeit:** Feld-/Objektnamen sind in der mindsquare-Org
    hartcodiert. Wenn ihr in einer zweiten Org gegen ein anderes Schema
    syncen wollt, wird das ein Admin-Setting.

@@ -5,6 +5,11 @@
   <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
 </div>
 
+{% if flash %}
+  <div class="mb-4 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+    {{ flash }}
+  </div>
+{% endif %}
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
     {{ error }}
@@ -28,6 +33,75 @@
     <ul class="text-sm text-amber-900 space-y-1">
       {% for err in item_errors %}
         <li>• {{ err.error }}{% if err.assignment_id %} (PB <code>{{ err.assignment_id }}</code>){% endif %}{% if err.date %} (Datum {{ err.date }}){% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{# Fall 2 (Phase 2c): Projektbesetzung geschlossen — der Nutzer kann das nicht
+   selbst lösen, der PM muss verlängern. Kopierbare Bitte anbieten. #}
+{% if closed_assignments %}
+  <section class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+    <h2 class="font-semibold text-amber-900 mb-1">Projektbesetzung geschlossen</h2>
+    <p class="text-sm text-amber-900 mb-3">
+      Für diese Projekte ist die Projektbesetzung in Salesforce geschlossen — das
+      muss der/die Projektverantwortliche verlängern. Kopier die Bitte und schick
+      sie raus:
+    </p>
+    <ul class="space-y-2">
+      {% for ca in closed_assignments %}
+        <li class="bg-white border border-amber-200 rounded p-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-medium text-slate-800">{{ ca.project_name }}</div>
+              <div class="text-sm text-slate-600 mt-1" data-copy-text>{{ ca.message }}</div>
+              <div class="text-xs text-slate-400 mt-1">
+                {{ ca.entry_count }} Eintrag{{ 'e' if ca.entry_count != 1 else '' }} betroffen
+              </div>
+            </div>
+            <button type="button"
+                    class="copy-btn shrink-0 h-9 px-3 border border-amber-300 text-amber-800 hover:bg-amber-100 rounded text-sm">
+              kopieren
+            </button>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{# Fall 3 (Phase 2c): kein Kontierungsmonat — direkt einen für den ganzen Monat
+   anlegen. Ein Button entsperrt alle Einträge der Projektbesetzung × Monat. #}
+{% if period_gaps %}
+  <section class="bg-sky-50 border border-sky-200 rounded-lg p-4 mb-4">
+    <h2 class="font-semibold text-sky-900 mb-1">Kontierungsmonat fehlt</h2>
+    <p class="text-sm text-sky-900 mb-3">
+      Für diese Projektbesetzungen gibt es noch keinen Kontierungsmonat. Du kannst
+      ihn direkt hier anlegen (Status <em>offen</em>, ganzer Monat) — danach
+      rutschen die Einträge in die Vorschau.
+    </p>
+    <ul class="space-y-2">
+      {% for pg in period_gaps %}
+        <li class="bg-white border border-sky-200 rounded p-3 flex items-center justify-between gap-3">
+          <div class="min-w-0 text-sm">
+            <span class="font-medium text-slate-800">{{ pg.project_name or pg.assignment_name }}</span>
+            <span class="text-slate-500">· {{ pg.month_label }}</span>
+            <div class="text-xs text-slate-400">
+              PB {{ pg.assignment_name }} · {{ pg.start_date }} – {{ pg.end_date }} ·
+              {{ pg.entry_count }} Eintrag{{ 'e' if pg.entry_count != 1 else '' }}
+            </div>
+          </div>
+          <form method="post" action="/sync/salesforce/create-period" class="shrink-0">
+            <input type="hidden" name="assignment_id" value="{{ pg.assignment_id }}" />
+            <input type="hidden" name="start_date" value="{{ pg.start_date }}" />
+            <input type="hidden" name="end_date" value="{{ pg.end_date }}" />
+            {% for eid in entry_ids %}<input type="hidden" name="entry_ids" value="{{ eid }}" />{% endfor %}
+            <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium"
+                    onclick="return confirm('Kontierungsmonat {{ pg.month_label }} für PB {{ pg.assignment_name }} in Salesforce anlegen?');">
+              Kontierungsmonat anlegen
+            </button>
+          </form>
+        </li>
       {% endfor %}
     </ul>
   </section>
@@ -114,8 +188,33 @@
       ↗ Synchronisieren bestätigen ({{ pushable_count }})
     </button>
   </form>
-{% elif not item_errors and not skipped and not sf_error %}
+{% elif not item_errors and not skipped and not sf_error
+        and not closed_assignments and not period_gaps %}
   <p class="text-sm text-slate-500">Nichts zu zeigen.</p>
+{% endif %}
+
+{% if closed_assignments %}
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var li = btn.closest("li");
+      var src = li ? li.querySelector("[data-copy-text]") : null;
+      var text = src ? src.textContent.trim() : "";
+      var done = function () {
+        var old = btn.textContent;
+        btn.textContent = "kopiert ✓";
+        setTimeout(function () { btn.textContent = old; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else if (src) {
+        var r = document.createRange(); r.selectNodeContents(src);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        try { document.execCommand("copy"); done(); } catch (e) {}
+      }
+    });
+  });
+</script>
 {% endif %}
 
 {% endblock %}
