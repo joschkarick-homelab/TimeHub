@@ -884,11 +884,70 @@ def sync_center(
             cards=[(t, es_svc.TARGET_LABELS[t]) for t in es_svc.DISPLAY_TARGETS],
             projects_by_id=proj_lookup,
             sf_configured=sf_svc.credentials_configured(db),
+            sync_dynamic_options=_sync_dynamic_options(db, user),
             formats=formats,
             flash=flash,
             error=error,
         ),
     )
+
+
+@router.post("/sync/project/{project_id}/fields", response_class=HTMLResponse)
+async def sync_fill_project_fields(
+    request: Request, project_id: int, target: str = Form(...), db: Session = Depends(get_db)
+):
+    """Fill missing project-level sync fields (e.g. the Salesforce assignment)
+    straight from the wizard — unblocks every entry of that project at once."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    project = _owned_project_or_404(db, project_id, user)
+    if target not in es_svc.DISPLAY_TARGETS:
+        return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
+                                status_code=status.HTTP_302_FOUND)
+    form = await request.form()
+    # Only touch fields actually submitted, so unrendered ones aren't cleared.
+    submitted = [f for f in sf.project_fields(target) if f"meta__{target}__{f.key}" in form]
+    values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in submitted}
+    project.sync_metadata, warnings = sf.apply_fields(
+        project.sync_metadata, target, submitted, values
+    )
+    db.add(project)
+    db.commit()
+    return _sync_redirect_with_warnings(warnings, "Projekt-Daten gespeichert")
+
+
+@router.post("/sync/entry/{entry_id}/fields", response_class=HTMLResponse)
+async def sync_fill_entry_fields(
+    request: Request, entry_id: int, target: str = Form(...), db: Session = Depends(get_db)
+):
+    """Fill missing entry-level sync fields (e.g. a Jira ticket, BCS subject)
+    inline in the wizard."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    entry = _owned_entry_or_404(db, entry_id, user)
+    if target not in es_svc.DISPLAY_TARGETS:
+        return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
+                                status_code=status.HTTP_302_FOUND)
+    form = await request.form()
+    submitted = [f for f in sf.entry_fields(target) if f"meta__{target}__{f.key}" in form]
+    values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in submitted}
+    entry.sync_metadata_override, warnings = sf.apply_fields(
+        entry.sync_metadata_override, target, submitted, values
+    )
+    db.add(entry)
+    db.commit()
+    return _sync_redirect_with_warnings(warnings, "Eintrags-Daten gespeichert")
+
+
+def _sync_redirect_with_warnings(warnings: list[str], ok_msg: str) -> RedirectResponse:
+    if warnings:
+        msg = "; ".join(warnings)
+        return RedirectResponse(url=f"/sync?error={msg}".replace(" ", "+"),
+                                status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=f"/sync?flash={ok_msg}".replace(" ", "+"),
+                            status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/sync/{target}/mark-done", response_class=HTMLResponse)

@@ -242,6 +242,33 @@ def entry_sync_statuses(entry, project, targets) -> dict[str, dict]:
     return {t: status_for_target(entry, project, t) for t in targets}
 
 
+def _field_is_missing(field: SyncField, val: str | None) -> bool:
+    """A field counts as a gap when required-but-empty or present-but-malformed."""
+    if field.required and not val:
+        return True
+    return bool(val and validate_value(field, val))
+
+
+def missing_project_fields(project, target: str) -> list[SyncField]:
+    """Required/invalid project-level fields blocking a sync to `target`."""
+    if target in NON_SYNC_TARGETS:
+        return []
+    return [
+        f for f in project_fields(target)
+        if _field_is_missing(f, project_value(project, target, f.key))
+    ]
+
+
+def missing_entry_fields(entry, project, target: str) -> list[SyncField]:
+    """Required/invalid entry-level fields blocking a sync to `target`."""
+    if target in NON_SYNC_TARGETS:
+        return []
+    return [
+        f for f in entry_fields(target)
+        if _field_is_missing(f, entry_value(entry, project, f, target))
+    ]
+
+
 def project_sync_status(project) -> dict:
     """Missing required project-level fields for the project's default target."""
     target = project.default_sync_target
@@ -257,26 +284,31 @@ def project_sync_status(project) -> dict:
     return {"target": target, "needs_sync": True, "ready": not missing, "missing": missing}
 
 
+def _field_dict(f: SyncField) -> dict:
+    return {
+        "key": f.key,
+        "label": f.label,
+        "required": f.required,
+        "pattern": f.pattern or "",
+        "placeholder": f.placeholder,
+        "help": f.help,
+        "inherit_from_project": f.inherit_from_project or "",
+        "choices": [{"value": v, "label": lbl} for v, lbl in (f.choices or ())],
+        "default": f.default or "",
+        "options_source": f.options_source or "",
+    }
+
+
+def fields_json(fields: list[SyncField]) -> list[dict]:
+    """Serialize an explicit list of fields for the shared renderSyncFields JS."""
+    return [_field_dict(f) for f in fields]
+
+
 def registry_json(level: str) -> dict[str, list[dict]]:
     """Serialize the registry for embedding in templates / client JS."""
     out: dict[str, list[dict]] = {}
     for target, fields in TARGET_FIELDS.items():
-        out[target] = [
-            {
-                "key": f.key,
-                "label": f.label,
-                "required": f.required,
-                "pattern": f.pattern or "",
-                "placeholder": f.placeholder,
-                "help": f.help,
-                "inherit_from_project": f.inherit_from_project or "",
-                "choices": [{"value": v, "label": lbl} for v, lbl in (f.choices or ())],
-                "default": f.default or "",
-                "options_source": f.options_source or "",
-            }
-            for f in fields
-            if f.level == level
-        ]
+        out[target] = [_field_dict(f) for f in fields if f.level == level]
     return out
 
 
