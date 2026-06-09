@@ -245,6 +245,19 @@ Bis die API-Clients stehen, leisten die Jira/BCS-Karten in v1 nur
   Grund und einen Korrektur-Deeplink (`/entries/{id}/edit?next=/sync`), der
   nach dem Speichern wieder im Wizard landet (Hybrid-Korrektur). Einstieg
   aus der Matrix: die Spaltenköpfe im Dashboard verlinken auf den Wizard.
+- **Phase 2b — Fehlende Daten inline ergänzen: ✅ umgesetzt.** Blockierte
+  Einträge werden im Wizard nach Lücken gruppiert und dort direkt erfragt —
+  **ohne das System zu verlassen**: fehlende **Projekt-Daten** (z. B. die
+  Salesforce-Projektbesetzung) als ein Formular pro Projekt (entsperrt alle
+  betroffenen Einträge auf einmal), fehlende **Eintrags-Daten** (z. B.
+  Jira-Ticket, BCS Subject/Task) pro Eintrag. Die Felder nutzen denselben
+  `renderSyncFields`-Renderer wie der Projekt-/Eintrags-Edit, inklusive
+  **dynamischer Dropdowns** (Live-Projektbesetzungen via SOQL; ohne
+  SF-Credentials graceful zum Textfeld). Endpunkte:
+  `POST /sync/project/{id}/fields` und `POST /sync/entry/{id}/fields`
+  schreiben über `apply_fields` und berühren nur die abgesendeten Felder.
+  Fehlgeschlagene Pushs (mit Fehlertext) bleiben als nicht-inline-fixbar
+  gelistet (Deeplink zum Eintrag).
 - **Phase 3 — Jira/BCS-Push-Clients:** echte API-Integrationen, unabhängig
   parallelisierbar.
 

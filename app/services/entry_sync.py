@@ -126,15 +126,44 @@ def matrix_row(entry, project) -> list[dict]:
     return [matrix_cell(entry, project, t) for t in DISPLAY_TARGETS]
 
 
+def _project_spec(project, target, fields) -> dict:
+    """Form spec for the shared renderSyncFields JS: which fields to render,
+    for which target, pre-filled from the project's stored metadata."""
+    return {
+        "target": target,
+        "registry": {target: sf.fields_json(fields)},
+        "current": project.sync_metadata or {},
+    }
+
+
+def _entry_spec(entry, target, fields) -> dict:
+    return {
+        "target": target,
+        "registry": {target: sf.fields_json(fields)},
+        "current": entry.sync_metadata_override or {},
+    }
+
+
 def wizard_buckets(entries, proj_lookup) -> dict[str, dict]:
     """Group the user's entries into per-target wizard buckets, driven by the
     materialized EntrySync rows.
 
-    Per target: `ready` (pending + locally sync-ready, with total minutes),
-    `blocked` (pending but missing fields, or last push failed — each with a
-    reason), and `done` (count of synced / manually marked)."""
-    buckets = {
-        t: {"ready": [], "ready_minutes": 0, "blocked": [], "done": 0}
+    Per target:
+      * `ready`            — pending + locally sync-ready (with total minutes)
+      * `done`             — count of synced / manually marked
+      * `project_gaps`     — projects missing required project-level fields
+                             (e.g. the Salesforce assignment), deduplicated so
+                             one inline form unblocks all the project's entries
+      * `entry_gaps`       — entries missing required entry-level fields
+      * `failed`           — last push failed (not inline-fixable; needs retry)
+      * `blocked`          — count of distinct blocked entries
+    Each gap carries a `spec` ready for the inline renderSyncFields form.
+    """
+    buckets: dict[str, dict] = {
+        t: {
+            "ready": [], "ready_minutes": 0, "done": 0,
+            "project_gaps": {}, "entry_gaps": [], "failed": [], "_blocked": set(),
+        }
         for t in DISPLAY_TARGETS
     }
     for e in entries:
@@ -143,25 +172,45 @@ def wizard_buckets(entries, proj_lookup) -> dict[str, dict]:
             continue
         for row in (e.entry_syncs or []):
             t = row.target
-            if t not in buckets:
+            b = buckets.get(t)
+            if b is None:
                 continue
             if row.status in _PROTECTED:
-                buckets[t]["done"] += 1
-            elif row.status == SyncStatus.SKIPPED:
+                b["done"] += 1
                 continue
-            elif row.status == SyncStatus.FAILED:
-                buckets[t]["blocked"].append(
+            if row.status == SyncStatus.SKIPPED:
+                continue
+            if row.status == SyncStatus.FAILED:
+                b["failed"].append(
                     {"entry": e, "reason": row.last_error or "Letzter Sync fehlgeschlagen"}
                 )
-            else:  # pending / exported
-                st = sf.status_for_target(e, project, t)
-                if st["ready"]:
-                    buckets[t]["ready"].append(e)
-                    buckets[t]["ready_minutes"] += e.duration_minutes
-                else:
-                    buckets[t]["blocked"].append(
-                        {"entry": e, "reason": "Fehlt: " + ", ".join(st["missing"])}
-                    )
+                b["_blocked"].add(e.id)
+                continue
+
+            pf = sf.missing_project_fields(project, t)
+            ef = sf.missing_entry_fields(e, project, t)
+            if not pf and not ef:
+                b["ready"].append(e)
+                b["ready_minutes"] += e.duration_minutes
+                continue
+
+            b["_blocked"].add(e.id)
+            if pf:
+                gap = b["project_gaps"].get(project.id)
+                if gap is None:
+                    gap = {"project": project, "fields": list(pf), "entry_count": 0,
+                           "spec": _project_spec(project, t, pf)}
+                    b["project_gaps"][project.id] = gap
+                gap["entry_count"] += 1
+            if ef:
+                b["entry_gaps"].append(
+                    {"entry": e, "project": project, "fields": ef,
+                     "spec": _entry_spec(e, t, ef)}
+                )
+
+    for b in buckets.values():
+        b["project_gaps"] = list(b["project_gaps"].values())
+        b["blocked"] = len(b.pop("_blocked"))
     return buckets
 
 

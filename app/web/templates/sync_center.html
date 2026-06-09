@@ -44,7 +44,7 @@
         </div>
         <div>
           <dt class="text-slate-500 text-xs">blockiert</dt>
-          <dd class="font-semibold text-rose-700">{{ blocked|length }}</dd>
+          <dd class="font-semibold text-rose-700">{{ blocked }}</dd>
         </div>
         <div>
           <dt class="text-slate-500 text-xs">erledigt</dt>
@@ -100,29 +100,72 @@
         <p class="text-sm text-slate-500 mb-3">Aktuell nichts bereit.</p>
       {% endif %}
 
-      {# ---- Blockiert: mit Grund + Korrektur-Deeplink ---- #}
-      {% if blocked %}
+      {# ---- Blockiert: fehlende Daten direkt hier erfragen ---- #}
+      {% if b.project_gaps or b.entry_gaps or b.failed %}
         <details class="text-sm" {% if not ready %}open{% endif %}>
           <summary class="cursor-pointer text-rose-700 font-medium">
-            {{ blocked|length }} blockiert – Korrektur nötig
+            {{ blocked }} blockiert – Daten ergänzen
           </summary>
-          <ul class="mt-2 divide-y divide-slate-100 border border-slate-100 rounded">
-            {% for item in blocked %}
-              {% set e = item.entry %}
-              {% set p = projects_by_id.get(e.project_id) %}
-              <li class="px-3 py-2 flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="text-slate-700">
-                    {{ e.entry_date }} · {{ p.display_label if p else '#' ~ e.project_id }}
-                    <span class="tabular-nums text-slate-500">({{ '%.2f'|format(e.duration_minutes / 60) }} h)</span>
+
+          {# Projekt-Daten fehlen (z. B. Salesforce-Projektbesetzung): einmal
+             ausfüllen entsperrt alle betroffenen Einträge. #}
+          {% for gap in b.project_gaps %}
+            <div class="mt-3 rounded border border-slate-200 p-3">
+              <p class="text-xs text-slate-600 mb-2">
+                <span class="font-medium text-slate-700">{{ gap.project.display_label }}</span>
+                — Projekt-Daten fehlen
+                <span class="text-slate-400">({{ gap.entry_count }} Eintrag{{ 'e' if gap.entry_count != 1 else '' }} betroffen)</span>
+              </p>
+              <form method="post" action="/sync/project/{{ gap.project.id }}/fields" class="space-y-3">
+                <input type="hidden" name="target" value="{{ t }}" />
+                <div class="sync-fix grid sm:grid-cols-2 gap-3"></div>
+                <script type="application/json" class="sync-fix-spec">{{ gap.spec | tojson }}</script>
+                <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+                  Speichern
+                </button>
+              </form>
+            </div>
+          {% endfor %}
+
+          {# Eintrags-Daten fehlen (z. B. Jira-Ticket, BCS Subject/Task). #}
+          {% for gap in b.entry_gaps %}
+            {% set e = gap.entry %}
+            <div class="mt-3 rounded border border-slate-200 p-3">
+              <p class="text-xs text-slate-600 mb-2">
+                <span class="text-slate-700">{{ e.entry_date }} · {{ gap.project.display_label }}</span>
+                <span class="tabular-nums text-slate-400">({{ '%.2f'|format(e.duration_minutes / 60) }} h)</span>
+                {% if e.description %}<span class="text-slate-400">— {{ e.description }}</span>{% endif %}
+              </p>
+              <form method="post" action="/sync/entry/{{ e.id }}/fields" class="space-y-3">
+                <input type="hidden" name="target" value="{{ t }}" />
+                <div class="sync-fix grid sm:grid-cols-2 gap-3"></div>
+                <script type="application/json" class="sync-fix-spec">{{ gap.spec | tojson }}</script>
+                <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+                  Speichern
+                </button>
+              </form>
+            </div>
+          {% endfor %}
+
+          {# Fehlgeschlagene Pushs: nicht hier fixbar — Eintrag prüfen. #}
+          {% if b.failed %}
+            <ul class="mt-3 divide-y divide-slate-100 border border-slate-100 rounded">
+              {% for item in b.failed %}
+                {% set e = item.entry %}
+                {% set p = projects_by_id.get(e.project_id) %}
+                <li class="px-3 py-2 flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-slate-700">
+                      {{ e.entry_date }} · {{ p.display_label if p else '#' ~ e.project_id }}
+                    </div>
+                    <div class="text-xs text-rose-600">{{ item.reason }}</div>
                   </div>
-                  <div class="text-xs text-rose-600">{{ item.reason }}</div>
-                </div>
-                <a href="/entries/{{ e.id }}/edit?next=/sync"
-                   class="shrink-0 text-xs text-indigo-600 hover:underline">korrigieren →</a>
-              </li>
-            {% endfor %}
-          </ul>
+                  <a href="/entries/{{ e.id }}/edit?next=/sync"
+                     class="shrink-0 text-xs text-indigo-600 hover:underline">prüfen →</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
         </details>
       {% endif %}
     </section>
@@ -160,4 +203,21 @@
   </section>
 
 </div>
+
+{# Inline-Felder der „Daten ergänzen"-Formulare rendern (gleiche Dropdowns wie
+   im Projekt-/Eintrags-Edit, inkl. Live-Projektbesetzungen). #}
+<script>window.SYNC_DYNAMIC_OPTIONS = {{ (sync_dynamic_options or {}) | tojson }};</script>
+{% include "_sync_fields_js.html" %}
+<script>
+  (function () {
+    document.querySelectorAll(".sync-fix").forEach(function (box) {
+      var form = box.closest("form");
+      var specEl = form ? form.querySelector(".sync-fix-spec") : null;
+      if (!specEl) return;
+      var spec;
+      try { spec = JSON.parse(specEl.textContent); } catch (e) { return; }
+      window.renderSyncFields(box, spec.registry, spec.target, spec.current || {});
+    });
+  })();
+</script>
 {% endblock %}
