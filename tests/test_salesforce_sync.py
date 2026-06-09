@@ -432,9 +432,9 @@ def test_dashboard_shows_sync_button_when_configured(client):
     from app.services import salesforce as sfs
     with SessionLocal() as db:
         sfs.save_credentials(db, username="u", password="p", security_token="t")
-    # current month per the test env clock (see conftest / env)
     _make_project_and_entry(client, "SFDASH", entry_date="2026-06-01")
-    page = client.get("/")
+    # Explicit window so the June entry shows regardless of the default (week).
+    page = client.get("/?date_from=2026-06-01&date_to=2026-06-30")
     assert "Auswahl in Salesforce-Vorschau" in page.text
 
 
@@ -637,7 +637,7 @@ def test_mark_entries_as_manually_synced_takes_them_out_of_selection(client):
         sfs.save_credentials(db, username="u", password="p", security_token="t")
     _pid, eid = _make_project_and_entry(client, "SFMARK", entry_date="2026-06-01")
 
-    page = client.get("/")
+    page = client.get("/?date_from=2026-06-01&date_to=2026-06-30")
     assert "Auswahl in Salesforce-Vorschau" in page.text
 
     r = client.post("/entries/mark-synced", data={"entry_ids": str(eid)},
@@ -650,7 +650,7 @@ def test_mark_entries_as_manually_synced_takes_them_out_of_selection(client):
         e = db.get(TimeEntry, eid)
         assert e.sync_status == "manually_synced"
 
-    page2 = client.get("/")
+    page2 = client.get("/?date_from=2026-06-01&date_to=2026-06-30")
     assert "manuell" in page2.text
 
 

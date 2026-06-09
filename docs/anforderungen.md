@@ -86,10 +86,15 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
 
 ## 5. Projekte
 
-- **FR-PROJ-1** Felder: name, code (uniq, stabiler Schlüssel), customer?, color
-  (Hex, Default `#6366f1`), status (`active`/`inactive`), default_sync_target
+- **FR-PROJ-1** Felder: user_id (Besitzer), name, code (stabiler Schlüssel,
+  **eindeutig pro Besitzer** — verschiedene Nutzer dürfen denselben Code
+  führen), customer?, color (Hex, Default `#6366f1`), status
+  (`active`/`inactive`), default_sync_target
   (`intern`/`jira`/`salesforce`/`bcs`/`none`), sync_metadata (zielabhängige
   Felder), created_at/updated_at.
+- **FR-PROJ-0** Projekte sind **pro Nutzer**: jeder Nutzer pflegt und sieht nur
+  seine eigenen Projekte (gilt für Listen, Dropdowns, Lookups, Import-Auto-
+  Anlage und API). Admin-Reports behalten den nutzerübergreifenden Blick.
 - **FR-PROJ-2** Code optional / automatisch erzeugt: Beim Anlegen wird er aus
   dem Namen abgeleitet (`[^A-Za-z0-9]+` → `-`, Großbuchstaben, ≤60, am Rand
   getrimmt; leerer Rest → `PROJEKT`; bei Kollision `-2`/`-3` …). Beim
@@ -99,14 +104,16 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
   gleich oder Name leer → nur Code. Kunde-Suffix nur, wenn customer gesetzt.
   Wird in **allen** Projekt-Dropdowns angezeigt (Dashboard, Kalender, Edit, …).
   Pro Projekt-Eintrag (Liste/Block) zeigt ein Farbpunkt die `color`.
-- **FR-PROJ-4** `/projects` (Admin) listet Projekte mit Code/Name/Kunde/Ziel/
-  Status; Anlegen-Formular: Name (Pflicht), Code (optional), Kunde, Ziel,
-  Farbe, plus zielabhängige Felder. Liste markiert `⚠ unvollständig`, wenn ein
-  Projekt-Pflichtfeld des Ziels fehlt. Löschen blockiert, wenn Zeiteinträge
-  existieren.
-- **FR-PROJ-5** API: `GET /api/v1/projects` (optional `?status=`), `POST`
-  (Admin), `GET/PATCH/DELETE /api/v1/projects/{id}` (PATCH/DELETE Admin).
-  `sync_metadata` ist freier JSON-Dict. Doppelter Code → 409.
+- **FR-PROJ-4** `/projects` listet die **eigenen** Projekte des Nutzers mit
+  Code/Name/Kunde/Ziel/Status; Anlegen/Bearbeiten/Löschen steht jedem
+  eingeloggten Nutzer für seine Projekte offen. Anlegen-Formular: Name
+  (Pflicht), Code (optional), Kunde, Ziel, Farbe, plus zielabhängige Felder.
+  Liste markiert `⚠ unvollständig`, wenn ein Projekt-Pflichtfeld des Ziels
+  fehlt. Löschen blockiert, wenn Zeiteinträge existieren.
+- **FR-PROJ-5** API: `GET /api/v1/projects` (optional `?status=`), `POST`,
+  `GET/PATCH/DELETE /api/v1/projects/{id}` — alle auf die eigenen Projekte des
+  Nutzers beschränkt (fremde → 404). `sync_metadata` ist freier JSON-Dict.
+  Doppelter Code beim selben Nutzer → 409.
 
 ---
 
@@ -173,8 +180,8 @@ Begriffe: **Nutzer** = eingeloggte Person (Rolle Admin oder Consultant).
 - **FR-DASH-2** Schnellerfassung: Datum (Default heute), Projekt, Von/Bis
   (Uhrzeit), Dauer (Min), Beschreibung. Wenn Projekt ein Ziel mit
   Eintrag-Feldern hat, erscheinen diese (JS) — Werte werden mitgespeichert.
-- **FR-DASH-3** Filter (Von/Bis/Projekt). Default-Fenster = laufender Monat,
-  wenn nichts gewählt.
+- **FR-DASH-3** Filter (Von/Bis/Projekt). Default-Fenster = **laufende Woche**
+  (Mo–So), wenn nichts gewählt.
 - **FR-DASH-4** Eintragsliste gruppiert nach Tag mit Σ-Zeile (Anzahl + Σ h);
   Spalten: Datum, Projekt (Farbpunkt + Label inkl. Kunde), Dauer, Beschreibung,
   Ziel, Status (`⚠ <fehlende Felder>` statt sync_status, wenn nicht bereit).
