@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
+{% set back = next_url or "/" %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-xl font-semibold">Eintrag bearbeiten</h1>
-  <a href="/" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
+  <a href="{{ back }}" class="text-sm text-slate-600 hover:underline">← zurück</a>
 </div>
 
 {% if error %}
@@ -13,6 +14,7 @@
 
 <section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
   <form method="post" action="/entries/{{ entry.id }}/edit" class="grid grid-cols-1 sm:grid-cols-6 gap-3 sm:items-end">
+    <input type="hidden" name="next" value="{{ next_url }}" />
     <div class="sm:col-span-2">
       <label class="block text-xs font-medium mb-1">Datum</label>
       <input name="entry_date" type="date" required value="{{ entry.entry_date }}"
@@ -72,7 +74,7 @@
       <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
         Speichern
       </button>
-      <a href="/" class="self-center text-sm text-slate-600 hover:underline">Abbrechen</a>
+      <a href="{{ back }}" class="self-center text-sm text-slate-600 hover:underline">Abbrechen</a>
       <span class="ml-auto"></span>
     </div>
   </form>
