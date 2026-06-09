@@ -238,6 +238,25 @@ Bis die API-Clients stehen, leisten die Jira/BCS-Karten in v1 nur
   der Realität entspricht.
 - **Phase 2 — Wizard:** SF-Flow generalisieren, Hybrid-Korrektur. Salesforce
   sofort „echt".
+- **Phase 2c — Salesforce-spezifische Fehlerfälle im Vorschau-Dialog (Idee, noch offen).**
+  Im SF-`preview`-Flow gibt es drei Klassen von übersprungenen Einträgen, die
+  der Nutzer heute ohne Systemwechsel nicht lösen kann. In Prioritätsreihenfolge:
+
+  1. **Keine Projektbesetzung hinterlegt** — bereits gelöst (Inline-Dropdown mit
+     Live-SOQL-Vorschlag im Wizard-Blockiert-Bereich).
+
+  2. **Projektbesetzung vorhanden, aber geschlossen** (`Geschlossen__c = true`).
+     Muss vom PM verlängert werden. Idee: kopierbare Nachricht im Vorschau-Dialog
+     anbieten, z. B. *„Hi. Kannst du bitte Projekt \<Projektname\> verlängern?"*
+     mit dem SF-Projektnamen vorausgefüllt (kein API-Schreibzugriff nötig).
+
+  3. **Kein Kontierungsmonat zur Projektbesetzung** (`get_monthly_period` → None).
+     Idee: direkt aus dem Vorschau-Dialog einen Kontierungsmonat anlegen
+     (`POST Kontierungsmonat__c` mit `Projektbesetzung__c`, `Monatsbeginn__c`
+     = erster des Monats, `Monatsende__c` = letzter des Monats,
+     `Status__c = "offen"`), danach Vorschau neu laden. Einträge desselben
+     (PB × Monat) werden gruppiert — ein Button entsperrt alle auf einmal.
+
 - **Phase 3 — Jira/BCS-Push-Clients:** echte API-Integrationen, unabhängig
   parallelisierbar.
 
