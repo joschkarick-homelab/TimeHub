@@ -153,13 +153,35 @@ def test_wizard_buckets_groups_ready_blocked_done():
     e2 = _full_ent(2, 1, 60, [_es("jira", "synced")])
     e3 = _full_ent(3, 1, 30, [_es("jira", "failed", last_error="kaputt")])
     b = es.wizard_buckets([e1, e2, e3], proj_lookup)
+    # jira: e1 ready (issue_key present), e2 done, e3 failed
     assert [x.id for x in b["jira"]["ready"]] == [1]
     assert b["jira"]["ready_minutes"] == 120
     assert b["jira"]["done"] == 1
-    assert len(b["jira"]["blocked"]) == 1 and "kaputt" in b["jira"]["blocked"][0]["reason"]
-    # bcs: entry 1 is blocked (subject/task missing)
-    assert len(b["bcs"]["blocked"]) == 1
+    assert b["jira"]["blocked"] == 1
+    assert len(b["jira"]["failed"]) == 1 and "kaputt" in b["jira"]["failed"][0]["reason"]
+    # bcs: entry 1 is blocked by missing entry-level subject/task
     assert b["bcs"]["ready"] == []
+    assert b["bcs"]["blocked"] == 1
+    assert len(b["bcs"]["entry_gaps"]) == 1
+    assert {f.key for f in b["bcs"]["entry_gaps"][0]["fields"]} == {"subject", "task"}
+
+
+def test_wizard_buckets_project_gap_dedups_across_entries():
+    # Salesforce needs a project-level assignment_id that the project lacks;
+    # two entries of the same project collapse into one project gap.
+    p = _proj(targets=["salesforce"])  # id=1, no salesforce metadata
+    proj_lookup = {1: p}
+    e1 = _full_ent(1, 1, 60, [_es("salesforce", "pending")])
+    e2 = _full_ent(2, 1, 30, [_es("salesforce", "pending")])
+    b = es.wizard_buckets([e1, e2], proj_lookup)
+    gaps = b["salesforce"]["project_gaps"]
+    assert len(gaps) == 1
+    assert gaps[0]["entry_count"] == 2
+    assert {f.key for f in gaps[0]["fields"]} == {"assignment_id"}
+    # spec is ready for the shared renderer
+    assert gaps[0]["spec"]["target"] == "salesforce"
+    assert "salesforce" in gaps[0]["spec"]["registry"]
+    assert b["salesforce"]["blocked"] == 2
 
 
 # ---------- materialization through the real API ----------
@@ -319,6 +341,78 @@ def test_wizard_unknown_target_rejected(client):
     _web_login(client)
     r = client.post("/sync/bogus/mark-done", data={"entry_ids": 1}, follow_redirects=False)
     assert r.status_code == 302 and "error" in r.headers["location"]
+
+
+def test_wizard_fill_project_field_unblocks_salesforce(client):
+    _web_login(client)
+    pid = _project_id(client, "FILLSF", target="salesforce")
+    client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60},
+        headers=_h(client),
+    )
+    # blocked: salesforce needs a project-level assignment → inline project form
+    page = client.get("/sync")
+    assert "Daten ergänzen" in page.text
+    assert f"/sync/project/{pid}/fields" in page.text
+
+    r = client.post(
+        f"/sync/project/{pid}/fields",
+        data={"target": "salesforce", "meta__salesforce__assignment_id": "a012345678901234"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302 and r.headers["location"].startswith("/sync")
+
+    from app.db import SessionLocal
+    from app.models import Project
+
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        assert p.sync_metadata["salesforce"]["assignment_id"] == "a012345678901234"
+    # gap is gone now
+    assert f"/sync/project/{pid}/fields" not in client.get("/sync").text
+
+
+def test_wizard_fill_entry_field_unblocks_jira(client):
+    _web_login(client)
+    pid = _project_id(client, "FILLJIRA", target="jira")
+    eid = client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60},
+        headers=_h(client),
+    ).json()["id"]
+    page = client.get("/sync")
+    assert f"/sync/entry/{eid}/fields" in page.text
+
+    r = client.post(
+        f"/sync/entry/{eid}/fields",
+        data={"target": "jira", "meta__jira__issue_key": "ABC-123"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert _entry_syncs(eid) == {"jira": "pending"}  # still pending, but now ready
+    assert f"/sync/entry/{eid}/fields" not in client.get("/sync").text
+
+
+def test_wizard_fill_rejects_foreign_project(client):
+    # owner-scoped: another user cannot fill a project they don't own
+    pid = _project_id(client, "WFOWN", target="salesforce")
+    client.post(
+        "/api/v1/users",
+        json={"email": "wf-other@example.com", "password": "secret123",
+              "full_name": "O", "is_admin": False},
+        headers=_h(client),
+    )
+    client.post(
+        "/login", data={"email": "wf-other@example.com", "password": "secret123"},
+        follow_redirects=False,
+    )
+    r = client.post(
+        f"/sync/project/{pid}/fields",
+        data={"target": "salesforce", "meta__salesforce__assignment_id": "a012345678901234"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 404
 
 
 def test_edit_next_redirects_back_to_wizard(client):
