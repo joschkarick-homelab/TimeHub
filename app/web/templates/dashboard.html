@@ -11,24 +11,24 @@
   </div>
 {% endif %}
 <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-6">
-  <div class="bg-white border border-slate-200 rounded-lg p-4">
+  <div class="bg-white border border-slate-200 p-4 th-card-purple">
     <div class="text-sm text-slate-500">Gefilterte Einträge</div>
-    <div class="text-2xl md:text-3xl font-semibold mt-1">{{ total_hours }} h</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ total_hours }} h</div>
     <div class="text-xs text-slate-500">{{ entry_count }} Einträge</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-4">
+  <div class="bg-white border border-slate-200 p-4 th-card-teal">
     <div class="text-sm text-slate-500">Aktive Projekte</div>
-    <div class="text-2xl md:text-3xl font-semibold mt-1">{{ projects|length }}</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ projects|length }}</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-4 col-span-2 md:col-span-1">
+  <div class="bg-white border border-slate-200 p-4 col-span-2 md:col-span-1 th-card-orange">
     <div class="text-sm text-slate-500">Angemeldet als</div>
-    <div class="text-lg font-medium mt-1">{{ user.full_name or user.email }}</div>
+    <div class="text-lg font-semibold mt-1 th-stat-val th-outfit">{{ user.full_name or user.email }}</div>
     <div class="text-xs text-slate-500">{{ 'Admin' if user.is_admin else 'Consultant' }}</div>
   </div>
 </div>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-3">Neuer Eintrag</h2>
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">Neuer Eintrag</h2>
   {# Uniform field height (h-10). One column on mobile, six on sm+ so all
      fields and the button line up. #}
   <form method="post" action="/entries" class="grid grid-cols-1 sm:grid-cols-6 gap-3 sm:items-end">
@@ -95,8 +95,8 @@
   })();
 </script>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-3">Filter</h2>
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-4 th-section-title th-section-teal th-outfit">Filter</h2>
   <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Von</label>
@@ -130,9 +130,9 @@
   </form>
 </section>
 
-<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+<section class="bg-white border border-slate-200 overflow-hidden">
   <div class="flex items-center justify-between p-5 pb-3 gap-3 flex-wrap">
-    <h2 class="font-semibold">Einträge (gruppiert nach Tag)</h2>
+    <h2 class="font-semibold th-section-title th-section-olive th-outfit">Einträge (gruppiert nach Tag)</h2>
     <div class="flex items-center gap-3 flex-wrap">
       {% if sf_configured and sf_selectable_count %}
         <form id="sf-sync-form" method="post" action="/sync/salesforce/preview"

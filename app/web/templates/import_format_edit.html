@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="flex items-center justify-between mb-4">
-  <h1 class="text-xl font-semibold">Importformat bearbeiten</h1>
+  <h1 class="text-xl font-bold th-outfit">Importformat bearbeiten</h1>
   <a href="/import-formats" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
 </div>
 
@@ -12,7 +12,7 @@
 {% endif %}
 
 <div class="grid lg:grid-cols-2 gap-6 items-start">
-  <section class="bg-white border border-slate-200 rounded-lg p-5">
+  <section class="bg-white border border-slate-200 p-5">
     <form method="post" action="/import-formats/{{ fmt.id }}/edit" id="format-form" class="space-y-4">
       <label class="block text-sm">
         <span class="block font-medium mb-1">Name</span>
@@ -21,7 +21,7 @@
       </label>
 
       {% if ai_enabled %}
-      <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+      <div class="bg-indigo-50 border border-indigo-200 p-3">
         <label class="block text-sm font-medium mb-1">Mit KI nachschärfen</label>
         <p class="text-xs text-slate-500 mb-2">
           Beschreibe, was angepasst werden soll — z. B. „Dauer kommt als 01:30:00, bitte
@@ -105,9 +105,9 @@
     </form>
   </section>
 
-  <section class="bg-white border border-slate-200 rounded-lg p-5">
+  <section class="bg-white border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-1">
-      <h2 class="font-semibold">Vorschau: Quelle → Ziel</h2>
+      <h2 class="font-semibold th-section-title th-section-teal th-outfit">Vorschau: Quelle → Ziel</h2>
       <button type="button" id="refresh-preview" class="text-xs text-indigo-600 hover:underline">↻ aktualisieren</button>
     </div>
     <p class="text-xs text-slate-500 mb-3">

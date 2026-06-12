@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="flex items-center justify-between mb-4">
-  <h1 class="text-xl font-semibold">Projekt bearbeiten</h1>
+  <h1 class="text-xl font-bold th-outfit">Projekt bearbeiten</h1>
   <a href="/projects" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
 </div>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+<section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <form method="post" action="/projects/{{ project.id }}/edit" class="space-y-4">
     <div class="grid sm:grid-cols-2 gap-3">
       <label class="text-sm">

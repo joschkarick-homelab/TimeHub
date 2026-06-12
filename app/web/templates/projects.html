@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">Projekte</h1>
+<h1 class="text-xl font-bold th-outfit mb-4">Projekte</h1>
 
 {% if flash %}
   <div class="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{{ flash }}</div>
@@ -9,8 +9,8 @@
   <div class="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
 {% endif %}
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-3">Neues Projekt</h2>
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">Neues Projekt</h2>
   <form method="post" action="/projects" class="grid sm:grid-cols-6 gap-3 items-end">
     <label class="sm:col-span-2 text-sm">
       <span class="block font-medium mb-1 text-xs">Name</span>
@@ -62,7 +62,10 @@
   })();
 </script>
 
-<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+<section class="bg-white border border-slate-200 overflow-hidden">
+  <div class="px-5 pt-5 pb-3">
+    <h2 class="font-semibold th-section-title th-section-teal th-outfit">Alle Projekte</h2>
+  </div>
   {% if projects %}
   {# Desktop: Tabelle (ab md). #}
   <table class="hidden md:table w-full text-sm">

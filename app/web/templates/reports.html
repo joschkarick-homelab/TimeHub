@@ -29,7 +29,7 @@
 {% endmacro %}
 
 <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-  <h1 class="text-xl font-semibold">Reports</h1>
+  <h1 class="text-xl font-bold th-outfit">Reports</h1>
   <div class="text-sm text-slate-500">
     Gesamt: <span class="font-semibold text-slate-900">{{ '%.2f'|format(report.total_hours) }} h</span>
     ({{ report.count }} Einträge)
@@ -51,7 +51,8 @@
 </section>
 
 {# --- Filters + custom grouping --- #}
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-4 th-section-title th-section-teal th-outfit">Filter</h2>
   <form method="get" action="/reports" class="space-y-4">
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
       <div>
@@ -128,7 +129,10 @@
 </section>
 
 {# --- Result --- #}
-<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+<section class="bg-white border border-slate-200 overflow-hidden">
+  <div class="px-5 pt-5 pb-3">
+    <h2 class="font-semibold th-section-title th-section-olive th-outfit">Ergebnisse</h2>
+  </div>
   {% if report.groups %}
     <div class="overflow-x-auto">
       <table class="w-full text-sm min-w-[560px]">

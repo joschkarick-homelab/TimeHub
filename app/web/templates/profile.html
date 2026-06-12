@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">Mein Profil</h1>
+<h1 class="text-xl font-bold th-outfit mb-4">Mein Profil</h1>
 
 {% if flash %}
   <div class="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{{ flash }}</div>
@@ -9,7 +9,8 @@
   <div class="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
 {% endif %}
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl mb-6">
+<section class="bg-white border border-slate-200 p-5 max-w-2xl mb-6">
+  <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">Profil-Einstellungen</h2>
   <form method="post" action="/profile" class="space-y-4">
     <div class="grid sm:grid-cols-2 gap-3">
       <label class="text-sm">
@@ -42,8 +43,8 @@
   </form>
 </section>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
-  <h2 class="font-semibold mb-2">Rolle &amp; Status</h2>
+<section class="bg-white border border-slate-200 p-5 max-w-2xl">
+  <h2 class="font-semibold mb-3 th-section-title th-section-orange th-outfit">Rolle &amp; Status</h2>
   <dl class="text-sm grid grid-cols-2 gap-y-1">
     <dt class="text-slate-500">Rolle</dt><dd>{{ 'Admin' if user.is_admin else 'Consultant' }}</dd>
     <dt class="text-slate-500">Aktiv</dt><dd>{{ 'Ja' if user.is_active else 'Nein' }}</dd>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">CSV importieren</h1>
+<h1 class="text-xl font-bold th-outfit mb-4">CSV importieren</h1>
 
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
@@ -9,7 +9,7 @@
 {% endif %}
 
 {% if result %}
-  <section class="mb-6 border rounded-lg overflow-hidden
+  <section class="mb-6 border overflow-hidden
     {% if result.failed %}border-amber-300 bg-amber-50{% else %}border-emerald-300 bg-emerald-50{% endif %}">
     <div class="p-4 flex items-center gap-3">
       {% if result.failed %}
@@ -44,7 +44,7 @@
   </section>
 
   {% if result.errors %}
-    <section class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+    <section class="bg-white border border-slate-200 mb-6 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
         <h2 class="font-semibold">Fehlgeschlagene Zeilen ({{ result.errors|length }})</h2>
         <details class="text-xs text-slate-500">
@@ -82,8 +82,8 @@
   {% endif %}
 {% endif %}
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
-  <h2 class="font-semibold mb-3">
+<section class="bg-white border border-slate-200 p-5 max-w-2xl">
+  <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">
     {% if result %}Weiteren Import starten{% else %}Import{% endif %}
   </h2>
   {% if formats %}

@@ -2,7 +2,7 @@
 {% block content %}
 {% set back = next_url or "/" %}
 <div class="flex items-center justify-between mb-4">
-  <h1 class="text-xl font-semibold">Eintrag bearbeiten</h1>
+  <h1 class="text-xl font-bold th-outfit">Eintrag bearbeiten</h1>
   <a href="{{ back }}" class="text-sm text-slate-600 hover:underline">← zurück</a>
 </div>
 
@@ -12,7 +12,7 @@
   </div>
 {% endif %}
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+<section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <form method="post" action="/entries/{{ entry.id }}/edit" class="grid grid-cols-1 sm:grid-cols-6 gap-3 sm:items-end">
     <input type="hidden" name="next" value="{{ next_url }}" />
     <div class="sm:col-span-2">

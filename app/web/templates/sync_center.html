@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="flex items-center justify-between mb-1">
-  <h1 class="text-xl font-semibold">Export-Wizard</h1>
+  <h1 class="text-xl font-bold th-outfit">Export-Wizard</h1>
   <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
 </div>
 <p class="text-sm text-slate-600 mb-4">
@@ -27,9 +27,9 @@
     {% set b = buckets[t] %}
     {% set ready = b.ready %}
     {% set blocked = b.blocked %}
-    <section class="bg-white border border-slate-200 rounded-lg p-5">
+    <section class="bg-white border border-slate-200 p-5">
       <div class="flex items-baseline justify-between mb-3">
-        <h2 class="font-semibold">{{ label }}</h2>
+        <h2 class="font-semibold th-section-title th-section-orange th-outfit">{{ label }}</h2>
         {% if t == "salesforce" and not sf_configured %}
           <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">nicht konfiguriert</span>
         {% elif t != "salesforce" %}
@@ -54,7 +54,7 @@
 
       {# ---- Aktion: bereite Einträge abnicken ---- #}
       {% if ready %}
-        <div class="rounded-md bg-slate-50 border border-slate-200 p-3 mb-3">
+        <div class="bg-slate-50 border border-slate-200 p-3 mb-3">
           <p class="text-sm mb-2">
             <span class="font-semibold">{{ ready|length }} Einträge</span> ·
             <span class="tabular-nums">{{ '%.2f'|format(b.ready_minutes / 60) }} h</span> bereit
@@ -110,7 +110,7 @@
           {# Projekt-Daten fehlen (z. B. Salesforce-Projektbesetzung): einmal
              ausfüllen entsperrt alle betroffenen Einträge. #}
           {% for gap in b.project_gaps %}
-            <div class="mt-3 rounded border border-slate-200 p-3">
+            <div class="mt-3 border border-slate-200 p-3">
               <p class="text-xs text-slate-600 mb-2">
                 <span class="font-medium text-slate-700">{{ gap.project.display_label }}</span>
                 — Projekt-Daten fehlen
@@ -130,7 +130,7 @@
           {# Eintrags-Daten fehlen (z. B. Jira-Ticket, BCS Subject/Task). #}
           {% for gap in b.entry_gaps %}
             {% set e = gap.entry %}
-            <div class="mt-3 rounded border border-slate-200 p-3">
+            <div class="mt-3 border border-slate-200 p-3">
               <p class="text-xs text-slate-600 mb-2">
                 <span class="text-slate-700">{{ e.entry_date }} · {{ gap.project.display_label }}</span>
                 <span class="tabular-nums text-slate-400">({{ '%.2f'|format(e.duration_minutes / 60) }} h)</span>
@@ -172,8 +172,8 @@
   {% endfor %}
 
   {# ---------- CSV-Export ---------- #}
-  <section class="bg-white border border-slate-200 rounded-lg p-5">
-    <h2 class="font-semibold mb-2">CSV-Export</h2>
+  <section class="bg-white border border-slate-200 p-5">
+    <h2 class="font-semibold mb-3 th-section-title th-section-olive th-outfit">CSV-Export</h2>
     {% if formats %}
       <p class="text-xs text-slate-500 mb-3">
         Ganze Timesheet-Exporte für externe Systeme (Toggl-/Clockify-Format, Custom-Excel-Sheets …).
