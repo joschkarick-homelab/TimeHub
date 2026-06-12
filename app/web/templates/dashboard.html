@@ -21,63 +21,95 @@
     <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ projects|length }}</div>
   </div>
   <div class="bg-white border border-slate-200 p-4 col-span-2 md:col-span-1 th-card-orange">
-    <div class="text-sm text-slate-500">Angemeldet als</div>
-    <div class="text-lg font-semibold mt-1 th-stat-val th-outfit">{{ user.full_name or user.email }}</div>
-    <div class="text-xs text-slate-500">{{ 'Admin' if user.is_admin else 'Consultant' }}</div>
+    <div class="text-sm text-slate-500">Salesforce diese Woche</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ sf_week_hours }} h</div>
+    <div class="text-xs text-slate-500">erfasst &amp; gesynct</div>
   </div>
 </div>
 
-<section class="bg-white border border-slate-200 p-5 mb-6">
-  <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">Neuer Eintrag</h2>
-  {# Uniform field height (h-10). One column on mobile, six on sm+ so all
-     fields and the button line up. #}
-  <form method="post" action="/entries" class="grid grid-cols-1 sm:grid-cols-6 gap-3 sm:items-end">
-    <div class="sm:col-span-1">
-      <label class="block text-xs font-medium mb-1">Datum</label>
-      <input name="entry_date" type="date" required value="{{ today }}"
-             class="w-full h-10 border border-slate-300 rounded px-2" />
+{# Quick-entry trigger bar #}
+<div class="mb-6">
+  <button id="new-entry-btn"
+          class="flex items-center gap-2 w-full bg-white border border-slate-200 px-4 py-3 text-left transition-colors hover:border-purple-500"
+          style="box-shadow: 3px 3px 0 var(--border2);"
+          onclick="document.getElementById('new-entry-modal').classList.remove('hidden')">
+    <span class="inline-flex items-center justify-center w-6 h-6 bg-indigo-600 text-white text-sm font-bold shrink-0">+</span>
+    <span class="text-sm th-outfit font-semibold" style="color: var(--purple);">Neuer Eintrag</span>
+    <span class="text-xs ml-auto" style="color: var(--faint);">Klicken zum Erfassen</span>
+  </button>
+</div>
+
+{# New-entry modal #}
+<div id="new-entry-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background: rgba(0,0,0,.65);">
+  <div class="bg-white border border-slate-200 p-5 w-full max-w-lg relative"
+       style="box-shadow: 5px 5px 0 var(--purple-shadow);">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold th-section-title th-section-purple th-outfit">Neuer Eintrag</h2>
+      <button type="button" id="new-entry-close"
+              class="text-xl leading-none" style="color: var(--muted);">✕</button>
     </div>
-    <div class="sm:col-span-2">
-      <label class="block text-xs font-medium mb-1">Projekt</label>
-      <select name="project_id" id="dash-project" required
-              class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
-        {% for p in projects %}
-          <option value="{{ p.id }}">{{ p.display_label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="grid grid-cols-3 gap-2 sm:contents">
-      <div class="sm:col-span-1">
+    <form method="post" action="/entries" class="grid grid-cols-2 gap-3 items-end">
+      <div>
+        <label class="block text-xs font-medium mb-1">Datum</label>
+        <input name="entry_date" type="date" required value="{{ today }}"
+               class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Projekt</label>
+        <select name="project_id" id="dash-project" required
+                class="w-full h-10 border border-slate-300 px-2 bg-white">
+          {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.display_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
         <label class="block text-xs font-medium mb-1">Von</label>
-        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 rounded px-2" />
+        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
       </div>
-      <div class="sm:col-span-1">
+      <div>
         <label class="block text-xs font-medium mb-1">Bis</label>
-        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 rounded px-2" />
+        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
       </div>
-      <div class="sm:col-span-1">
+      <div>
         <label class="block text-xs font-medium mb-1">Dauer (Min)</label>
         <input name="duration_minutes" type="number" step="15" min="15" inputmode="numeric"
-               placeholder="60" class="w-full h-10 border border-slate-300 rounded px-2" />
+               placeholder="60" class="w-full h-10 border border-slate-300 px-2" />
       </div>
-    </div>
-    <div class="sm:col-span-4">
-      <label class="block text-xs font-medium mb-1">Beschreibung</label>
-      <input name="description" class="w-full h-10 border border-slate-300 rounded px-2" />
-    </div>
-    <div class="sm:col-span-2">
-      <label class="block text-xs font-medium mb-1 invisible sm:not-sr-only">_</label>
-      <button class="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
-        Speichern
-      </button>
-    </div>
-    <div id="dash-sync-fields" class="hidden sm:col-span-6 grid sm:grid-cols-3 gap-3 border-t border-slate-100 pt-3"></div>
-    <p class="sm:col-span-6 text-xs text-slate-500 -mt-1">
-      Entweder <strong>Von + Bis</strong> ausfüllen (Dauer wird berechnet) oder direkt die
-      <strong>Dauer</strong> in Minuten eintragen.
-    </p>
-  </form>
-</section>
+      <div>
+        <label class="block text-xs font-medium mb-1">Beschreibung</label>
+        <input name="description" class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div id="dash-sync-fields" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t pt-3"
+           style="border-color: var(--border);"></div>
+      <p class="col-span-2 text-xs -mt-1" style="color: var(--faint);">
+        Von + Bis <strong>oder</strong> Dauer in Minuten eingeben.
+      </p>
+      <div class="col-span-2 flex gap-2 pt-1">
+        <button class="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold th-outfit tracking-wide">
+          Speichern
+        </button>
+        <button type="button" id="new-entry-cancel"
+                class="h-10 px-4 border border-slate-300 text-sm" style="color: var(--muted);">
+          Abbrechen
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById("new-entry-modal");
+  var closeBtn = document.getElementById("new-entry-close");
+  var cancelBtn = document.getElementById("new-entry-cancel");
+  function close() { modal.classList.add("hidden"); }
+  closeBtn.addEventListener("click", close);
+  cancelBtn.addEventListener("click", close);
+  modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+})();
+</script>
 
 {% include "_sync_fields_js.html" %}
 <script>

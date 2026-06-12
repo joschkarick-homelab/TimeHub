@@ -215,7 +215,7 @@
         {# Logo #}
         <a href="/" class="th-outfit flex items-center gap-2 font-bold text-sm tracking-tight shrink-0"
            style="color: var(--text); text-decoration: none;">
-          <img src="/static/icon.svg" alt="" class="w-6 h-6" />
+          <img src="/static/icon.svg" alt="" class="w-7 h-7" style="image-rendering: pixelated;" />
           TimeHub
         </a>
 
@@ -234,7 +234,7 @@
             <a href="/"          class="th-nav-link {% if p == '/' %}th-active{% endif %}">Dashboard</a>
             <a href="/calendar"  class="th-nav-link {% if p.startswith('/calendar') %}th-active{% endif %}">Kalender</a>
             <a href="/reports"   class="th-nav-link {% if p.startswith('/reports') %}th-active{% endif %}">Reports</a>
-            <a href="/projects"  class="th-nav-link {% if p.startswith('/projects') %}th-active{% endif %}">Projekte</a>
+            <a href="/sync"      class="th-nav-link {% if p.startswith('/sync') %}th-active{% endif %}">Sync</a>
           </nav>
 
           {# User dropdown #}
@@ -259,7 +259,7 @@
               <div class="px-3 py-2 text-xs border-b border-slate-200 truncate" style="color: var(--faint);">
                 {{ user.email }}
               </div>
-              <a href="/sync"           class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Sync</a>
+              <a href="/projects"       class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Projekte</a>
               <a href="/import"         class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Import</a>
               <a href="/import-formats" class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Formate</a>
               {% if user.is_admin %}
@@ -303,8 +303,8 @@
           <a href="/"               class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Dashboard</a>
           <a href="/calendar"       class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Kalender</a>
           <a href="/reports"        class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Reports</a>
-          <a href="/projects"       class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Projekte</a>
-          <a href="/sync"           class="block px-1 py-2 hover:underline" style="color: var(--muted);">Sync</a>
+          <a href="/sync"           class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Sync</a>
+          <a href="/projects"       class="block px-1 py-2 hover:underline" style="color: var(--muted);">Projekte</a>
           <a href="/import"         class="block px-1 py-2 hover:underline" style="color: var(--muted);">Import</a>
           <a href="/import-formats" class="block px-1 py-2 hover:underline" style="color: var(--muted);">Formate</a>
           {% if user.is_admin %}

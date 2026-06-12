@@ -6,14 +6,14 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import ImportFormat, Project, TimeEntry, User
+from app.models import EntrySync, ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
 from app.services import app_settings as app_settings_svc
@@ -175,6 +175,23 @@ def index(
 
     formats = _visible_formats(db, user) if entries else []
 
+    # Salesforce hours synced in the current calendar week (Mon–Sun).
+    _today = date.today()
+    _week_start = _today - timedelta(days=_today.weekday())
+    _week_end = _week_start + timedelta(days=6)
+    sf_week_minutes = db.execute(
+        select(func.sum(TimeEntry.duration_minutes))
+        .join(EntrySync, TimeEntry.id == EntrySync.entry_id)
+        .where(
+            TimeEntry.user_id == user.id,
+            EntrySync.target == "salesforce",
+            EntrySync.status.in_(["synced", "manually_synced"]),
+            TimeEntry.entry_date >= _week_start,
+            TimeEntry.entry_date <= _week_end,
+        )
+    ).scalar() or 0
+    sf_week_hours = round(sf_week_minutes / 60, 1)
+
     return templates.TemplateResponse(
         "dashboard.html",
         _ctx(
@@ -193,6 +210,7 @@ def index(
             project_targets={p.id: p.default_sync_target for p in projects},
             total_hours=round(total_minutes / 60, 2),
             entry_count=len(entries),
+            sf_week_hours=sf_week_hours,
             today=date.today().isoformat(),
             date_from=df.isoformat() if df else "",
             date_to=dt.isoformat() if dt else "",
