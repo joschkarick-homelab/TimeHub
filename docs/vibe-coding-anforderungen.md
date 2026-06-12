@@ -712,32 +712,78 @@ app_settings(key, value)   -- globale KI-Hinweise, SF-Credentials, …
 
 ## 17. Theming
 
-**Verbindliche Referenz: [hister.org](https://hister.org).** Das Look-and-Feel
-von TimeHub soll sich an hister.org orientieren — die Live-Site ist die Quelle
-der Wahrheit für Farben, Typografie und Tonalität. (Hister ist eine self-hosted,
-privacy-fokussierte Such-App; sie blockt automatisierte Fetches, daher ist die
-folgende Beschreibung ein **konservativer Startpunkt, der gegen die echte Site
-zu verifizieren** ist — bitte vor dem Festklopfen der Tokens einmal selbst
-draufschauen.)
+**Inspiriert von [hister.org](https://hister.org) (Dark Mode).** Das Design ist
+fertig implementiert und als CSS-Variablen in `base.html` festgeschrieben. Die
+folgenden Tokens sind verbindlich — neue Seiten und Komponenten halten sich daran.
 
-**Charakter, der zu hister.org und zu TimeHubs Anspruch passt:**
+### Charakter
 
-- **Ruhig, reduziert, inhaltszentriert.** Wenig Chrome, viel Weißraum, klare
-  Hierarchie. Die Daten stehen im Vordergrund, nicht die Deko.
-- **Monochrome Basis + ein Akzent.** Neutrale Grautöne als Gerüst, eine
-  einzelne, kräftige Akzentfarbe für Aktionen, Links und aktive Zustände.
-- **Typografie-getrieben.** Eine gut lesbare Sans-Serif, klare Schriftgrößen-
-  Abstufung, eher Gewicht als Farbe zur Betonung.
-- **Dezente Ränder statt Schlagschatten.** Feine 1-px-Borders, sanft gerundete
-  Ecken, sparsame oder gar keine Schatten — funktional, nicht verspielt.
-- **Helle und dunkle Variante.** hister.org wirkt wie ein Tool, das sowohl Light
-  als auch Dark beherrscht; TimeHub soll mindestens beides anbieten.
+- **Dunkel, kantig, retro-bunt.** Dunkler Hintergrund als Default, kräftige
+  Akzentfarben (kein Pastellbrei), Pixel-Style-Schatten (versetzt, kein Blur),
+  0 px Border-Radius überall — konsequent eckig.
+- **Outfit für Headings, Inter für Fließtext.** Outfit (700–900) in Nav-Links,
+  Seitentiteln, Abschnitts-Überschriften und Kennzahlen; Inter (400–600) für
+  alles andere.
+- **Farbbalken vor Abschnitts-Headings.** Jeder `<h2>` in einer Karte bekommt
+  einen 3 px hohen, farbigen Balken links (CSS `::before`-Trick mit
+  `.th-section-title .th-section-{purple|teal|orange|olive}`).
+- **Pixel-Schatten auf Karten und Buttons.** Kein `box-shadow` mit Blur —
+  immer `3px 3px 0 <schattenfarbe>`. Buttons heben sich beim Hover um 1 px an
+  und senken sich beim Active-Klick.
 
-**Umsetzung:** Theme über CSS-Variablen / Tailwind-Tokens, per Cookie
-umschaltbar (Default + mindestens eine dunkle Variante). Die exakten Hex-Werte,
-Schrift und Abstände werden 1:1 von hister.org abgenommen, sobald die Site
-visuell vorliegt. Bis dahin ist ein neutrales, akzentbasiertes Schema (z. B.
-Indigo-Akzent auf Grau-Basis) ein tragfähiger Platzhalter.
+### Design-Tokens (CSS-Variablen)
+
+```css
+/* Hintergründe & Oberflächen */
+--bg:        #1A1A1A   /* Seitenhintergrund */
+--surface:   #242422   /* Karten (bg-white) */
+--surface2:  #2C2C2A   /* Innere Flächen (bg-slate-50/100) */
+
+/* Ränder */
+--border:    #383836   /* Standard-Border */
+--border2:   #464644   /* Stärkere Border, Inputs */
+
+/* Text */
+--text:      #E0E0DE   /* Haupttext */
+--muted:     #888886   /* Sekundärtext */
+--faint:     #555553   /* Dezimalhilfstext */
+
+/* Akzentfarben */
+--purple:    #9B8AFB   /* Primär-Aktion, aktiver Nav-Link */
+--orange:    #E8A060   /* Sekundär-Aktion, Sync-Wizard */
+--teal:      #5AC8A0   /* Tertiär-Aktion, Bestätigung */
+--olive:     #A8B858   /* KI/Settings, Export */
+
+/* Schatten der Akzentfarben */
+--purple-shadow: #6B5FD8
+--teal-shadow:   #3AA878
+--orange-shadow: #C07830
+```
+
+### Button-Hierarchie
+
+| Klasse / Farbe | Verwendung |
+| --- | --- |
+| `bg-indigo-600` → `--purple` | Primär-Aktion (Speichern, Anlegen) |
+| `bg-slate-800` → `--teal` | Sekundär-Aktion (Filter anwenden) |
+| `bg-emerald-600` → `--olive` | Bestätigungs-Aktion (Als erledigt markieren) |
+| `bg-sky-600` → `--teal` | Integrations-Aktion (SF-Push) |
+| `bg-rose-600` → `#c42929` | Destruktiv (Löschen) |
+
+### Tailwind-Remapping
+
+Da die App Tailwind CDN verwendet, werden Tailwind-Klassen in `base.html` per
+`!important` umgebogen — z. B. `bg-white` → `var(--surface)`,
+`border-slate-200` → `var(--border)`, `text-slate-900` → `var(--text)`.
+Neue Komponenten können weiterhin Tailwind-Klassen benutzen; das Remap greift
+automatisch.
+
+### Theme-Umschaltung
+
+Per Cookie `theme` (1 Jahr, gesetzt via `GET /set-theme?theme=<name>`).
+Werte: `dark` (Default), `light`, `mindsquare`. Das `<html>`-Element trägt
+`data-theme="{{ theme }}"`. Alternative Tokens für `light` und weitere Themes
+können in `base.html` unter `html[data-theme="light"] { … }` ergänzt werden.
 
 ---
 
