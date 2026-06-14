@@ -213,13 +213,13 @@ Importformate selbst.
 ### Profil (jeder Nutzer)
 - Anzeigename und **persönliche KI-Hinweise** änderbar; E-Mail read-only;
   Rolle/Status nur Anzeige.
-- **Salesforce-User-Id** (einmalig pro Nutzer): Jeder Nutzer hinterlegt einmal
-  seine eigene SF-User-Id. Sie verankert die TimeHub-Identität an genau einer
-  Salesforce-Identität und ist die Grundlage dafür, dass (a) alle SF-Dropdowns
-  auf *seine* Datensätze gefiltert werden und (b) niemand für eine fremde
-  SF-Identität Zeiten pflegen kann (siehe Modul H, „Berechtigung"). Idealerweise
-  per Dropdown der bekannten SF-User wählbar statt frei getippt. Verwandte
-  Legacy-Felder (`salesforce_contact_id`) dürfen für Lookups erhalten bleiben.
+- **Salesforce-Identität (automatisch).** Die Zuordnung TimeHub-Nutzer → echter
+  SF-User wird **nicht manuell gepflegt**, sondern automatisch aus der Login-
+  Session über den `FederationIdentifier` (Entra `oid`/UPN) aufgelöst und
+  gecacht (Details: Modul H, 13.1/13.3). Im Profil ist sie höchstens
+  **read-only** sichtbar. Sie ist der Anker dafür, dass alle SF-Dropdowns auf
+  *seine* Datensätze gefiltert werden und Einträge dem richtigen SF-User
+  gehören.
 
 ---
 
@@ -569,18 +569,19 @@ wie ein echtes Zielsystem angebunden wird. (Konkret auf das Salesforce-
 Datenmodell von mindsquare zugeschnitten; in `docs/salesforce-integration.md`
 und `docs/salesforce-schema/` liegen die Objekt-/Feld-Details.)
 
-- **Zugangsdaten admin-pflegbar** (nicht aus Env): Username, Passwort,
-  Security-Token, Login-URL (Default `login.salesforce.com`), API-Version
-  (Default `60.0`). Passwort/Token werden nie zurückgespiegelt (nur
-  „gesetzt"-Status) und nur überschrieben, wenn ein Wert eingegeben wird.
-  Ein „Verbindung testen"-Button macht einen SOAP-Probelogin.
-- **Auth:** SOAP-Login an `/services/Soap/u/<api>` mit Username +
-  (Passwort + Security-Token); die Session-Id dient als Bearer für REST.
+- **Anbindung über einen dedizierten Integration User** (Server-zu-Server,
+  **kein** Per-User-OAuth) per **OAuth 2.0 JWT Bearer Flow** über eine Connected
+  App — Details und Begründung in 13.2. Admin-pflegbar sind die Connected-App-
+  Parameter (Consumer Key, Integration-User-Username, Login-URL Default
+  `login.salesforce.com`, API-Version Default `60.0`); der **private Schlüssel**
+  liegt im Secret-Store, nicht in der DB (siehe 13.5). Ein „Verbindung
+  testen"-Button holt ein Token über den JWT-Flow und meldet Erfolg/Fehler.
 - **Mapping-Anker:** Pflichtfeld am Projekt ist `salesforce.assignment_id` (Id
   der Projektbesetzung). Daraus werden Projekt und Mitarbeiter beim Sync
   abgeleitet. Im Projekt-Edit ist das ein **Dropdown** der aktiven
-  Projektbesetzungen des Users (Live-SOQL über die E-Mail des Nutzers,
-  geschlossene ausgeblendet); ohne SF-Credentials/Treffer ein freies Textfeld.
+  Projektbesetzungen des Users (Live-SOQL, gefiltert auf die aufgelöste
+  SF-Identität des Nutzers — siehe 13.1, geschlossene ausgeblendet); ohne
+  SF-Verbindung/Treffer ein freies Textfeld.
 - **Vorschau** (`POST /sync/salesforce/preview` mit `entry_ids`): pro Eintrag
   wird eine `Zeiterfassung__c`-Payload gerendert, gruppiert nach
   (Projektbesetzung × Kontierungsmonat). Pro Eintrag wird per SOQL die
@@ -606,87 +607,90 @@ und `docs/salesforce-schema/` liegen die Objekt-/Feld-Details.)
 
 ### 13.1 Nutzer-Anker: eigene Salesforce-Identität
 
-- **Jeder Nutzer trägt einmal seine Salesforce-User-Id ein** (im Profil, siehe
-  Modul A). Sie ist der verbindliche Anker zwischen TimeHub-Nutzer und
-  SF-Identität.
-- Sie ersetzt bzw. ergänzt das bisherige reine E-Mail-Matching beim Auflösen der
-  Projektbesetzungen: zuverlässiger als die E-Mail (die in TimeHub und SF
-  abweichen kann) und Voraussetzung für die Berechtigungsprüfung in 13.2.
-- Ohne hinterlegte SF-User-Id sind die SF-Funktionen für diesen Nutzer
-  deaktiviert (freundlicher Hinweis „Bitte zuerst deine Salesforce-User-Id im
-  Profil hinterlegen").
+- **Jeder TimeHub-Nutzer ist genau einem echten SF-User zugeordnet.** Die
+  Zuordnung läuft **automatisch** über den **`FederationIdentifier`** (Entra-
+  `oid`/UPN aus der Login-Session) → SF-User; das Ergebnis wird **in der App
+  gecacht**. Kein manuelles Eintragen einer SF-User-Id nötig (minimaler
+  User-Input).
+- Diese aufgelöste SF-Identität ist der verbindliche Anker für (a) das
+  Owner-Setzen beim Schreiben (13.3), (b) die App-seitige Berechtigung (13.4)
+  und (c) das Filtern aller SF-Dropdowns (13.6).
+- Findet sich zur Entra-Identität **kein** SF-User, sind die SF-Funktionen für
+  diesen Nutzer deaktiviert (freundlicher Hinweis statt stiller Fehler).
 
-### 13.2 Berechtigung: Wer darf für wen buchen? (offene Designentscheidung)
+> **Abhängigkeit (zu klären):** Dieses Modell setzt **Entra-basierte Sessions**
+> voraus (SSO via Microsoft Entra). Modul A beschreibt aktuell lokale Auth
+> (JWT + API-Key), und §19 führt OAuth/SSO als „out of scope für v1". Mit dieser
+> Entscheidung wandert **Entra-SSO in den Scope** — Modul A/§19 sind
+> entsprechend nachzuziehen.
 
-**Problem:** Aktuell läuft jeder Push über einen **zentralen SF-API-User**
-(admin-gepflegte Credentials). Technisch könnte dieser Service-User
-`Zeiterfassung__c` für *jede* beliebige SF-Identität anlegen. Es braucht ein
-Verfahren, das sicherstellt, dass ein TimeHub-Nutzer **nur für seine eigene
-SF-Identität** Zeiten pflegt — sonst kann jeder für jeden buchen.
+### 13.2 Auth & Lizenz: dedizierter Integration User (entschieden)
 
-Optionen (zu entscheiden, Empfehlung: B als Zielbild, A als Übergang):
+- **Anbindung über einen dedizierten Integration User — kein Per-User-OAuth.**
+  Begründung **Lizenzkosten:** die ersten **5 Integration-User-Lizenzen sind
+  kostenlos** (danach ~$10/User/Monat), während Per-User-OAuth „**API Enabled**"
+  auf *jedem* User bräuchte und je nach Salesforce-Edition Add-on-Kosten
+  verursacht.
+- **Auth: OAuth 2.0 JWT Bearer Flow** (Server-zu-Server). TimeHub signiert ein
+  JWT mit einem **Private Key** und tauscht es über eine **Connected App** gegen
+  ein Access-Token; ein laufender User-Login ist dafür nicht nötig.
+- **Stack-Empfehlung:** FastAPI + `simple_salesforce` als SF-Client.
 
-- **(A) Server-seitiger Guard über den Nutzer-Anker.** TimeHub bindet jeden
-  Nutzer an seine `salesforce_user_id`; vor *jeder* Vorschau und *jedem* Push
-  validiert es, dass jede aufgelöste Projektbesetzung dem eigenen SF-User des
-  Nutzers gehört (`Mitarbeiter__r.Id`/`Email` bzw. `Externe_Projektbesetzung__r`
-  = eigene Identität). Treffer außerhalb der eigenen Identität werden
-  abgewiesen. Der zentrale API-User bleibt reiner Transport.
-  *Pro:* einfach, funktioniert mit dem bestehenden zentralen User.
-  *Contra:* die Durchsetzung liegt allein in der TimeHub-Logik; der Service-User
-  bleibt technisch allmächtig.
-- **(B) Per-User-OAuth (Salesforce Connected App).** Jeder Nutzer autorisiert
-  TimeHub einmal mit seinem **eigenen** SF-Account (OAuth 2.0 Web-Server- oder
-  JWT-Bearer-Flow). TimeHub speichert pro Nutzer ein Refresh-Token und schreibt
-  *als dieser Nutzer*. Damit erzwingt **Salesforce selbst** über sein
-  Berechtigungs-/Sharing-Modell, wer was schreiben darf.
-  *Pro:* echte Sicherheitsgrenze; entkoppelt vom einzelnen zentralen API-User
-  (löst zugleich 13.4).
-  *Contra:* Connected App + OAuth-Flow + Token-Speicherung/-Refresh nötig.
-- **(C) Hybrid.** Jetzt Guard (A) + zentraler User; (B) als Migrationsziel.
+### 13.3 Ownership-Modell
 
-Unabhängig von der Wahl gilt: Die Berechtigungsprüfung läuft **server-seitig vor
-Vorschau und Push**, nicht nur in der UI.
+- Zeiterfassungen liegen im Custom Object **`Time_Entry__c`**.
+- Beim Schreiben setzt TimeHub die **`OwnerId` auf den echten SF-User des
+  Mitarbeiters** (aus der Entra→SF-Auflösung, 13.1) — nicht auf den Integration
+  User. Vorteile: native SF-Reports „**by Owner**" funktionieren, und eine
+  spätere **Migration auf Per-User-OAuth** bleibt offen (die Datensätze gehören
+  bereits den richtigen Usern).
+- Das Entra→SF-Mapping (`FederationIdentifier`) wird in der App gecacht.
 
-### 13.3 Alle SF-Ids ausschließlich per Dropdown
+> **Objektname abgleichen:** Dieser Abschnitt nennt das Zielobjekt generisch
+> `Time_Entry__c`; der bestehende Vorschau-/Push-Flow oben (sowie
+> `docs/salesforce-integration.md`) nutzt den mindsquare-spezifischen Namen
+> `Zeiterfassung__c`. Vor der Umsetzung festlegen, ob es dasselbe Objekt unter
+> zwei Namen ist oder zwei getrennte Ziele — und die Doku vereinheitlichen.
+
+### 13.4 Sicherheit — App-Layer (primär)
+
+Die „nur eigene Einträge"-Isolation **kann Salesforce nicht erzwingen** — für SF
+ist jeder Schreibvorgang der Integration User. Die Durchsetzung liegt damit
+**vollständig in TimeHub**:
+
+- **Owner immer aus der validierten Entra-Session ableiten, nie aus
+  Client-Input** (Schutz vor IDOR / Untergeschobenem Owner).
+- **Jede Read-Query auf den Session-User scopen.** Vor **Update/Delete** die
+  Ownership prüfen (`WHERE Id = X AND OwnerId = Y`).
+- **SF-Ids gegen Format validieren (Regex)**, da `simple_salesforce` SOQL
+  **nicht** parametrisiert → so wird **SOQL-Injection** verhindert. (Greift mit
+  13.6 ineinander: Ids kommen ohnehin aus Dropdowns, werden aber zusätzlich
+  serverseitig validiert.)
+
+### 13.5 Sicherheit — SF-seitig (Blast Radius begrenzen)
+
+- **Permission Set** für den Integration User: nur **CRUD auf `Time_Entry__c`**
+  + die nötigen Felder (FLS), sonst nichts.
+- **Connected App auf die Backend-IP beschränken** (Login IP Ranges), minimale
+  **Scopes** (`api`, `refresh_token`).
+- **Private Key im Secret-Store**, IP-gelockt, **rotierbar** — das ist das
+  **Kronjuwel**: wer ihn hat, schreibt als *jeder* User. Entsprechend strikt
+  behandeln (nie in DB/Repo/Logs, getrennte Rotation).
+
+### 13.6 Alle SF-Ids ausschließlich per Dropdown
 
 - **Keine SF-Id wird je frei getippt.** Jedes Feld, das einen SF-Datensatz
   referenziert, wird über ein **Live-SOQL-Dropdown** befüllt, das auf die
   Datensätze des Nutzers gefiltert ist — u. a.: Projektbesetzung
-  (`assignment_id`), Kontierungsmonat, ggf. Projekt/Account, Remote-Picklist und
-  die eigene SF-User-Id im Profil.
-- **Ausnahme:** Authentifizierungs-Geheimnisse (Passwort, Security-Token,
-  OAuth-Secrets) — die bleiben manuelle/geschützte Eingaben und tauchen nie in
-  Dropdowns auf.
+  (`assignment_id`), Kontierungsmonat, ggf. Projekt/Account/Owner-User,
+  Remote-Picklist.
+- **Ausnahme:** Authentifizierungs-Geheimnisse (privater JWT-Schlüssel,
+  Connected-App-Consumer-Secret) — die bleiben geschützte Eingaben im
+  Secret-Store und tauchen nie in Dropdowns auf.
 - **Graceful Fallback:** Ist SF nicht erreichbar oder fehlen Credentials, wird
   das Dropdown zum freien Textfeld, damit das Mapping trotzdem pflegbar bleibt.
 - Das verhindert Tippfehler in 15-/18-stelligen Ids und stützt direkt das
   Prinzip „minimal möglicher User-Input": der Nutzer *wählt*, statt zu *kennen*.
-
-### 13.4 Fallback: HTML-geführte Integration statt zentralem API-User (offen)
-
-**Risiko:** Der zentrale SF-API-User existiert **womöglich nicht mehr lange**.
-Die Integration darf nicht von ihm allein abhängen. Geplant ist daher ein
-Verfahren, das **ohne dauerhaften zentralen Schreib-Zugang** auskommt:
-
-- **HTML-geführter Push (Deep-Link / Prefill).** TimeHub bereitet wie gewohnt
-  alles vor (Gruppierung, Validierung, fertige `Zeiterfassung__c`-Werte) und
-  übergibt dem Nutzer pro Eintrag/Gruppe einen **vorbefüllten SF-Screen**
-  (Deep-Link auf die „Neuer Datensatz"-Maske mit URL-Prefill / Flow / retURL).
-  Der Nutzer bestätigt und speichert in der **SF-eigenen Oberfläche unter seinem
-  eigenen Login** — kein zentraler Schreib-User nötig. Das passt nahtlos zum
-  TimeHub-Charakter „Vorschau → Abnicken", nur dass das Abnicken in der
-  SF-UI passiert statt per API.
-- **Alternativ deckt Per-User-OAuth (13.2 B) dasselbe ab**, behält aber den
-  bequemen direkten Push bei.
-- **Lesezugriff** (zum Befüllen der Dropdowns aus 13.3) bleibt davon getrennt zu
-  betrachten: er kann weiter über einen Read-Service-User laufen oder ebenfalls
-  auf Per-User-OAuth umgestellt werden.
-
-Empfehlung: Per-User-OAuth (13.2 B) als bevorzugtes Zielbild, weil es
-Berechtigung (13.2) **und** Unabhängigkeit vom zentralen User (13.4) in einem
-löst; die HTML-geführte Variante als robuster Fallback, falls eine Connected
-App nicht zeitnah verfügbar ist.
 
 ---
 
@@ -736,8 +740,10 @@ App nicht zeitnah verfügbar ist.
 - `ANTHROPIC_API_KEY` schaltet die KI frei; `AI_MAPPING_MODEL`
   (Default `claude-sonnet-4-6`), `AI_MAPPING_MAX_SAMPLE_LINES` (Default 15).
 - `ACCESS_TOKEN_EXPIRE_MINUTES`, `INITIAL_ADMIN_*`.
-- Salesforce-Credentials werden **nicht** aus Env gelesen, sondern admin-
-  gepflegt.
+- Salesforce: Connected-App-Parameter (Consumer Key, Integration-User-Username,
+  Login-URL, API-Version) admin-gepflegt; der **private JWT-Schlüssel** liegt im
+  **Secret-Store** (nicht in DB/Env-Klartext/Repo, IP-gelockt, rotierbar — siehe
+  Modul H, 13.2/13.5).
 
 ### Navigation (Web)
 Eingeloggt: **Dashboard** (`/`), **Kalender** (`/calendar`), **Reports**
@@ -753,7 +759,8 @@ eingeloggt: Login + API. Mobil als Hamburger.
 ```
 users(id, email UNIQUE, full_name, hashed_password, is_admin, is_active,
       ai_hints?, salesforce_user_id?, created_at)
-   -- salesforce_user_id: eigene SF-Identität, Anker für Filter & Berechtigung
+   -- salesforce_user_id: gecachte SF-Identität, aufgelöst aus dem Entra-
+   --   FederationIdentifier (oid/UPN); Anker für Owner-Setzen, Filter & Auth
 
 api_keys(id, user_id → users, name, prefix, key_hash UNIQUE,
          last_used_at, revoked_at, created_at)
@@ -917,9 +924,12 @@ KI-Mapping-Vorschläge.
   Übernahme der `assignment_id`).
 - Mobile CRUD als Card-Layout statt horizontal-scrollbarer Tabelle.
 - Pflege-UI für die Sync-Regel-Engine.
-- **SF-Berechtigung & -Auth** (siehe Modul H, 13.2–13.4): Nutzer-Anker über die
-  eigene SF-User-Id, Per-User-OAuth als Zielbild und HTML-geführter Push als
-  Fallback, um nicht von einem zentralen API-User abzuhängen.
+- **Entra-SSO in den Scope ziehen** — Voraussetzung für das entschiedene
+  SF-Auth-/Ownership-Modell (Modul H, 13.1); Modul A/§19 entsprechend nachziehen.
+- **Spätere Migration auf Per-User-OAuth** ist durch das Ownership-Modell
+  vorbereitet (Datensätze gehören bereits den echten SF-Usern, Modul H, 13.3) —
+  bewusst nicht v1, da der dedizierte Integration User die kostengünstigere und
+  einfachere Anbindung ist (13.2).
 
 ---
 
