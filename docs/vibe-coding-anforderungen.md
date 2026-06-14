@@ -213,6 +213,13 @@ Importformate selbst.
 ### Profil (jeder Nutzer)
 - Anzeigename und **persönliche KI-Hinweise** änderbar; E-Mail read-only;
   Rolle/Status nur Anzeige.
+- **Salesforce-User-Id** (einmalig pro Nutzer): Jeder Nutzer hinterlegt einmal
+  seine eigene SF-User-Id. Sie verankert die TimeHub-Identität an genau einer
+  Salesforce-Identität und ist die Grundlage dafür, dass (a) alle SF-Dropdowns
+  auf *seine* Datensätze gefiltert werden und (b) niemand für eine fremde
+  SF-Identität Zeiten pflegen kann (siehe Modul H, „Berechtigung"). Idealerweise
+  per Dropdown der bekannten SF-User wählbar statt frei getippt. Verwandte
+  Legacy-Felder (`salesforce_contact_id`) dürfen für Lookups erhalten bleiben.
 
 ---
 
@@ -597,6 +604,90 @@ und `docs/salesforce-schema/` liegen die Objekt-/Feld-Details.)
   Push. Ein Undo („↶ wieder öffnen") setzt **nur** `manually_synced` zurück auf
   `pending`; echte SF-Syncs bleiben unangetastet, um Duplikate zu vermeiden.
 
+### 13.1 Nutzer-Anker: eigene Salesforce-Identität
+
+- **Jeder Nutzer trägt einmal seine Salesforce-User-Id ein** (im Profil, siehe
+  Modul A). Sie ist der verbindliche Anker zwischen TimeHub-Nutzer und
+  SF-Identität.
+- Sie ersetzt bzw. ergänzt das bisherige reine E-Mail-Matching beim Auflösen der
+  Projektbesetzungen: zuverlässiger als die E-Mail (die in TimeHub und SF
+  abweichen kann) und Voraussetzung für die Berechtigungsprüfung in 13.2.
+- Ohne hinterlegte SF-User-Id sind die SF-Funktionen für diesen Nutzer
+  deaktiviert (freundlicher Hinweis „Bitte zuerst deine Salesforce-User-Id im
+  Profil hinterlegen").
+
+### 13.2 Berechtigung: Wer darf für wen buchen? (offene Designentscheidung)
+
+**Problem:** Aktuell läuft jeder Push über einen **zentralen SF-API-User**
+(admin-gepflegte Credentials). Technisch könnte dieser Service-User
+`Zeiterfassung__c` für *jede* beliebige SF-Identität anlegen. Es braucht ein
+Verfahren, das sicherstellt, dass ein TimeHub-Nutzer **nur für seine eigene
+SF-Identität** Zeiten pflegt — sonst kann jeder für jeden buchen.
+
+Optionen (zu entscheiden, Empfehlung: B als Zielbild, A als Übergang):
+
+- **(A) Server-seitiger Guard über den Nutzer-Anker.** TimeHub bindet jeden
+  Nutzer an seine `salesforce_user_id`; vor *jeder* Vorschau und *jedem* Push
+  validiert es, dass jede aufgelöste Projektbesetzung dem eigenen SF-User des
+  Nutzers gehört (`Mitarbeiter__r.Id`/`Email` bzw. `Externe_Projektbesetzung__r`
+  = eigene Identität). Treffer außerhalb der eigenen Identität werden
+  abgewiesen. Der zentrale API-User bleibt reiner Transport.
+  *Pro:* einfach, funktioniert mit dem bestehenden zentralen User.
+  *Contra:* die Durchsetzung liegt allein in der TimeHub-Logik; der Service-User
+  bleibt technisch allmächtig.
+- **(B) Per-User-OAuth (Salesforce Connected App).** Jeder Nutzer autorisiert
+  TimeHub einmal mit seinem **eigenen** SF-Account (OAuth 2.0 Web-Server- oder
+  JWT-Bearer-Flow). TimeHub speichert pro Nutzer ein Refresh-Token und schreibt
+  *als dieser Nutzer*. Damit erzwingt **Salesforce selbst** über sein
+  Berechtigungs-/Sharing-Modell, wer was schreiben darf.
+  *Pro:* echte Sicherheitsgrenze; entkoppelt vom einzelnen zentralen API-User
+  (löst zugleich 13.4).
+  *Contra:* Connected App + OAuth-Flow + Token-Speicherung/-Refresh nötig.
+- **(C) Hybrid.** Jetzt Guard (A) + zentraler User; (B) als Migrationsziel.
+
+Unabhängig von der Wahl gilt: Die Berechtigungsprüfung läuft **server-seitig vor
+Vorschau und Push**, nicht nur in der UI.
+
+### 13.3 Alle SF-Ids ausschließlich per Dropdown
+
+- **Keine SF-Id wird je frei getippt.** Jedes Feld, das einen SF-Datensatz
+  referenziert, wird über ein **Live-SOQL-Dropdown** befüllt, das auf die
+  Datensätze des Nutzers gefiltert ist — u. a.: Projektbesetzung
+  (`assignment_id`), Kontierungsmonat, ggf. Projekt/Account, Remote-Picklist und
+  die eigene SF-User-Id im Profil.
+- **Ausnahme:** Authentifizierungs-Geheimnisse (Passwort, Security-Token,
+  OAuth-Secrets) — die bleiben manuelle/geschützte Eingaben und tauchen nie in
+  Dropdowns auf.
+- **Graceful Fallback:** Ist SF nicht erreichbar oder fehlen Credentials, wird
+  das Dropdown zum freien Textfeld, damit das Mapping trotzdem pflegbar bleibt.
+- Das verhindert Tippfehler in 15-/18-stelligen Ids und stützt direkt das
+  Prinzip „minimal möglicher User-Input": der Nutzer *wählt*, statt zu *kennen*.
+
+### 13.4 Fallback: HTML-geführte Integration statt zentralem API-User (offen)
+
+**Risiko:** Der zentrale SF-API-User existiert **womöglich nicht mehr lange**.
+Die Integration darf nicht von ihm allein abhängen. Geplant ist daher ein
+Verfahren, das **ohne dauerhaften zentralen Schreib-Zugang** auskommt:
+
+- **HTML-geführter Push (Deep-Link / Prefill).** TimeHub bereitet wie gewohnt
+  alles vor (Gruppierung, Validierung, fertige `Zeiterfassung__c`-Werte) und
+  übergibt dem Nutzer pro Eintrag/Gruppe einen **vorbefüllten SF-Screen**
+  (Deep-Link auf die „Neuer Datensatz"-Maske mit URL-Prefill / Flow / retURL).
+  Der Nutzer bestätigt und speichert in der **SF-eigenen Oberfläche unter seinem
+  eigenen Login** — kein zentraler Schreib-User nötig. Das passt nahtlos zum
+  TimeHub-Charakter „Vorschau → Abnicken", nur dass das Abnicken in der
+  SF-UI passiert statt per API.
+- **Alternativ deckt Per-User-OAuth (13.2 B) dasselbe ab**, behält aber den
+  bequemen direkten Push bei.
+- **Lesezugriff** (zum Befüllen der Dropdowns aus 13.3) bleibt davon getrennt zu
+  betrachten: er kann weiter über einen Read-Service-User laufen oder ebenfalls
+  auf Per-User-OAuth umgestellt werden.
+
+Empfehlung: Per-User-OAuth (13.2 B) als bevorzugtes Zielbild, weil es
+Berechtigung (13.2) **und** Unabhängigkeit vom zentralen User (13.4) in einem
+löst; die HTML-geführte Variante als robuster Fallback, falls eine Connected
+App nicht zeitnah verfügbar ist.
+
 ---
 
 ## 14. Modul I — Reporting & Export
@@ -661,7 +752,8 @@ eingeloggt: Login + API. Mobil als Hamburger.
 
 ```
 users(id, email UNIQUE, full_name, hashed_password, is_admin, is_active,
-      ai_hints?, created_at)
+      ai_hints?, salesforce_user_id?, created_at)
+   -- salesforce_user_id: eigene SF-Identität, Anker für Filter & Berechtigung
 
 api_keys(id, user_id → users, name, prefix, key_hash UNIQUE,
          last_used_at, revoked_at, created_at)
@@ -825,6 +917,9 @@ KI-Mapping-Vorschläge.
   Übernahme der `assignment_id`).
 - Mobile CRUD als Card-Layout statt horizontal-scrollbarer Tabelle.
 - Pflege-UI für die Sync-Regel-Engine.
+- **SF-Berechtigung & -Auth** (siehe Modul H, 13.2–13.4): Nutzer-Anker über die
+  eigene SF-User-Id, Per-User-OAuth als Zielbild und HTML-geführter Push als
+  Fallback, um nicht von einem zentralen API-User abzuhängen.
 
 ---
 
