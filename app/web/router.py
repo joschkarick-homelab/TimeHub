@@ -1,5 +1,6 @@
 import json
 import logging
+import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -12,7 +13,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import get_db
-from app.deps import get_current_user
 from app.models import EntrySync, ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
@@ -27,7 +27,46 @@ from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
 
 log = logging.getLogger(__name__)
-router = APIRouter(include_in_schema=False)
+
+# ── CSRF protection ──────────────────────────────────────────────────────────
+# The web UI authenticates via a session cookie, so every state-changing form
+# POST needs a CSRF token. We use a per-session synchronizer token: it lives in
+# the (signed, server-side) session, is embedded into pages as a <meta> tag /
+# hidden field, and must come back on unsafe requests via the X-CSRF-Token
+# header (fetch/XHR) or a `csrf_token` form field.
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+_FORM_CONTENT_TYPES = ("application/x-www-form-urlencoded", "multipart/form-data")
+
+
+def _ensure_csrf_token(request: Request) -> str:
+    token = request.session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["csrf_token"] = token
+    return token
+
+
+async def csrf_protect(request: Request) -> None:
+    """Router-level guard: mint the session CSRF token on every request (so
+    templates can embed it) and verify it on unsafe methods."""
+    expected = _ensure_csrf_token(request)
+    if request.method in _SAFE_METHODS:
+        return
+    sent = request.headers.get("X-CSRF-Token")
+    if not sent:
+        ctype = request.headers.get("content-type", "")
+        if ctype.startswith(_FORM_CONTENT_TYPES):
+            form = await request.form()
+            value = form.get("csrf_token")
+            sent = value if isinstance(value, str) else None
+    if not sent or not secrets.compare_digest(sent, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF-Token fehlt oder ist ungültig",
+        )
+
+
+router = APIRouter(include_in_schema=False, dependencies=[Depends(csrf_protect)])
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -355,9 +394,11 @@ async def create_entry(
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
-    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     project = _owned_project_or_404(db, project_id, user)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
@@ -1216,6 +1257,7 @@ def sync_salesforce_execute(
         e.sync_status = "failed"
         es_svc.set_target_status(db, e, "salesforce", "failed", error=error)
         db.add(e)
+        db.commit()
         results.append({"entry": e, "status": "failed", "error": error})
 
     for entry in entries:
@@ -1294,6 +1336,11 @@ def sync_salesforce_execute(
         entry.sync_status = "synced"
         es_svc.set_target_status(db, entry, "salesforce", "synced", external_ref=new_id)
         db.add(entry)
+        # Commit per entry: the Salesforce record already exists at this point,
+        # so the remote id must be persisted atomically with the POST's success.
+        # A later crash/timeout in the loop then can't strand a synced record
+        # without its id and cause a duplicate on the next push.
+        db.commit()
         results.append({"entry": entry, "status": "synced", "id": new_id,
                         "assignment": assignment, "period": period})
 

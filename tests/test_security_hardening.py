@@ -1,0 +1,79 @@
+"""Regression tests for the critical security fixes:
+
+* CSRF protection on the cookie-authenticated web UI (C1)
+* fail-fast on an insecure SECRET_KEY in production (C2)
+"""
+
+import pytest
+from pydantic import ValidationError
+
+
+def _login(client) -> None:
+    r = client.post(
+        "/login",
+        data={"email": "admin@example.com", "password": "testpass"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302, r.text
+
+
+# ── C1: CSRF ─────────────────────────────────────────────────────────────────
+
+def test_web_post_without_csrf_token_is_rejected(client):
+    """A state-changing web POST without the token must be blocked, even for a
+    logged-in session."""
+    _login(client)
+    client.headers.pop("X-CSRF-Token", None)  # drop the auto-injected token
+    r = client.post("/settings/theme", data={"theme": "dark"}, follow_redirects=False)
+    assert r.status_code == 403
+
+
+def test_web_post_with_valid_csrf_token_succeeds(client):
+    """With the token present the same request goes through (sanity check that
+    we didn't just break every POST)."""
+    _login(client)
+    r = client.post("/settings/theme", data={"theme": "dark"}, follow_redirects=False)
+    assert r.status_code in (200, 302)
+
+
+def test_csrf_token_field_in_form_body_is_accepted(client):
+    """The token may also arrive as a form field (classic <form> submit), not
+    only as a header."""
+    _login(client)
+    token = client.headers.pop("X-CSRF-Token", None)
+    assert token
+    r = client.post(
+        "/settings/theme",
+        data={"theme": "dark", "csrf_token": token},
+        follow_redirects=False,
+    )
+    assert r.status_code in (200, 302)
+
+
+def test_meta_csrf_token_is_rendered(client):
+    html = client.get("/login").text
+    assert 'name="csrf-token"' in html
+
+
+# ── C2: secret-key guard ─────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("bad_secret", ["dev-insecure-change-me", "", "   "])
+def test_production_rejects_insecure_secret_key(bad_secret):
+    from app.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(app_env="production", secret_key=bad_secret)
+
+
+def test_dev_allows_default_secret_key():
+    from app.config import Settings
+
+    s = Settings(app_env="dev", secret_key="dev-insecure-change-me")
+    assert s.app_env == "dev"
+
+
+def test_production_accepts_strong_secret_key():
+    from app.config import Settings
+
+    s = Settings(app_env="production", secret_key="a-sufficiently-long-random-value")
+    assert s.app_env == "production"

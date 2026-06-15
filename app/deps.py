@@ -46,12 +46,11 @@ def get_current_user(
     if user is None and x_api_key:
         user = _user_from_api_key(x_api_key.strip(), db)
 
-    # Session-cookie fallback for the web UI
-    if user is None:
-        token = request.session.get("access_token") if hasattr(request, "session") else None
-        if token:
-            user = _user_from_bearer(token, db)
-
+    # Deliberately no session-cookie fallback here: the JSON API authenticates
+    # via Bearer token or API key only. Allowing the session cookie would make
+    # every state-changing API endpoint reachable (and thus CSRF-able) straight
+    # from a logged-in browser. The cookie-authenticated web UI uses its own
+    # session reader (`_maybe_user`) plus CSRF protection instead.
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

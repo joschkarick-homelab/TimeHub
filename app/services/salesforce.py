@@ -54,6 +54,11 @@ def _http(method: str, url: str, *, data: bytes | None = None,
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read() or b""
+    except (urllib.error.URLError, TimeoutError) as e:
+        # DNS failures, refused connections and read timeouts must surface as a
+        # SalesforceError so the sync loop can stop cleanly instead of leaking a
+        # raw exception (which would abort mid-push and lose committed progress).
+        raise SalesforceError(f"Salesforce nicht erreichbar: {e}") from e
 
 
 def _login_envelope(username: str, password: str) -> bytes:
