@@ -44,11 +44,12 @@ class Project(Base):
 
     @property
     def display_label(self) -> str:
-        """Human label for dropdowns: "CODE – Name (Kunde)". Avoids "X – X"
-        when code and name are identical (typical for auto-created projects)
-        and omits the customer suffix when none is set."""
+        """Human label for dropdowns: "Name (Kunde)". The internal project code
+        is deliberately omitted (it confuses users without adding value); it
+        falls back to the code only when no name is set (e.g. auto-created
+        projects), and omits the customer suffix when none is set."""
         name = (self.name or "").strip()
         code = (self.code or "").strip()
         customer = (self.customer or "").strip()
-        base = code if not name or name.casefold() == code.casefold() else f"{code} – {name}"
+        base = name or code
         return f"{base} ({customer})" if customer else base

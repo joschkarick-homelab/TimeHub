@@ -38,8 +38,10 @@ def test_projects_page_renders_and_creates(client):
     assert "/projects?flash=" in r.headers["location"]
 
     r = client.get("/projects")
-    assert "WEBCRUD" in r.text
+    # The internal project code is deliberately hidden from the UI; the
+    # human-facing name and customer are what's shown.
     assert "Acme Test" in r.text
+    assert "Acme" in r.text
 
 
 def test_projects_edit_and_delete(client):
