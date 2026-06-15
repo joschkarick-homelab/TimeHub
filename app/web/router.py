@@ -582,7 +582,7 @@ def _cal_entry(e: TimeEntry, project: Project | None) -> dict:
     return {
         "id": e.id,
         "project_id": e.project_id,
-        "project_label": project.display_label if project else f"#{e.project_id}",
+        "project_label": project.display_label if project else "Unbekanntes Projekt",
         "color": project.color if project else "#6366f1",
         "description": e.description or "",
         "start": _minutes(e.start_time),
