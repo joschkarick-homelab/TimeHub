@@ -258,7 +258,7 @@
                       style="background: {{ p.color }}"></span>
                 {{ p.display_label }}
               {% else %}
-                #{{ e.project_id }}
+                <span class="text-slate-400 italic">Unbekanntes Projekt</span>
               {% endif %}
             </td>
             <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
@@ -321,7 +321,7 @@
                           style="background: {{ p.color }}"></span>
                     {{ p.display_label }}
                   {% else %}
-                    #{{ e.project_id }}
+                    <span class="text-slate-400 italic">Unbekanntes Projekt</span>
                   {% endif %}
                 </div>
                 <div class="tabular-nums font-semibold whitespace-nowrap">
