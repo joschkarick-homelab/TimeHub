@@ -133,11 +133,26 @@ Auth-Schemata, die alle geschützten Routen akzeptieren:
 - Docker + Docker Compose (für das Deployment)
 - alternativ Python 3.11+ für lokale Entwicklung
 
+### Sicherheit & Pflicht-Konfiguration
+
+- **`SECRET_KEY` ist in Produktion zwingend.** Derselbe Schlüssel signiert
+  JWTs *und* Session-Cookies. Bei `APP_ENV=production` (Default) verweigert die
+  App den Start, wenn `SECRET_KEY` fehlt oder noch den Platzhalter aus
+  `.env.example` enthält. Einen starken Wert erzeugen:
+  ```bash
+  python -c "import secrets; print(secrets.token_urlsafe(48))"
+  ```
+  Für lokale Entwicklung ohne eigenen Secret stattdessen `APP_ENV=dev` setzen.
+- **CSRF-Schutz:** Die session-cookie-authentifizierte Web-UI prüft auf allen
+  schreibenden Requests ein Session-Token (als `csrf_token`-Formularfeld bzw.
+  `X-CSRF-Token`-Header). Die JSON-API unter `/api/*` authentifiziert
+  ausschließlich über Bearer-Token oder API-Key (kein Session-Cookie).
+
 ### Lokal mit Docker (empfohlen)
 
 ```bash
 cp .env.example .env
-# SECRET_KEY und INITIAL_ADMIN_PASSWORD anpassen
+# SECRET_KEY (Pflicht!) und INITIAL_ADMIN_PASSWORD anpassen
 docker compose up -d --build
 docker compose logs -f app
 ```
@@ -158,6 +173,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 # in .env: DATABASE_URL=sqlite:///./data/timehub.sqlite
+# in .env: APP_ENV=dev   (erlaubt den Start ohne produktiven SECRET_KEY)
 mkdir -p data
 alembic upgrade head
 uvicorn app.main:app --reload
