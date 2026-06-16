@@ -78,6 +78,12 @@ async def csrf_protect(request: Request) -> None:
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(csrf_protect)])
 
+# Defensive upper bounds so an unfiltered/huge dataset can't load the entire
+# history into memory and render it. High enough not to affect normal use; when
+# hit, the templates show a "narrow your filter" banner.
+DASHBOARD_ENTRY_CAP = 1000
+REPORT_ROW_CAP = 10000
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -178,7 +184,9 @@ def index(
     if project_id_int is not None:
         stmt = stmt.where(TimeEntry.project_id == project_id_int)
 
-    entries = list(db.execute(stmt).scalars())
+    entries = list(db.execute(stmt.limit(DASHBOARD_ENTRY_CAP + 1)).scalars())
+    truncated = len(entries) > DASHBOARD_ENTRY_CAP
+    entries = entries[:DASHBOARD_ENTRY_CAP]
     days = _group_by_day(entries)
 
     projects = list(
@@ -265,6 +273,8 @@ def index(
             date_to=dt.isoformat() if dt else "",
             project_id=project_id_int or "",
             formats=formats,
+            truncated=truncated,
+            entry_cap=DASHBOARD_ENTRY_CAP,
             error=error,
             flash=flash,
         ),
@@ -1352,7 +1362,8 @@ def sync_salesforce_execute(
         # without its id and cause a duplicate on the next push.
         db.commit()
         results.append({"entry": entry, "status": "synced", "id": new_id,
-                        "assignment": assignment, "period": period})
+                        "assignment": assignment, "period": period,
+                        "warning": sf_svc.duration_snap_warning(entry.duration_minutes)})
 
     db.commit()
 
@@ -2608,7 +2619,9 @@ def reports_page(
     if customer:
         stmt = stmt.where(Project.customer == customer)
 
-    rows = list(db.execute(stmt).all())
+    rows = list(db.execute(stmt.limit(REPORT_ROW_CAP + 1)).all())
+    report_truncated = len(rows) > REPORT_ROW_CAP
+    rows = rows[:REPORT_ROW_CAP]
     report = rb.build_report(rows, active_group_by, detailed=active_detailed)
 
     # Project filter mirrors the entry scoping above: non-admins only see their
@@ -2643,5 +2656,7 @@ def reports_page(
             project_id=pid or "",
             customer=customer or "",
             user_id=uid or "",
+            report_truncated=report_truncated,
+            report_cap=REPORT_ROW_CAP,
         ),
     )

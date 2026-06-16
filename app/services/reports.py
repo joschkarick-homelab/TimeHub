@@ -8,7 +8,7 @@ from app.models import CsvTemplate, Project, TimeEntry, User
 
 
 def _row_dict(entry: TimeEntry, project: Project, user: User) -> dict:
-    hours = round(entry.duration_minutes / 60, 4)
+    hours = round(entry.duration_minutes / 60, 2)
     target = entry.sync_target_override or project.default_sync_target
     return {
         "id": entry.id,

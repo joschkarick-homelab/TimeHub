@@ -330,12 +330,32 @@ def _coerce_bool(value) -> bool:
     return s in {"true", "1", "yes", "y", "ja", "j", "x", "wahr"}
 
 
+_MAX_DAY_MINUTES = 23 * 60 + 45  # picklist tops out at 23:45
+
+
+def snapped_total_minutes(minutes: int) -> int:
+    """Snap a duration to the nearest 15-minute slot, capped at 23:45 — the
+    shape Salesforce's Von/Bis picklist accepts."""
+    total = max(0, minutes)
+    return min(round(total / 15) * 15, _MAX_DAY_MINUTES)
+
+
+def duration_snap_warning(minutes: int) -> str | None:
+    """A note when snapping/capping changes the actually-tracked duration, so a
+    push to Salesforce isn't a silent data loss for the user."""
+    actual = max(0, minutes)
+    snapped = snapped_total_minutes(minutes)
+    if snapped == actual:
+        return None
+    if actual > _MAX_DAY_MINUTES:
+        return f"Dauer {actual} min auf 23:45 gedeckelt"
+    return f"Dauer von {actual} auf {snapped} min (15-Min-Raster) gerundet"
+
+
 def _snap_quarter(hour: int, minute: int) -> tuple[int, str]:
     """Snap (h, m) to the nearest 15-minute slot; return (hour:int, minute:str)
     where minute is the picklist value '00'/'15'/'30'/'45'."""
-    total = max(0, hour * 60 + minute)
-    snapped = round(total / 15) * 15
-    snapped = min(snapped, 23 * 60 + 45)
+    snapped = snapped_total_minutes(hour * 60 + minute)
     return snapped // 60, f"{snapped % 60:02d}"
 
 

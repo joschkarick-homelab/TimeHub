@@ -3,8 +3,8 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
+import jwt
 from cryptography.fernet import Fernet, InvalidToken
-from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.config import get_settings
@@ -73,7 +73,7 @@ def decode_token(token: str) -> dict:
     settings = get_settings()
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-    except JWTError as e:
+    except jwt.PyJWTError as e:
         raise ValueError("invalid token") from e
 
 

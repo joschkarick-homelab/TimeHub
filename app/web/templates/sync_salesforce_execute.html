@@ -68,6 +68,9 @@
                   <span class="font-mono">{{ r.id }}</span>
                 {% endif %}
               </span>
+              {% if r.warning %}
+                <span class="text-amber-700">⚠ {{ r.warning }}</span>
+              {% endif %}
             {% elif r.status == "failed" %}
               <span class="text-rose-700">{{ r.error }}</span>
             {% else %}

@@ -32,7 +32,9 @@ class EntrySync(Base):
     )
     target: Mapped[str] = mapped_column(String(32), nullable=False)
 
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default=SyncStatus.PENDING)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SyncStatus.PENDING, index=True
+    )
     # Remote id in the target system (e.g. Zeiterfassung__c id / Jira worklog id).
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

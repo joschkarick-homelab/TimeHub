@@ -41,6 +41,21 @@ def test_migration_chain_upgrades_and_downgrades():
         engine.dispose()
 
 
+def test_status_columns_are_indexed():
+    """M9: sync-status filter columns must carry an index after the chain."""
+    with tempfile.TemporaryDirectory() as tmp:
+        url = f"sqlite:///{Path(tmp) / 'mig.sqlite'}"
+        engine = create_engine(url)
+        with engine.begin() as conn:
+            command.upgrade(_alembic_config(conn), "head")
+            insp = inspect(conn)
+            te_indexed = {c for ix in insp.get_indexes("time_entries") for c in ix["column_names"]}
+            es_indexed = {c for ix in insp.get_indexes("entry_syncs") for c in ix["column_names"]}
+            assert "sync_status" in te_indexed
+            assert "status" in es_indexed
+        engine.dispose()
+
+
 def test_import_formats_schema_matches_model_nullability():
     """transforms/target_rules are nullable in both the model and migration
     0004 — guards against the drift the model previously had."""
