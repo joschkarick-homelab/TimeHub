@@ -1,3 +1,5 @@
+import base64
+import binascii
 import json
 import logging
 from datetime import date, datetime, timedelta
@@ -60,6 +62,21 @@ def _ctx(request: Request, user: User | None, **extra) -> dict:
         "ai_enabled": bool(get_settings().anthropic_api_key),
         **extra,
     }
+
+
+def _filter_query(df: date | None, dt: date | None, project_id: int | None) -> str:
+    """Rebuild the dashboard filter as a relative URL, so CRUD actions can
+    bounce back to the exact same filtered view instead of resetting to '/'."""
+    from urllib.parse import urlencode
+
+    params = {}
+    if df is not None:
+        params["date_from"] = df.isoformat()
+    if dt is not None:
+        params["date_to"] = dt.isoformat()
+    if project_id is not None:
+        params["project_id"] = project_id
+    return "/?" + urlencode(params) if params else "/"
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -215,6 +232,7 @@ def index(
             date_from=df.isoformat() if df else "",
             date_to=dt.isoformat() if dt else "",
             project_id=project_id_int or "",
+            filter_query=_filter_query(df, dt, project_id_int),
             formats=formats,
             error=error,
             flash=flash,
@@ -501,14 +519,46 @@ async def edit_entry_submit(
 
 
 @router.post("/entries/{entry_id}/delete", response_class=HTMLResponse)
-def delete_entry(request: Request, entry_id: int, db: Session = Depends(get_db)):
+def delete_entry(
+    request: Request, entry_id: int, next: str = Form(""), db: Session = Depends(get_db)
+):
     user = _maybe_user(request, db)
     if user is None:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     entry = _owned_entry_or_404(db, entry_id, user)
     db.delete(entry)
     db.commit()
-    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=_safe_next(next), status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/entries/bulk-delete", response_class=HTMLResponse)
+def bulk_delete_entries(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Delete several entries at once (mass-select mode on the dashboard).
+    Scoped to the user's own entries; the active filter is preserved via next."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    back = _safe_next(next)
+    if not entry_ids:
+        sep = "&" if "?" in back else "?"
+        return RedirectResponse(url=f"{back}{sep}error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+    stmt = select(TimeEntry).where(
+        TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id,
+    )
+    n = 0
+    for e in db.execute(stmt).scalars():
+        db.delete(e)
+        n += 1
+    db.commit()
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(url=f"{back}{sep}flash={n}+Einträge+gelöscht",
+                            status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/entries/mark-synced", response_class=HTMLResponse)
@@ -545,7 +595,7 @@ def mark_entries_manually_synced(
 
 @router.post("/entries/{entry_id}/unmark-synced", response_class=HTMLResponse)
 def unmark_entry_manually_synced(
-    request: Request, entry_id: int, db: Session = Depends(get_db),
+    request: Request, entry_id: int, next: str = Form(""), db: Session = Depends(get_db),
 ):
     """Rückgängig: zurück auf pending. Nur erlaubt, wenn der Eintrag manuell
     markiert war (echte Salesforce-Syncs lassen sich hier nicht zurücksetzen)."""
@@ -558,7 +608,7 @@ def unmark_entry_manually_synced(
         es_svc.unmark_manually_synced(db, entry)
         db.add(entry)
         db.commit()
-    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=_safe_next(next), status_code=status.HTTP_302_FOUND)
 
 
 # -------------------- Calendar (Toggl/Clockify-style) --------------------
@@ -2177,11 +2227,72 @@ def import_form(
     )
 
 
+def _run_import(
+    db: Session, user: User, fmt: ImportFormat, raw: bytes, apply_target_rules: bool,
+    *, dry_run: bool,
+) -> dict:
+    return import_csv(
+        db,
+        user_id=user.id,
+        raw_bytes=raw,
+        column_map=fmt.column_map,
+        default_project_code=fmt.default_project_code,
+        separator=fmt.separator,
+        encoding=fmt.encoding,
+        date_format=fmt.date_format,
+        time_format=fmt.time_format,
+        transforms=fmt.transforms or [],
+        target_rules=fmt.target_rules or [],
+        apply_target_rules=apply_target_rules,
+        dry_run=dry_run,
+    )
+
+
+@router.post("/import/preview", response_class=HTMLResponse)
+async def import_preview(
+    request: Request,
+    format_id: int = Form(...),
+    file: UploadFile = File(...),
+    apply_target_rules: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    """Dry-run the import and show what would be created — no rows are written.
+    The uploaded CSV is carried into the confirm form (base64) so the actual
+    import doesn't require re-selecting the file."""
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    fmt = db.get(ImportFormat, format_id)
+    if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
+        raise HTTPException(status_code=404, detail="format not found")
+    raw = await file.read()
+    formats = _visible_formats(db, user)
+    try:
+        result = _run_import(db, user, fmt, raw, apply_target_rules, dry_run=True)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            "import_run.html",
+            _ctx(request, user, formats=formats, result=None, error=str(e), fmt=fmt),
+            status_code=400,
+        )
+    return templates.TemplateResponse(
+        "import_run.html",
+        _ctx(
+            request, user, formats=formats, result=None, error=None, fmt=fmt,
+            preview=result,
+            preview_b64=base64.b64encode(raw).decode("ascii"),
+            preview_format_id=format_id,
+            preview_apply_target_rules=apply_target_rules,
+        ),
+    )
+
+
 @router.post("/import", response_class=HTMLResponse)
 async def import_run(
     request: Request,
     format_id: int = Form(...),
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    raw_b64: str = Form(""),
     apply_target_rules: bool = Form(False),
     db: Session = Depends(get_db),
 ):
@@ -2191,24 +2302,34 @@ async def import_run(
     fmt = db.get(ImportFormat, format_id)
     if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
         raise HTTPException(status_code=404, detail="format not found")
-    raw = await file.read()
-    try:
-        result = import_csv(
-            db,
-            user_id=user.id,
-            raw_bytes=raw,
-            column_map=fmt.column_map,
-            default_project_code=fmt.default_project_code,
-            separator=fmt.separator,
-            encoding=fmt.encoding,
-            date_format=fmt.date_format,
-            time_format=fmt.time_format,
-            transforms=fmt.transforms or [],
-            target_rules=fmt.target_rules or [],
-            apply_target_rules=apply_target_rules,
+
+    # The CSV comes either freshly uploaded, or carried over from the preview
+    # step as base64 in a hidden field (so no re-upload is needed to confirm).
+    formats = _visible_formats(db, user)
+    if raw_b64:
+        try:
+            raw = base64.b64decode(raw_b64)
+        except (binascii.Error, ValueError):
+            return templates.TemplateResponse(
+                "import_run.html",
+                _ctx(request, user, formats=formats, result=None,
+                     error="Vorschau-Daten konnten nicht gelesen werden — bitte erneut hochladen.",
+                     fmt=fmt),
+                status_code=400,
+            )
+    elif file is not None:
+        raw = await file.read()
+    else:
+        return templates.TemplateResponse(
+            "import_run.html",
+            _ctx(request, user, formats=formats, result=None,
+                 error="Keine Datei ausgewählt.", fmt=fmt),
+            status_code=400,
         )
+
+    try:
+        result = _run_import(db, user, fmt, raw, apply_target_rules, dry_run=False)
     except ValueError as e:
-        formats = _visible_formats(db, user)
         return templates.TemplateResponse(
             "import_run.html",
             _ctx(request, user, formats=formats, result=None, error=str(e), fmt=fmt),
@@ -2222,7 +2343,6 @@ async def import_run(
         db.add(fmt)
         db.commit()
 
-    formats = _visible_formats(db, user)
     return templates.TemplateResponse(
         "import_run.html",
         _ctx(request, user, formats=formats, result=result, error=None, fmt=fmt),
