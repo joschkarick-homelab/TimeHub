@@ -51,7 +51,8 @@ def test_parse_login_response_success():
 
 def test_parse_login_response_fault():
     import pytest
-    from app.services.salesforce import _parse_login_response, SalesforceError
+
+    from app.services.salesforce import SalesforceError, _parse_login_response
     with pytest.raises(SalesforceError, match="INVALID_LOGIN"):
         _parse_login_response(_LOGIN_FAULT)
 
@@ -98,6 +99,7 @@ def test_snap_quarter_rounds_to_nearest_15():
 def test_build_zeiterfassung_payload_without_start_end():
     from datetime import date as _date
     from types import SimpleNamespace
+
     from app.services.salesforce import build_zeiterfassung_payload
     entry = SimpleNamespace(
         entry_date=_date(2026, 5, 27), start_time=None, end_time=None,
@@ -121,8 +123,10 @@ def test_build_zeiterfassung_payload_with_start_end_uses_duration_not_clock():
     """Auch mit echten Start-/Endzeiten kodiert die Payload die DAUER ins
     Von/Bis-Intervall (00:00 → Dauer), nicht die Uhrzeit. Sonst leitet SF die
     Arbeitszeit als Enduhrzeit (10) statt als Dauer (1,5 Std.) ab."""
-    from datetime import date as _date, time as _time
+    from datetime import date as _date
+    from datetime import time as _time
     from types import SimpleNamespace
+
     from app.services.salesforce import build_zeiterfassung_payload
     entry = SimpleNamespace(
         entry_date=_date(2026, 5, 27),
@@ -185,7 +189,8 @@ def test_list_assignments_for_user_query_shape(monkeypatch):
         ]}
     monkeypatch.setattr(sfs.SalesforceClient, "query", fake_query)
     client = sfs.SalesforceClient("u", "p", "")
-    client.session_id = "x"; client.instance_url = "https://x"
+    client.session_id = "x"
+    client.instance_url = "https://x"
     items = sfs.list_assignments_for_user(client, "rick@mindsquare.de")
     assert "rick@mindsquare.de" in captured["soql"]
     assert "Mitarbeiter__r.Email" in captured["soql"]
@@ -200,7 +205,8 @@ def test_list_assignments_for_user_query_shape(monkeypatch):
 def test_list_assignments_for_user_rejects_bad_email():
     from app.services import salesforce as sfs
     client = sfs.SalesforceClient("u", "p", "")
-    client.session_id = "x"; client.instance_url = "https://x"
+    client.session_id = "x"
+    client.instance_url = "https://x"
     # No SOQL is sent for obviously broken/injecting emails
     assert sfs.list_assignments_for_user(client, "evil'--") == []
     assert sfs.list_assignments_for_user(client, "") == []
@@ -208,16 +214,19 @@ def test_list_assignments_for_user_rejects_bad_email():
 
 def test_describe_sobject_rejects_garbage_names():
     import pytest
+
     from app.services.salesforce import SalesforceClient, SalesforceError, describe_sobject
     client = SalesforceClient("u", "p", "")
-    client.session_id = "x"; client.instance_url = "https://x"
+    client.session_id = "x"
+    client.instance_url = "https://x"
     with pytest.raises(SalesforceError):
         describe_sobject(client, "Bad Name; DROP")
 
 
 def test_ensure_id_rejects_bad_input():
     import pytest
-    from app.services.salesforce import _ensure_id, SalesforceError
+
+    from app.services.salesforce import SalesforceError, _ensure_id
     assert _ensure_id("a01000000000001") == "a01000000000001"
     with pytest.raises(SalesforceError):
         _ensure_id("short")
@@ -556,7 +565,8 @@ def test_execute_skips_already_synced_entries(client, monkeypatch):
         e = db.get(TimeEntry, eid)
         e.sync_status = "synced"
         e.sync_metadata_override = {"salesforce": {"zeiterfassung_id": "a0Z000000000OLD"}}
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     import app.services.salesforce as sfs
     monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
@@ -664,7 +674,8 @@ def test_unmark_entry_resets_to_pending(client):
     with SessionLocal() as db:
         e = db.get(TimeEntry, eid)
         e.sync_status = "manually_synced"
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     r = client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
     assert r.status_code == 302
@@ -686,7 +697,8 @@ def test_unmark_does_not_touch_real_synced_entries(client):
         e = db.get(TimeEntry, eid)
         e.sync_status = "synced"
         e.sync_metadata_override = {"salesforce": {"zeiterfassung_id": "a0Z000REAL"}}
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     r = client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
     assert r.status_code == 302
@@ -705,7 +717,8 @@ def test_execute_skips_manually_synced_entries(client, monkeypatch):
     with SessionLocal() as db:
         e = db.get(TimeEntry, eid)
         e.sync_status = "manually_synced"
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     import app.services.salesforce as sfs
     monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())

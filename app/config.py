@@ -83,6 +83,13 @@ class Settings(BaseSettings):
             return ["*"]
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def session_cookie_secure(self) -> bool:
+        """Send the session cookie with the Secure flag in production (TLS is
+        terminated at the reverse proxy). Off elsewhere so http://localhost dev
+        and the test client keep working."""
+        return self.app_env.strip().lower() == "production"
+
 
 @lru_cache
 def get_settings() -> Settings:

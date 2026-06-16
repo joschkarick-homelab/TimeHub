@@ -1,8 +1,6 @@
 """TimeEntry CRUD, theme switcher, profile (Salesforce IDs), and the
 dropdown-deduplication fix for projects where code == name."""
 
-import io
-from datetime import date
 
 
 def _login_session(client) -> None:
@@ -102,11 +100,6 @@ def test_entry_edit_rejects_other_users_entry(client):
     # admin makes an entry against own user, then other user tries to edit
     pid = _make_project(client, "EOWN")
     eid = _make_entry(client, pid)
-
-    other_token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "other@example.com", "password": "secret123"},
-    ).json()["access_token"]
 
     # log in as other via session
     r = client.post(

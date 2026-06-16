@@ -4,11 +4,12 @@ import tempfile
 
 import pytest
 
+os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("INITIAL_ADMIN_EMAIL", "admin@example.com")
 os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "testpass")
 
-_TMP_DB = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+_TMP_DB = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)  # noqa: SIM115
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB.name}"
 
 

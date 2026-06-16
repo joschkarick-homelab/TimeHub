@@ -7,10 +7,15 @@ requires-python = ">=3.11"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Generated migration files follow Alembic's own template conventions.
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
-ignore = ["E501"]
+# E501: line length handled by the formatter, not enforced.
+# B008: FastAPI relies on calls (Depends/Query/Form/File) in argument defaults
+#       — that's the idiomatic pattern, not a bug.
+ignore = ["E501", "B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

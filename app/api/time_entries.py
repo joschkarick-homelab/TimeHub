@@ -8,8 +8,6 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import Project, TimeEntry, User
 from app.models._enums import EntrySource
-from app.services.entry_sync import reconcile_entry_syncs
-from app.services.sync_rules import load_rules
 from app.schemas.time_entry import (
     BulkResult,
     TimeEntryBulkCreate,
@@ -17,6 +15,8 @@ from app.schemas.time_entry import (
     TimeEntryOut,
     TimeEntryUpdate,
 )
+from app.services.entry_sync import reconcile_entry_syncs
+from app.services.sync_rules import load_rules
 
 router = APIRouter(prefix="/time-entries", tags=["time-entries"])
 

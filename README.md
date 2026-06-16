@@ -147,6 +147,16 @@ Auth-Schemata, die alle geschützten Routen akzeptieren:
   schreibenden Requests ein Session-Token (als `csrf_token`-Formularfeld bzw.
   `X-CSRF-Token`-Header). Die JSON-API unter `/api/*` authentifiziert
   ausschließlich über Bearer-Token oder API-Key (kein Session-Cookie).
+- **Cookies & CORS:** In Produktion (`APP_ENV=production`) wird das
+  Session-Cookie mit `Secure`-Flag gesetzt (TLS am Reverse-Proxy). Credentialed
+  CORS wird nur aktiviert, wenn `CORS_ORIGINS` eine explizite Allowlist enthält —
+  der Default `*` läuft ohne Credentials.
+- **Secrets at rest:** Die Salesforce-Zugangsdaten (Passwort, Security-Token)
+  werden mit einem aus `SECRET_KEY` abgeleiteten Schlüssel verschlüsselt in der
+  DB abgelegt (Fernet). Ein Rotieren von `SECRET_KEY` macht hinterlegte
+  SF-Credentials ungültig — sie müssen dann neu eingetragen werden.
+- **Passwörter:** max. 72 Bytes (bcrypt-Grenze); längere Eingaben werden
+  abgelehnt statt still abgeschnitten.
 
 ### Lokal mit Docker (empfohlen)
 
@@ -179,12 +189,15 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-### Tests
+### Tests & Lint
 
 ```bash
-pip install pytest
+pip install -r requirements-dev.txt   # pytest + ruff
+ruff check .
 pytest -q
 ```
+
+Beide laufen auch in CI (`.github/workflows/test.yml`) bei jedem Push/PR.
 
 ---
 

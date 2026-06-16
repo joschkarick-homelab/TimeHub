@@ -1,7 +1,5 @@
 """Dashboard UI: default-to-today, filtering, and daily subtotals."""
 
-import io
-import re
 from datetime import date
 
 

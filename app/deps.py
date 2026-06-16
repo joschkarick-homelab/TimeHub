@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
@@ -26,7 +26,7 @@ def _user_from_api_key(raw_key: str, db: Session) -> User | None:
     key = db.execute(stmt).scalar_one_or_none()
     if key is None:
         return None
-    key.last_used_at = datetime.now(timezone.utc)
+    key.last_used_at = datetime.now(UTC)
     db.add(key)
     db.commit()
     return db.get(User, key.user_id)

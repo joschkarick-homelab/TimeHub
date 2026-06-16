@@ -4,7 +4,17 @@ import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
@@ -17,14 +27,14 @@ from app.models import EntrySync, ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
 from app.services import app_settings as app_settings_svc
+from app.services import entry_sync as es_svc
 from app.services import reports as report_svc
 from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
-from app.services import entry_sync as es_svc
-from app.services.sync_rules import load_rules
-from app.services.transforms import clean_target_rules, clean_transforms
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
+from app.services.sync_rules import load_rules
+from app.services.transforms import clean_target_rules, clean_transforms
 
 log = logging.getLogger(__name__)
 
@@ -1471,10 +1481,18 @@ def users_create(
     redir = _require_admin_or_redirect(user)
     if redir is not None:
         return redir
+    try:
+        hashed = hash_password(password)
+    except ValueError as e:
+        from urllib.parse import quote_plus
+
+        return RedirectResponse(
+            url="/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
+        )
     new = User(
         email=email,
         full_name=full_name,
-        hashed_password=hash_password(password),
+        hashed_password=hashed,
         is_admin=is_admin,
         is_active=True,
     )

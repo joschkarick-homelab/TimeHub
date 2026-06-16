@@ -16,11 +16,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from typing import Iterable
+from collections.abc import Iterable
 from xml.sax.saxutils import escape
 
 from sqlalchemy.orm import Session
 
+from app.security import decrypt_secret, encrypt_secret
 from app.services import app_settings as app_settings_svc
 
 log = logging.getLogger(__name__)
@@ -158,8 +159,8 @@ class SalesforceClient:
 def get_credentials(db: Session) -> dict:
     return {
         "username": app_settings_svc.get_setting(db, SF_USERNAME_KEY, ""),
-        "password": app_settings_svc.get_setting(db, SF_PASSWORD_KEY, ""),
-        "security_token": app_settings_svc.get_setting(db, SF_TOKEN_KEY, ""),
+        "password": decrypt_secret(app_settings_svc.get_setting(db, SF_PASSWORD_KEY, "")),
+        "security_token": decrypt_secret(app_settings_svc.get_setting(db, SF_TOKEN_KEY, "")),
         "login_url": app_settings_svc.get_setting(db, SF_LOGIN_URL_KEY, _DEFAULT_LOGIN_URL),
         "api_version": app_settings_svc.get_setting(db, SF_API_VERSION_KEY, _DEFAULT_API_VERSION),
     }
@@ -182,11 +183,11 @@ def save_credentials(db: Session, *, username: str | None = None,
     if username is not None:
         app_settings_svc.set_setting(db, SF_USERNAME_KEY, username.strip())
     if password is not None and password.strip():
-        app_settings_svc.set_setting(db, SF_PASSWORD_KEY, password)
+        app_settings_svc.set_setting(db, SF_PASSWORD_KEY, encrypt_secret(password))
     if clear_security_token:
         app_settings_svc.set_setting(db, SF_TOKEN_KEY, "")
     elif security_token is not None and security_token.strip():
-        app_settings_svc.set_setting(db, SF_TOKEN_KEY, security_token.strip())
+        app_settings_svc.set_setting(db, SF_TOKEN_KEY, encrypt_secret(security_token.strip()))
     if login_url is not None:
         app_settings_svc.set_setting(db, SF_LOGIN_URL_KEY,
                                      login_url.strip() or _DEFAULT_LOGIN_URL)

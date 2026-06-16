@@ -77,3 +77,60 @@ def test_production_accepts_strong_secret_key():
 
     s = Settings(app_env="production", secret_key="a-sufficiently-long-random-value")
     assert s.app_env == "production"
+
+
+# ── H1: secret encryption at rest ────────────────────────────────────────────
+
+def test_encrypt_secret_roundtrip():
+    from app.security import _ENC_PREFIX, decrypt_secret, encrypt_secret
+
+    enc = encrypt_secret("hunter2")
+    assert enc.startswith(_ENC_PREFIX)
+    assert "hunter2" not in enc
+    assert decrypt_secret(enc) == "hunter2"
+
+
+def test_decrypt_legacy_plaintext_passes_through():
+    from app.security import decrypt_secret
+
+    # Rows written before encryption have no marker — keep working.
+    assert decrypt_secret("legacy-plaintext") == "legacy-plaintext"
+    assert decrypt_secret("") == ""
+
+
+def test_salesforce_credentials_stored_encrypted():
+    from app.db import SessionLocal
+    from app.services import app_settings as app_settings_svc
+    from app.services import salesforce as sf
+
+    db = SessionLocal()
+    try:
+        sf.save_credentials(db, username="api@org.com", password="s3cr3t-pw",
+                            security_token="tok123")
+        # Raw persisted value must be ciphertext, not the plaintext password.
+        raw_pw = app_settings_svc.get_setting(db, sf.SF_PASSWORD_KEY)
+        raw_tok = app_settings_svc.get_setting(db, sf.SF_TOKEN_KEY)
+        assert "s3cr3t-pw" not in raw_pw and raw_pw.startswith("enc:1:")
+        assert "tok123" not in raw_tok and raw_tok.startswith("enc:1:")
+        # But the service layer returns the decrypted values.
+        creds = sf.get_credentials(db)
+        assert creds["password"] == "s3cr3t-pw"
+        assert creds["security_token"] == "tok123"
+    finally:
+        db.close()
+
+
+# ── H7: bcrypt password truncation guard ─────────────────────────────────────
+
+def test_hash_password_rejects_overlong_input():
+    from app.security import MAX_PASSWORD_BYTES, hash_password
+
+    with pytest.raises(ValueError):
+        hash_password("a" * (MAX_PASSWORD_BYTES + 1))
+
+
+def test_hash_password_accepts_max_length():
+    from app.security import MAX_PASSWORD_BYTES, hash_password, verify_password
+
+    pw = "a" * MAX_PASSWORD_BYTES
+    assert verify_password(pw, hash_password(pw))
