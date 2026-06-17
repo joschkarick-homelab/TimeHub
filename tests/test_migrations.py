@@ -7,10 +7,10 @@ SQLite database."""
 import tempfile
 from pathlib import Path
 
-from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
+from alembic.config import Config
 
 
 def _alembic_config(connection) -> Config:

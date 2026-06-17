@@ -17,6 +17,11 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 #       — that's the idiomatic pattern, not a bug.
 ignore = ["E501", "B008"]
 
+[tool.ruff.lint.isort]
+# `app` is the only first-party package; treat the local `alembic/` migration
+# dir as third-party so import ordering is stable across ruff versions.
+known-first-party = ["app"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"
