@@ -21,7 +21,6 @@ def _gather(
     date_from: date | None,
     date_to: date | None,
     project_id: int | None,
-    user_id: int | None,
     sync_target: str | None,
     tag: str | None,
 ):
@@ -31,10 +30,8 @@ def _gather(
         .join(User, User.id == TimeEntry.user_id)
         .order_by(TimeEntry.entry_date, TimeEntry.id)
     )
-    if not current_user.is_admin:
-        stmt = stmt.where(TimeEntry.user_id == current_user.id)
-    elif user_id is not None:
-        stmt = stmt.where(TimeEntry.user_id == user_id)
+    # Time data is always scoped to the requesting user — admins included.
+    stmt = stmt.where(TimeEntry.user_id == current_user.id)
     if date_from is not None:
         stmt = stmt.where(TimeEntry.entry_date >= date_from)
     if date_to is not None:
@@ -62,7 +59,6 @@ def timesheet(
     date_from: date | None = None,
     date_to: date | None = None,
     project_id: int | None = None,
-    user_id: int | None = None,
     sync_target: str | None = None,
     tag: str | None = None,
     csv_template_id: int | None = None,
@@ -75,7 +71,6 @@ def timesheet(
         date_from=date_from,
         date_to=date_to,
         project_id=project_id,
-        user_id=user_id,
         sync_target=sync_target,
         tag=tag,
     )

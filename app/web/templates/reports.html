@@ -40,7 +40,7 @@
 <section class="mb-5">
   <div class="flex flex-wrap gap-2">
     {% for key, cfg in presets.items() %}
-      <a href="/reports?preset={{ key }}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if project_id %}&project_id={{ project_id }}{% endif %}{% if customer %}&customer={{ customer|urlencode }}{% endif %}{% if user_id %}&user_id={{ user_id }}{% endif %}"
+      <a href="/reports?preset={{ key }}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if project_id %}&project_id={{ project_id }}{% endif %}{% if customer %}&customer={{ customer|urlencode }}{% endif %}"
          class="px-3 py-1.5 rounded-full text-sm border
                 {% if active_preset == key %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white border-slate-300 hover:border-indigo-400{% endif %}"
          title="{{ cfg.description }}">
@@ -83,17 +83,6 @@
           {% endfor %}
         </select>
       </div>
-      {% if user.is_admin %}
-      <div class="col-span-2 md:col-span-1">
-        <label class="block text-xs font-medium mb-1">Mitarbeiter</label>
-        <select name="user_id" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
-          <option value="">— alle —</option>
-          {% for u in users %}
-            <option value="{{ u.id }}" {% if user_id and u.id == user_id %}selected{% endif %}>{{ u.full_name or u.email }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
     </div>
 
     <div>
