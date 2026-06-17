@@ -282,13 +282,17 @@ terminieren. Healthcheck-Endpoint: `/healthz`.
 
 ### Backup
 
-Volumes `timehub_db` und `timehub_uploads` sichern. Beispiel für einen
-nightly DB-Dump auf den Host:
+Automatisierte Pipeline nach 3-2-1- und Großvater-Vater-Sohn-Prinzip:
+`pg_dump` → restic auf lokale HDD (`/mnt/backup-hdd`) → `restic copy` off-site
+nach Hetzner S3, mit gestaffelter GFS-Aufbewahrung (täglich/wöchentlich/
+monatlich/jährlich) und Systemd-Timer.
 
-```bash
-docker compose -f docker-compose.prod.yml --env-file stack.env exec -T db \
-  pg_dump -U timehub timehub | gzip > /backup/timehub-$(date +%F).sql.gz
-```
+Gesichert wird die Datenbank (`timehub_db`); die Uploads (`timehub_uploads`)
+sind nur einmalig beim Import relevant und werden bewusst nicht gesichert.
+
+Details, Einrichtung und Restore: siehe [`docs/backup.md`](docs/backup.md).
+Skripte unter `scripts/` (`backup.sh`, `restore.sh`, `backup.env.example`,
+`systemd/`).
 
 ---
 
