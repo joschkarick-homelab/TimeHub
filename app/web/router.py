@@ -103,6 +103,28 @@ def _maybe_user(request: Request, db: Session) -> User | None:
     return db.get(User, int(payload["sub"]))
 
 
+class LoginRequired(Exception):
+    """Raised when an unauthenticated request hits a protected web page; an
+    exception handler turns it into a redirect to /login (registered in
+    app.main). Lets route bodies say `user = _require_login(request, db)` in one
+    line instead of repeating the maybe-user/redirect dance everywhere."""
+
+
+def _require_login(request: Request, db: Session) -> User:
+    user = _maybe_user(request, db)
+    if user is None:
+        raise LoginRequired()
+    return user
+
+
+def _require_admin(request: Request, db: Session) -> User:
+    user = _require_login(request, db)
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin required")
+    return user
+
+
+
 _THEMES = {"indigo", "mindsquare", "dark"}
 
 
@@ -169,9 +191,7 @@ def index(
     error: str | None = None,
     flash: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     df = _parse_date(date_from)
     dt = _parse_date(date_to)
@@ -310,9 +330,7 @@ def entries_export(
     date_to: str | None = None,
     project_id: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     try:
         fmt_id_int = int(format_id) if format_id else 0
@@ -434,9 +452,7 @@ async def create_entry(
     description: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
@@ -501,9 +517,7 @@ def edit_entry_form(
     request: Request, entry_id: int, db: Session = Depends(get_db),
     error: str | None = None, next: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
     projects = list(
         db.execute(
@@ -541,9 +555,7 @@ async def edit_entry_submit(
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
     project = _owned_project_or_404(db, project_id, user)
     next_url = _safe_next(next)
@@ -584,9 +596,7 @@ async def edit_entry_submit(
 def delete_entry(
     request: Request, entry_id: int, next: str = Form(""), db: Session = Depends(get_db)
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
     db.delete(entry)
     db.commit()
@@ -633,9 +643,7 @@ def mark_entries_manually_synced(
     manually_synced). Damit verschwinden sie aus der Sync-Auswahl und werden
     auch vom Stapel-Push übersprungen — gedacht für alte Monate, die schon
     direkt in Salesforce erfasst wurden."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     if not entry_ids:
         return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
@@ -661,9 +669,7 @@ def unmark_entry_manually_synced(
 ):
     """Rückgängig: zurück auf pending. Nur erlaubt, wenn der Eintrag manuell
     markiert war (echte Salesforce-Syncs lassen sich hier nicht zurücksetzen)."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
     if entry.sync_status == "manually_synced":
         entry.sync_status = "pending"
@@ -714,9 +720,7 @@ def calendar_page(
     days: str | None = None,
     error: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     try:
         days_n = int(days) if days else 7
@@ -898,14 +902,6 @@ async def calendar_move(entry_id: int, request: Request, db: Session = Depends(g
 # -------------------- User management (admin) --------------------
 
 
-def _require_admin_or_redirect(user: User | None):
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin required")
-    return None
-
-
 @router.get("/users", response_class=HTMLResponse)
 def users_page(
     request: Request,
@@ -913,10 +909,7 @@ def users_page(
     error: str | None = None,
     flash: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    user = _require_admin(request, db)
     users = list(db.execute(select(User).order_by(User.id)).scalars())
     sf_creds = sf_svc.get_credentials(db)
     return templates.TemplateResponse(
@@ -939,10 +932,7 @@ def users_page(
 
 @router.post("/settings/ai-hints", response_class=HTMLResponse)
 def settings_ai_hints(request: Request, ai_hints: str = Form(""), db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    _require_admin(request, db)
     app_settings_svc.set_setting(db, app_settings_svc.AI_HINTS_KEY, ai_hints.strip())
     return RedirectResponse(
         url="/users?flash=Globale+KI-Vorgaben+gespeichert", status_code=status.HTTP_302_FOUND
@@ -960,10 +950,7 @@ def settings_salesforce(
     sf_api_version: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    _require_admin(request, db)
     sf_svc.save_credentials(
         db,
         username=sf_username,
@@ -988,9 +975,7 @@ def sync_center(
     materialized EntrySync rows. Salesforce delegates to the live preview/
     execute flow; Jira/BCS can be ticked off as manually handled until their
     push clients land. Blocked entries are listed with a correction deep-link."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     entries = list(
         db.execute(
             select(TimeEntry)
@@ -1028,9 +1013,7 @@ async def sync_fill_project_fields(
 ):
     """Fill missing project-level sync fields (e.g. the Salesforce assignment)
     straight from the wizard — unblocks every entry of that project at once."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
     if target not in es_svc.DISPLAY_TARGETS:
         return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
@@ -1053,9 +1036,7 @@ async def sync_fill_entry_fields(
 ):
     """Fill missing entry-level sync fields (e.g. a Jira ticket, BCS subject)
     inline in the wizard."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
     if target not in es_svc.DISPLAY_TARGETS:
         return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
@@ -1089,9 +1070,7 @@ def sync_mark_target_done(
 ):
     """Tick off one target for the selected entries (EntrySync → manually_synced).
     Used for targets without a live push, and as the wizard's 'abnicken' action."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     if target not in es_svc.DISPLAY_TARGETS:
         return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
                                 status_code=status.HTTP_302_FOUND)
@@ -1128,9 +1107,7 @@ def sync_salesforce_preview(
     Lookup auf den Kontierungsmonat__c, der wiederum zur Projektbesetzung__c
     gehört. Wir gruppieren die Vorschau nach (Projektbesetzung × Kontierungsmonat)
     zur Übersicht; geschrieben würde aber jeder Eintrag einzeln."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     if not entry_ids:
         return RedirectResponse(
             url="/?error=Keine+Einträge+ausgewählt",
@@ -1291,9 +1268,7 @@ def sync_salesforce_execute(
     wird vor dem Insert nochmal voll validiert (PB, Kontierungsmonat-Status etc.);
     bereits synchronisierte Einträge werden idempotent übersprungen. Pro-Eintrag-
     Fehler brechen den Rest nicht ab."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     if not entry_ids:
         return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
@@ -1446,10 +1421,7 @@ def admin_salesforce_describe(
     """Schema-Inspektor: ruft pro angegebenem sObject die Describe-Metadaten
     ab und rendert die wesentlichen Felder. Hilft beim Anpassen an Custom
     Objects (keine Admin-Anmeldung in Salesforce nötig)."""
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    user = _require_admin(request, db)
     client = sf_svc.client_from_settings(db)
     if client is None:
         return RedirectResponse(
@@ -1506,10 +1478,7 @@ def admin_salesforce_describe(
 @router.post("/settings/salesforce/test", response_class=HTMLResponse)
 def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
     """Try a SOAP login against the stored credentials and report the result."""
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    _require_admin(request, db)
     client = sf_svc.client_from_settings(db)
     if client is None:
         return RedirectResponse(
@@ -1539,10 +1508,7 @@ def users_create(
     is_admin: bool = Form(False),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    _require_admin(request, db)
     try:
         hashed = hash_password(password)
     except ValueError as e:
@@ -1571,10 +1537,7 @@ def users_create(
 
 @router.post("/users/{user_id}/toggle-active", response_class=HTMLResponse)
 def users_toggle_active(request: Request, user_id: int, db: Session = Depends(get_db)):
-    actor = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(actor)
-    if redir is not None:
-        return redir
+    actor = _require_admin(request, db)
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1591,10 +1554,7 @@ def users_toggle_active(request: Request, user_id: int, db: Session = Depends(ge
 
 @router.post("/users/{user_id}/toggle-admin", response_class=HTMLResponse)
 def users_toggle_admin(request: Request, user_id: int, db: Session = Depends(get_db)):
-    actor = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(actor)
-    if redir is not None:
-        return redir
+    actor = _require_admin(request, db)
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1779,9 +1739,7 @@ def formats_list(
     flash: str | None = None,
     error: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     formats = _visible_formats(db, user)
     return templates.TemplateResponse(
         "import_formats.html",
@@ -1791,9 +1749,7 @@ def formats_list(
 
 @router.get("/import-formats/new", response_class=HTMLResponse)
 def formats_new_form(request: Request, db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     return templates.TemplateResponse(
         "import_format_new.html",
         _ctx(request, user, error=None, target_options=_target_options()),
@@ -1807,9 +1763,7 @@ async def formats_new_submit(
     sample: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     raw = await sample.read()
     text = raw.decode("utf-8", errors="replace")
@@ -1882,9 +1836,7 @@ def formats_refine(
     state as 'previous' plus the user's instruction, and re-render the review."""
     from app.schemas.import_format import ImportFormatSuggestion
 
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     canonical_map = _parse_column_map(column_map_json)  # target-keyed
 
@@ -2027,9 +1979,7 @@ async def formats_save(
     is_global: bool = Form(False),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     column_map = _parse_column_map(column_map_json)
 
@@ -2059,9 +2009,7 @@ async def formats_save(
 
 @router.get("/import-formats/{fmt_id}/edit", response_class=HTMLResponse)
 def formats_edit_form(request: Request, fmt_id: int, db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     fmt = db.get(ImportFormat, fmt_id)
     if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
         raise HTTPException(status_code=404, detail="format not found")
@@ -2120,9 +2068,7 @@ async def formats_edit_submit(
     is_global: bool = Form(False),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     fmt = db.get(ImportFormat, fmt_id)
     if fmt is None:
         raise HTTPException(status_code=404, detail="format not found")
@@ -2176,9 +2122,7 @@ def formats_edit_refine(
     """AI refinement that stays on the edit screen: re-runs the model with the
     current state + instruction, then re-renders the edit form (unsaved) so the
     user can review and Save."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     fmt = db.get(ImportFormat, fmt_id)
     if fmt is None:
         raise HTTPException(status_code=404, detail="format not found")
@@ -2259,9 +2203,7 @@ def formats_edit_refine(
 
 @router.post("/import-formats/{fmt_id}/delete", response_class=HTMLResponse)
 def formats_delete(request: Request, fmt_id: int, db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     fmt = db.get(ImportFormat, fmt_id)
     if fmt is None:
         raise HTTPException(status_code=404, detail="Not found")
@@ -2274,10 +2216,7 @@ def formats_delete(request: Request, fmt_id: int, db: Session = Depends(get_db))
 
 @router.post("/import-formats/{fmt_id}/promote", response_class=HTMLResponse)
 def formats_promote(request: Request, fmt_id: int, db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    redir = _require_admin_or_redirect(user)
-    if redir is not None:
-        return redir
+    _require_admin(request, db)
     fmt = db.get(ImportFormat, fmt_id)
     if fmt is None:
         raise HTTPException(status_code=404, detail="Not found")
@@ -2294,9 +2233,7 @@ def import_form(
     result: str | None = None,
     error: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     formats = _visible_formats(db, user)
     return templates.TemplateResponse(
         "import_run.html",
@@ -2373,9 +2310,7 @@ async def import_run(
     apply_target_rules: bool = Form(False),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     fmt = db.get(ImportFormat, format_id)
     if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
         raise HTTPException(status_code=404, detail="format not found")
@@ -2461,9 +2396,7 @@ def projects_page(
     flash: str | None = None,
     error: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     projects = list(
         db.execute(
             select(Project).where(Project.user_id == user.id).order_by(Project.code)
@@ -2498,9 +2431,7 @@ async def projects_create(
     status_: str = Form("active", alias="status"),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     target = default_sync_target if default_sync_target in _KNOWN_SYNC_TARGETS else "intern"
     # Code is optional — derive a unique one from the name when left blank.
     final_code = code.strip() or _unique_project_code(db, name, user.id)
@@ -2535,9 +2466,7 @@ async def projects_create(
 
 @router.get("/projects/{project_id}/edit", response_class=HTMLResponse)
 def projects_edit_form(request: Request, project_id: int, db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
     return templates.TemplateResponse(
         "project_edit.html",
@@ -2566,9 +2495,7 @@ async def projects_update(
     status_: str = Form("active", alias="status"),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
     project.name = name.strip()
     # Code optional: keep the existing one when the field is left blank.
@@ -2600,9 +2527,7 @@ async def projects_update(
 
 @router.post("/projects/{project_id}/delete", response_class=HTMLResponse)
 def projects_delete(request: Request, project_id: int, db: Session = Depends(get_db)):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
     try:
         db.delete(project)
@@ -2637,9 +2562,7 @@ def profile_page(
     flash: str | None = None,
     error: str | None = None,
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     return templates.TemplateResponse(
         "profile.html",
         _ctx(request, user, flash=flash, error=error),
@@ -2653,9 +2576,7 @@ def profile_save(
     ai_hints: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     user.full_name = full_name.strip()
     user.ai_hints = ai_hints.strip() or None
     db.add(user)
@@ -2682,9 +2603,7 @@ def reports_page(
 ):
     from app.services import report_builder as rb
 
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
 
     # Resolve grouping: an explicit preset wins; else custom group_by + detailed.
     if preset and preset in rb.PRESETS:

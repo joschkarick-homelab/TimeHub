@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -12,6 +12,7 @@ from app import __version__
 from app.api import api_router
 from app.config import get_settings
 from app.services.bootstrap import ensure_initial_admin
+from app.web.router import LoginRequired
 from app.web.router import router as web_router
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -50,6 +51,13 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.session_cookie_secure,
 )
+
+@app.exception_handler(LoginRequired)
+async def _login_required_handler(request, exc) -> RedirectResponse:
+    # Protected web pages raise LoginRequired when there's no session; send the
+    # visitor to the login screen (same 302 the routes used to return inline).
+    return RedirectResponse(url="/login", status_code=302)
+
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(api_router)
