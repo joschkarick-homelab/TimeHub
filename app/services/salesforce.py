@@ -278,10 +278,12 @@ def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict
 
     Eingeschränkt auf Projektbesetzungen, die der User jetzt wirklich bebuchen
     kann:
-      * aktiv auswählbar  → `Aktiv__c = 'Ja'`,
+      * aktiv (Projekt nicht abgeschlossen)
+                          → `Projekt__r.Projektstatus__c != 'Abgeschlossen'`,
       * Status offen      → `Geschlossen__c = false`,
-      * zurzeit laufend   → `Projektstart__c <= heute <= Projektende__c`
-        (offene Grenzen, also leere Start-/Endfelder, gelten als laufend).
+      * zurzeit laufend   → gestartet (`Projektstart__c <= heute`, leeres
+        Startfeld erlaubt) und das Projektende liegt in der Zukunft
+        (`Projektende__c >= heute`; ohne gesetztes Enddatum kein Treffer).
 
     `search` bündelt Kunde (AccountName), Projektbezeichnung und Projektnummer
     (P0000…) als Klartext für die Fuzzy-Suche im Frontend — interne SF-Ids und
@@ -297,10 +299,10 @@ def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict
         "SELECT Id, Name, Projektbezeichnung__c, Projektnummer__c, AccountName__c "
         "FROM Projektbesetzung__c "
         f"WHERE (Mitarbeiter__r.Email = '{e}' OR Externe_Projektbesetzung__r.Email = '{e}') "
-        "AND Aktiv__c = 'Ja' "
+        "AND Projekt__r.Projektstatus__c != 'Abgeschlossen' "
         "AND Geschlossen__c = false "
         "AND (Projektstart__c = null OR Projektstart__c <= TODAY) "
-        "AND (Projektende__c = null OR Projektende__c >= TODAY) "
+        "AND Projektende__c >= TODAY "
         "ORDER BY Projektbezeichnung__c NULLS LAST, Name"
     )
     res = client.query(soql)

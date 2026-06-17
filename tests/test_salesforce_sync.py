@@ -179,7 +179,8 @@ def test_preview_explicit_vor_ort_overrides_default(client, monkeypatch):
 
 def test_list_assignments_for_user_query_shape(monkeypatch):
     """list_assignments_for_user matcht intern UND extern auf die E-Mail und
-    beschränkt auf aktuell auswählbare (aktiv, offen, laufend) PBs."""
+    beschränkt auf aktuell auswählbare PBs: Projekt nicht abgeschlossen,
+    Status offen und laufend (Projektende in der Zukunft)."""
     from app.services import salesforce as sfs
     captured = {}
     def fake_query(self, soql):
@@ -200,7 +201,8 @@ def test_list_assignments_for_user_query_shape(monkeypatch):
     assert "Mitarbeiter__r.Email" in soql
     assert "Externe_Projektbesetzung__r.Email" in soql
     assert "Geschlossen__c = false" in soql
-    assert "Aktiv__c = 'Ja'" in soql
+    assert "Projekt__r.Projektstatus__c != 'Abgeschlossen'" in soql
+    assert "Aktiv__c = 'Ja'" not in soql
     assert "Projektstart__c <= TODAY" in soql
     assert "Projektende__c >= TODAY" in soql
     # New SELECT carries the searchable Klartext fields.
