@@ -32,6 +32,7 @@ from app.services import app_settings as app_settings_svc
 from app.services import entry_sync as es_svc
 from app.services import reports as report_svc
 from app.services import salesforce as sf_svc
+from app.services import sf_push
 from app.services import sync_fields as sf
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
@@ -1142,102 +1143,29 @@ def sync_salesforce_preview(
             ), groups=[], errors=[], entries=entries),
         )
 
-    # Step 1: gather assignment IDs and resolve each (one SOQL per id).
-    assignment_ids: list[str] = []
-    per_entry_assignment: dict[int, str | None] = {}
-    item_errors: list[dict] = []
-    for e in entries:
-        project = proj_lookup.get(e.project_id)
-        aid = sf_svc.assignment_id_for(e, project) if project else None
-        per_entry_assignment[e.id] = aid
-        if aid and aid not in assignment_ids:
-            assignment_ids.append(aid)
-
-    assignments: dict[str, dict] = {}
-    sf_error: str | None = None
-    try:
-        for aid in assignment_ids:
-            a = sf_svc.get_assignment(client, aid)
-            if a is None:
-                item_errors.append({"assignment_id": aid,
-                                    "error": "Projektbesetzung in Salesforce nicht gefunden"})
-                continue
-            assignments[aid] = a
-    except sf_svc.SalesforceError as e:
-        sf_error = str(e)
-
-    # Step 2: pro Eintrag den Kontierungsmonat suchen (PB-spezifisch!) und
-    # gruppieren nach (Projektbesetzung × Kontierungsmonat).
+    # Resolve every entry against Salesforce (shared with the execute flow) and
+    # group the pushable ones by (Projektbesetzung × Kontierungsmonat).
+    resolved, sf_error = sf_push.resolve_pushes(client, entries, proj_lookup)
     grouped: dict[tuple[str, str], dict] = {}
     skipped: list[dict] = []
-    period_cache: dict[tuple[str, str], dict | None] = {}  # (aid, YYYY-MM) → period or None
-    if sf_error is None:
-        for e in entries:
-            aid = per_entry_assignment[e.id]
-            if not aid:
-                skipped.append({"entry": e, "reason": "keine Projektbesetzung gepflegt"})
-                continue
-            if aid not in assignments:
-                skipped.append({"entry": e, "reason": "Projektbesetzung nicht in SF gefunden"})
-                continue
-            assignment = assignments[aid]
-            if assignment.get("closed"):
-                skipped.append({"entry": e, "reason": "Projektbesetzung in SF geschlossen"})
-                continue
-
-            cache_key = (aid, e.entry_date.strftime("%Y-%m"))
-            if cache_key not in period_cache:
-                try:
-                    period_cache[cache_key] = sf_svc.get_monthly_period(
-                        client, aid, e.entry_date.isoformat()
-                    )
-                except sf_svc.SalesforceError as err:
-                    sf_error = str(err)
-                    break
-            period = period_cache[cache_key]
-            if period is None:
-                skipped.append({
-                    "entry": e,
-                    "reason": f"Kein Kontierungsmonat {e.entry_date.strftime('%m/%Y')} "
-                              f"für diese Projektbesetzung in SF",
-                })
-                continue
-            period_name = period.get("name") or e.entry_date.strftime("%m/%Y")
-            period_status = (period.get("status") or "").strip()
-            # Nur 'offen' lassen wir schreiben — alles andere (Kundengenehmigung,
-            # in Bearbeitung, abgeschlossen, kontrolliert, Öffnung beantragt) gilt
-            # als bereits eingereicht oder gesperrt.
-            if period.get("closed"):
-                skipped.append({"entry": e,
-                                "reason": f"Kontierungsmonat {period_name} ist abgeschlossen"})
-                continue
-            if period_status.lower() != "offen":
-                skipped.append({"entry": e,
-                                "reason": f"Kontierungsmonat {period_name} ist nicht offen"
-                                          f" (Status: {period_status or '—'})"})
-                continue
-
-            project = proj_lookup.get(e.project_id)
-            # Resolve via sync_fields so override → project default → field default.
-            remote_field = next((f for f in sf.entry_fields("salesforce") if f.key == "remote"), None)
-            remote_value = (
-                sf.entry_value(e, project, remote_field, "salesforce")
-                if remote_field and project else None
-            )
-            payload = sf_svc.build_zeiterfassung_payload(e, period["id"], remote_value)
-
-            group = grouped.setdefault((aid, period["id"]), {
-                "assignment": assignment,
-                "period": period,
-                "entries": [],
-                "total_hours": 0.0,
-            })
-            group["entries"].append({
-                "entry": e,
-                "payload": payload,
-                "remote_value": remote_value or "",
-            })
-            group["total_hours"] = round(group["total_hours"] + e.duration_minutes / 60.0, 2)
+    for r in resolved:
+        if r["status"] == "blocked":
+            skipped.append({"entry": r["entry"], "reason": r["reason"]})
+            continue
+        group = grouped.setdefault((r["assignment_id"], r["period"]["id"]), {
+            "assignment": r["assignment"],
+            "period": r["period"],
+            "entries": [],
+            "total_hours": 0.0,
+        })
+        group["entries"].append({
+            "entry": r["entry"],
+            "payload": r["payload"],
+            "remote_value": r["remote_value"] or "",
+        })
+        group["total_hours"] = round(
+            group["total_hours"] + r["entry"].duration_minutes / 60.0, 2
+        )
 
     groups = list(grouped.values())
     pushable_count = sum(len(g["entries"]) for g in groups)
@@ -1249,7 +1177,7 @@ def sync_salesforce_preview(
             user,
             groups=groups,
             skipped=skipped,
-            item_errors=item_errors,
+            item_errors=[],
             sf_error=sf_error,
             entries=entries,
             pushable_count=pushable_count,
@@ -1292,12 +1220,8 @@ def sync_salesforce_execute(
     proj_lookup = {
         p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
     }
-    remote_field = next((f for f in sf.entry_fields("salesforce") if f.key == "remote"), None)
-
     results: list[dict] = []
-    assignments_cache: dict[str, dict | None] = {}
-    period_cache: dict[tuple[str, str], dict | None] = {}
-    sf_error: str | None = None
+    to_resolve: list[TimeEntry] = []
 
     def _fail(e, error: str) -> None:
         e.sync_status = "failed"
@@ -1306,6 +1230,7 @@ def sync_salesforce_execute(
         db.commit()
         results.append({"entry": e, "status": "failed", "error": error})
 
+    # Idempotency: already-synced entries are skipped without touching Salesforce.
     for entry in entries:
         if entry.sync_status in ("synced", "manually_synced"):
             existing = ((entry.sync_metadata_override or {}).get("salesforce") or {}).get("zeiterfassung_id")
@@ -1314,66 +1239,23 @@ def sync_salesforce_execute(
                       else "bereits synchronisiert")
             results.append({"entry": entry, "status": "skipped",
                             "reason": reason, "id": existing})
-            continue
+        else:
+            to_resolve.append(entry)
 
-        project = proj_lookup.get(entry.project_id)
-        aid = sf_svc.assignment_id_for(entry, project) if project else None
-        if not aid:
-            _fail(entry, "keine Projektbesetzung am Projekt gepflegt")
+    # Same read-only resolution the preview uses — then POST the pushable ones.
+    resolved, sf_error = sf_push.resolve_pushes(client, to_resolve, proj_lookup)
+    for r in resolved:
+        entry = r["entry"]
+        if r["status"] == "blocked":
+            _fail(entry, r["reason"])
             continue
-
-        # Assignment (gecached)
-        if aid not in assignments_cache:
-            try:
-                assignments_cache[aid] = sf_svc.get_assignment(client, aid)
-            except sf_svc.SalesforceError as e:
-                sf_error = str(e)
-                break
-        assignment = assignments_cache[aid]
-        if assignment is None:
-            _fail(entry, "Projektbesetzung in SF nicht gefunden")
-            continue
-        if assignment.get("closed"):
-            _fail(entry, "Projektbesetzung in SF geschlossen")
-            continue
-
-        # Kontierungsmonat (PB-spezifisch gecached)
-        cache_key = (aid, entry.entry_date.strftime("%Y-%m"))
-        if cache_key not in period_cache:
-            try:
-                period_cache[cache_key] = sf_svc.get_monthly_period(
-                    client, aid, entry.entry_date.isoformat()
-                )
-            except sf_svc.SalesforceError as e:
-                sf_error = str(e)
-                break
-        period = period_cache[cache_key]
-        if period is None:
-            _fail(entry, f"Kein Kontierungsmonat {entry.entry_date.strftime('%m/%Y')} "
-                         f"für diese Projektbesetzung")
-            continue
-        period_name = period.get("name") or entry.entry_date.strftime("%m/%Y")
-        if period.get("closed"):
-            _fail(entry, f"Kontierungsmonat {period_name} ist abgeschlossen")
-            continue
-        if (period.get("status") or "").strip().lower() != "offen":
-            _fail(entry, f"Kontierungsmonat {period_name} ist nicht offen "
-                         f"(Status: {period.get('status') or '—'})")
-            continue
-
-        # Payload + POST
-        remote_value = (
-            sf.entry_value(entry, project, remote_field, "salesforce")
-            if remote_field and project else None
-        )
-        payload = sf_svc.build_zeiterfassung_payload(entry, period["id"], remote_value)
         try:
-            new_id = sf_svc.create_zeiterfassung(client, payload)
+            new_id = sf_svc.create_zeiterfassung(client, r["payload"])
         except sf_svc.SalesforceError as e:
             _fail(entry, str(e))
             continue
 
-        # Persistiere Id + sync_status. JSON-Spalte → neues Dict zuweisen.
+        # Persist id + sync_status. JSON column → assign a fresh dict.
         meta = dict(entry.sync_metadata_override or {})
         sf_meta = dict(meta.get("salesforce") or {})
         sf_meta["zeiterfassung_id"] = new_id
@@ -1388,10 +1270,8 @@ def sync_salesforce_execute(
         # without its id and cause a duplicate on the next push.
         db.commit()
         results.append({"entry": entry, "status": "synced", "id": new_id,
-                        "assignment": assignment, "period": period,
+                        "assignment": r["assignment"], "period": r["period"],
                         "warning": sf_svc.duration_snap_warning(entry.duration_minutes)})
-
-    db.commit()
 
     synced = sum(1 for r in results if r["status"] == "synced")
     failed = sum(1 for r in results if r["status"] == "failed")
