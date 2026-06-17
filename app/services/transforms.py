@@ -222,7 +222,9 @@ def apply_transform(rule: dict, row: dict, *, date_format: str = "%Y-%m-%d") -> 
         except ValueError:
             out = None
     elif op == "duration":
-        minutes = clock_duration_to_minutes(raw or "")
+        # Accept any common duration format ("1:30", "90", "1,5", "1h 30m"),
+        # matching the direct duration mapping and what the AI prompt promises.
+        minutes = auto_duration_to_minutes(raw or "")
         if minutes is not None:
             if rule.get("target") == "duration_hours":
                 out = f"{minutes / 60:.4f}".rstrip("0").rstrip(".")

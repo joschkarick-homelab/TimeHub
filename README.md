@@ -133,11 +133,36 @@ Auth-Schemata, die alle geschützten Routen akzeptieren:
 - Docker + Docker Compose (für das Deployment)
 - alternativ Python 3.11+ für lokale Entwicklung
 
+### Sicherheit & Pflicht-Konfiguration
+
+- **`SECRET_KEY` ist in Produktion zwingend.** Derselbe Schlüssel signiert
+  JWTs *und* Session-Cookies. Bei `APP_ENV=production` (Default) verweigert die
+  App den Start, wenn `SECRET_KEY` fehlt oder noch den Platzhalter aus
+  `.env.example` enthält. Einen starken Wert erzeugen:
+  ```bash
+  python -c "import secrets; print(secrets.token_urlsafe(48))"
+  ```
+  Für lokale Entwicklung ohne eigenen Secret stattdessen `APP_ENV=dev` setzen.
+- **CSRF-Schutz:** Die session-cookie-authentifizierte Web-UI prüft auf allen
+  schreibenden Requests ein Session-Token (als `csrf_token`-Formularfeld bzw.
+  `X-CSRF-Token`-Header). Die JSON-API unter `/api/*` authentifiziert
+  ausschließlich über Bearer-Token oder API-Key (kein Session-Cookie).
+- **Cookies & CORS:** In Produktion (`APP_ENV=production`) wird das
+  Session-Cookie mit `Secure`-Flag gesetzt (TLS am Reverse-Proxy). Credentialed
+  CORS wird nur aktiviert, wenn `CORS_ORIGINS` eine explizite Allowlist enthält —
+  der Default `*` läuft ohne Credentials.
+- **Secrets at rest:** Die Salesforce-Zugangsdaten (Passwort, Security-Token)
+  werden mit einem aus `SECRET_KEY` abgeleiteten Schlüssel verschlüsselt in der
+  DB abgelegt (Fernet). Ein Rotieren von `SECRET_KEY` macht hinterlegte
+  SF-Credentials ungültig — sie müssen dann neu eingetragen werden.
+- **Passwörter:** max. 72 Bytes (bcrypt-Grenze); längere Eingaben werden
+  abgelehnt statt still abgeschnitten.
+
 ### Lokal mit Docker (empfohlen)
 
 ```bash
 cp .env.example .env
-# SECRET_KEY und INITIAL_ADMIN_PASSWORD anpassen
+# SECRET_KEY (Pflicht!) und INITIAL_ADMIN_PASSWORD anpassen
 docker compose up -d --build
 docker compose logs -f app
 ```
@@ -158,17 +183,21 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 # in .env: DATABASE_URL=sqlite:///./data/timehub.sqlite
+# in .env: APP_ENV=dev   (erlaubt den Start ohne produktiven SECRET_KEY)
 mkdir -p data
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-### Tests
+### Tests & Lint
 
 ```bash
-pip install pytest
+pip install -r requirements-dev.txt   # pytest + ruff
+ruff check .
 pytest -q
 ```
+
+Beide laufen auch in CI (`.github/workflows/test.yml`) bei jedem Push/PR.
 
 ---
 

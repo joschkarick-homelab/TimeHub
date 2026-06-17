@@ -8,7 +8,7 @@ references survive a re-evaluation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -69,7 +69,7 @@ def set_target_status(
         es.attempts = (es.attempts or 0) + 1
         es.last_error = error
     elif status in _PROTECTED:
-        es.synced_at = datetime.now(timezone.utc)
+        es.synced_at = datetime.now(UTC)
         es.last_error = None
     db.add(es)
     return es
@@ -80,7 +80,7 @@ def mark_all_manually_synced(db: Session, entry) -> None:
     for es in (entry.entry_syncs or []):
         if es.status not in _PROTECTED:
             es.status = SyncStatus.MANUALLY_SYNCED
-            es.synced_at = datetime.now(timezone.utc)
+            es.synced_at = datetime.now(UTC)
             es.last_error = None
             db.add(es)
 

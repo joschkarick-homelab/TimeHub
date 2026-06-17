@@ -27,9 +27,11 @@ class ImportFormat(Base):
     # source CSV header -> target TimeHub field name
     column_map: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     # Per-column import transforms (regex/date/split/constant). Import-only.
-    transforms: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # Nullable to match migration 0004 (existing rows aren't backfilled); the
+    # app always reads these as `... or []` and writes a concrete list.
+    transforms: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
     # Conditional sync-target rules applied at import when enabled.
-    target_rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    target_rules: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
     # A small sample (header + a few rows) kept so the edit screen can show a
     # live preview and offer AI refinement without re-uploading the file.
     sample_data: Mapped[str | None] = mapped_column(Text, nullable=True)

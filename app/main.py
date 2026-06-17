@@ -33,14 +33,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# A wildcard origin with credentials is unsafe (and spec-invalid). The API
+# authenticates via Bearer/API-key, never via the session cookie cross-origin,
+# so only enable credentialed CORS once an explicit allowlist is configured.
+_cors_origins = settings.cors_origin_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    same_site="lax",
+    https_only=settings.session_cookie_secure,
+)
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(api_router)

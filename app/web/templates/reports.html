@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 
+{% if report_truncated %}
+  <div class="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+    Der Report basiert nur auf den ersten {{ report_cap }} Einträgen. Bitte den
+    Zeitraum einschränken, damit die Summen vollständig sind.
+  </div>
+{% endif %}
+
 {% macro render_group(node) %}
   {% set pad = 12 + node.level * 20 %}
   <tr class="border-t border-slate-200 {% if node.level == 0 %}bg-slate-100 font-semibold{% else %}bg-slate-50{% endif %}">

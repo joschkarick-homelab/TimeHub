@@ -16,11 +16,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from typing import Iterable
+from collections.abc import Iterable
 from xml.sax.saxutils import escape
 
 from sqlalchemy.orm import Session
 
+from app.security import decrypt_secret, encrypt_secret
 from app.services import app_settings as app_settings_svc
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,11 @@ def _http(method: str, url: str, *, data: bytes | None = None,
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read() or b""
+    except (urllib.error.URLError, TimeoutError) as e:
+        # DNS failures, refused connections and read timeouts must surface as a
+        # SalesforceError so the sync loop can stop cleanly instead of leaking a
+        # raw exception (which would abort mid-push and lose committed progress).
+        raise SalesforceError(f"Salesforce nicht erreichbar: {e}") from e
 
 
 def _login_envelope(username: str, password: str) -> bytes:
@@ -153,8 +159,8 @@ class SalesforceClient:
 def get_credentials(db: Session) -> dict:
     return {
         "username": app_settings_svc.get_setting(db, SF_USERNAME_KEY, ""),
-        "password": app_settings_svc.get_setting(db, SF_PASSWORD_KEY, ""),
-        "security_token": app_settings_svc.get_setting(db, SF_TOKEN_KEY, ""),
+        "password": decrypt_secret(app_settings_svc.get_setting(db, SF_PASSWORD_KEY, "")),
+        "security_token": decrypt_secret(app_settings_svc.get_setting(db, SF_TOKEN_KEY, "")),
         "login_url": app_settings_svc.get_setting(db, SF_LOGIN_URL_KEY, _DEFAULT_LOGIN_URL),
         "api_version": app_settings_svc.get_setting(db, SF_API_VERSION_KEY, _DEFAULT_API_VERSION),
     }
@@ -177,11 +183,11 @@ def save_credentials(db: Session, *, username: str | None = None,
     if username is not None:
         app_settings_svc.set_setting(db, SF_USERNAME_KEY, username.strip())
     if password is not None and password.strip():
-        app_settings_svc.set_setting(db, SF_PASSWORD_KEY, password)
+        app_settings_svc.set_setting(db, SF_PASSWORD_KEY, encrypt_secret(password))
     if clear_security_token:
         app_settings_svc.set_setting(db, SF_TOKEN_KEY, "")
     elif security_token is not None and security_token.strip():
-        app_settings_svc.set_setting(db, SF_TOKEN_KEY, security_token.strip())
+        app_settings_svc.set_setting(db, SF_TOKEN_KEY, encrypt_secret(security_token.strip()))
     if login_url is not None:
         app_settings_svc.set_setting(db, SF_LOGIN_URL_KEY,
                                      login_url.strip() or _DEFAULT_LOGIN_URL)
@@ -324,12 +330,32 @@ def _coerce_bool(value) -> bool:
     return s in {"true", "1", "yes", "y", "ja", "j", "x", "wahr"}
 
 
+_MAX_DAY_MINUTES = 23 * 60 + 45  # picklist tops out at 23:45
+
+
+def snapped_total_minutes(minutes: int) -> int:
+    """Snap a duration to the nearest 15-minute slot, capped at 23:45 — the
+    shape Salesforce's Von/Bis picklist accepts."""
+    total = max(0, minutes)
+    return min(round(total / 15) * 15, _MAX_DAY_MINUTES)
+
+
+def duration_snap_warning(minutes: int) -> str | None:
+    """A note when snapping/capping changes the actually-tracked duration, so a
+    push to Salesforce isn't a silent data loss for the user."""
+    actual = max(0, minutes)
+    snapped = snapped_total_minutes(minutes)
+    if snapped == actual:
+        return None
+    if actual > _MAX_DAY_MINUTES:
+        return f"Dauer {actual} min auf 23:45 gedeckelt"
+    return f"Dauer von {actual} auf {snapped} min (15-Min-Raster) gerundet"
+
+
 def _snap_quarter(hour: int, minute: int) -> tuple[int, str]:
     """Snap (h, m) to the nearest 15-minute slot; return (hour:int, minute:str)
     where minute is the picklist value '00'/'15'/'30'/'45'."""
-    total = max(0, hour * 60 + minute)
-    snapped = round(total / 15) * 15
-    snapped = min(snapped, 23 * 60 + 45)
+    snapped = snapped_total_minutes(hour * 60 + minute)
     return snapped // 60, f"{snapped % 60:02d}"
 
 

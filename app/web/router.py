@@ -2,10 +2,21 @@ import base64
 import binascii
 import json
 import logging
+import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
@@ -14,22 +25,66 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.db import get_db
-from app.deps import get_current_user
 from app.models import EntrySync, ImportFormat, Project, TimeEntry, User
 from app.schemas.import_format import SUPPORTED_TARGETS
 from app.security import create_access_token, hash_password, verify_password
 from app.services import app_settings as app_settings_svc
+from app.services import entry_sync as es_svc
 from app.services import reports as report_svc
 from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
-from app.services import entry_sync as es_svc
-from app.services.sync_rules import load_rules
-from app.services.transforms import clean_target_rules, clean_transforms
 from app.services.ai_mapping import AiMappingError, suggest_mapping
 from app.services.csv_import import import_csv
+from app.services.sync_rules import load_rules
+from app.services.transforms import clean_target_rules, clean_transforms
 
 log = logging.getLogger(__name__)
-router = APIRouter(include_in_schema=False)
+
+# ── CSRF protection ──────────────────────────────────────────────────────────
+# The web UI authenticates via a session cookie, so every state-changing form
+# POST needs a CSRF token. We use a per-session synchronizer token: it lives in
+# the (signed, server-side) session, is embedded into pages as a <meta> tag /
+# hidden field, and must come back on unsafe requests via the X-CSRF-Token
+# header (fetch/XHR) or a `csrf_token` form field.
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+_FORM_CONTENT_TYPES = ("application/x-www-form-urlencoded", "multipart/form-data")
+
+
+def _ensure_csrf_token(request: Request) -> str:
+    token = request.session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["csrf_token"] = token
+    return token
+
+
+async def csrf_protect(request: Request) -> None:
+    """Router-level guard: mint the session CSRF token on every request (so
+    templates can embed it) and verify it on unsafe methods."""
+    expected = _ensure_csrf_token(request)
+    if request.method in _SAFE_METHODS:
+        return
+    sent = request.headers.get("X-CSRF-Token")
+    if not sent:
+        ctype = request.headers.get("content-type", "")
+        if ctype.startswith(_FORM_CONTENT_TYPES):
+            form = await request.form()
+            value = form.get("csrf_token")
+            sent = value if isinstance(value, str) else None
+    if not sent or not secrets.compare_digest(sent, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF-Token fehlt oder ist ungültig",
+        )
+
+
+router = APIRouter(include_in_schema=False, dependencies=[Depends(csrf_protect)])
+
+# Defensive upper bounds so an unfiltered/huge dataset can't load the entire
+# history into memory and render it. High enough not to affect normal use; when
+# hit, the templates show a "narrow your filter" banner.
+DASHBOARD_ENTRY_CAP = 1000
+REPORT_ROW_CAP = 10000
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -146,7 +201,9 @@ def index(
     if project_id_int is not None:
         stmt = stmt.where(TimeEntry.project_id == project_id_int)
 
-    entries = list(db.execute(stmt).scalars())
+    entries = list(db.execute(stmt.limit(DASHBOARD_ENTRY_CAP + 1)).scalars())
+    truncated = len(entries) > DASHBOARD_ENTRY_CAP
+    entries = entries[:DASHBOARD_ENTRY_CAP]
     days = _group_by_day(entries)
 
     projects = list(
@@ -234,6 +291,8 @@ def index(
             project_id=project_id_int or "",
             filter_query=_filter_query(df, dt, project_id_int),
             formats=formats,
+            truncated=truncated,
+            entry_cap=DASHBOARD_ENTRY_CAP,
             error=error,
             flash=flash,
         ),
@@ -373,9 +432,11 @@ async def create_entry(
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
-    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    user = _maybe_user(request, db)
+    if user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     project = _owned_project_or_404(db, project_id, user)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
@@ -1267,6 +1328,7 @@ def sync_salesforce_execute(
         e.sync_status = "failed"
         es_svc.set_target_status(db, e, "salesforce", "failed", error=error)
         db.add(e)
+        db.commit()
         results.append({"entry": e, "status": "failed", "error": error})
 
     for entry in entries:
@@ -1345,8 +1407,14 @@ def sync_salesforce_execute(
         entry.sync_status = "synced"
         es_svc.set_target_status(db, entry, "salesforce", "synced", external_ref=new_id)
         db.add(entry)
+        # Commit per entry: the Salesforce record already exists at this point,
+        # so the remote id must be persisted atomically with the POST's success.
+        # A later crash/timeout in the loop then can't strand a synced record
+        # without its id and cause a duplicate on the next push.
+        db.commit()
         results.append({"entry": entry, "status": "synced", "id": new_id,
-                        "assignment": assignment, "period": period})
+                        "assignment": assignment, "period": period,
+                        "warning": sf_svc.duration_snap_warning(entry.duration_minutes)})
 
     db.commit()
 
@@ -1475,10 +1543,18 @@ def users_create(
     redir = _require_admin_or_redirect(user)
     if redir is not None:
         return redir
+    try:
+        hashed = hash_password(password)
+    except ValueError as e:
+        from urllib.parse import quote_plus
+
+        return RedirectResponse(
+            url="/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
+        )
     new = User(
         email=email,
         full_name=full_name,
-        hashed_password=hash_password(password),
+        hashed_password=hashed,
         is_admin=is_admin,
         is_active=True,
     )
@@ -2654,7 +2730,9 @@ def reports_page(
     if customer:
         stmt = stmt.where(Project.customer == customer)
 
-    rows = list(db.execute(stmt).all())
+    rows = list(db.execute(stmt.limit(REPORT_ROW_CAP + 1)).all())
+    report_truncated = len(rows) > REPORT_ROW_CAP
+    rows = rows[:REPORT_ROW_CAP]
     report = rb.build_report(rows, active_group_by, detailed=active_detailed)
 
     # Project filter is scoped to the user's own projects, mirroring the entries.
@@ -2682,5 +2760,7 @@ def reports_page(
             date_to=dt.isoformat() if dt else "",
             project_id=pid or "",
             customer=customer or "",
+            report_truncated=report_truncated,
+            report_cap=REPORT_ROW_CAP,
         ),
     )

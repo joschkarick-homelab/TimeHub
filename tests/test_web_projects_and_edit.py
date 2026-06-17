@@ -1,7 +1,6 @@
 """Web UI: projects CRUD, format editing, and import-error visibility."""
 
 import io
-from datetime import date
 
 
 def _login_session(client) -> None:

@@ -6,7 +6,6 @@ from app.services import entry_sync as es
 from app.services import sync_fields as sf
 from app.services.sync_rules import resolve_targets
 
-
 # ---------- pure resolution logic ----------
 
 def _proj(targets=None, default="intern", code="ABC"):

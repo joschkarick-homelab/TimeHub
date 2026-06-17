@@ -1,7 +1,6 @@
 """The AI mapping result must drive the review screen — headers from the AI
 suggestion show up in detected_headers, even if our own parser missed them."""
 
-from unittest.mock import MagicMock, patch
 
 from app.services.ai_mapping import _sanitize, suggest_mapping
 
