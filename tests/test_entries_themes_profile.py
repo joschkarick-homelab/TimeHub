@@ -114,19 +114,23 @@ def test_entry_edit_rejects_other_users_entry(client):
 
 # ---------- Dropdown dedup ----------
 
-def test_project_display_label_collapses_code_eq_name():
-    """Project.display_label should not say "X – X" when code and name match
-    (the auto-created-from-import case)."""
+def test_project_display_label_omits_code():
+    """Project.display_label shows the name (with optional customer) and
+    deliberately omits the internal project code; it falls back to the code
+    only when no name is set."""
     from app.models import Project
 
     p1 = Project(name="Test", code="Test")
     assert p1.display_label == "Test"
 
     p2 = Project(name="Acme Onboarding", code="ACME-1")
-    assert p2.display_label == "ACME-1 – Acme Onboarding"
+    assert p2.display_label == "Acme Onboarding"
 
-    p3 = Project(name="", code="ONLY-CODE")
-    assert p3.display_label == "ONLY-CODE"
+    p3 = Project(name="Acme Onboarding", code="ACME-1", customer="Acme")
+    assert p3.display_label == "Acme Onboarding (Acme)"
+
+    p4 = Project(name="", code="ONLY-CODE")
+    assert p4.display_label == "ONLY-CODE"
 
 
 def test_dashboard_dropdown_uses_display_label(client):

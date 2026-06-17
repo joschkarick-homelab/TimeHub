@@ -71,7 +71,6 @@
   <table class="hidden md:table w-full text-sm">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
-        <th class="px-4 py-2">Code</th>
         <th class="px-4 py-2">Name</th>
         <th class="px-4 py-2">Kunde</th>
         <th class="px-4 py-2">Ziel</th>
@@ -82,12 +81,11 @@
     <tbody>
       {% for p in projects %}
         <tr class="border-t border-slate-100">
-          <td class="px-4 py-2 font-mono">
+          <td class="px-4 py-2">
             <span class="inline-block w-2 h-2 rounded-full align-middle mr-1"
                   style="background: {{ p.color }}"></span>
-            {{ p.code }}
+            {{ p.name }}
           </td>
-          <td class="px-4 py-2">{{ p.name }}</td>
           <td class="px-4 py-2 text-slate-600">{{ p.customer or '—' }}</td>
           <td class="px-4 py-2">
             {{ p.default_sync_target }}
@@ -107,7 +105,7 @@
           <td class="px-4 py-2 space-x-3 whitespace-nowrap">
             <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
             <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
-                  onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
+                  onsubmit="return confirm('Projekt {{ p.name }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
               <button class="text-xs text-rose-600 hover:underline">löschen</button>
             </form>
           </td>
@@ -122,12 +120,14 @@
       <div class="p-4">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <div class="font-medium truncate">{{ p.name }}</div>
-            <div class="font-mono text-xs text-slate-500 mt-0.5 truncate">
+            <div class="font-medium truncate">
               <span class="inline-block w-2 h-2 rounded-full align-middle mr-1"
                     style="background: {{ p.color }}"></span>
-              {{ p.code }}{% if p.customer %} <span class="font-sans">· {{ p.customer }}</span>{% endif %}
+              {{ p.name }}
             </div>
+            {% if p.customer %}
+              <div class="text-xs text-slate-500 mt-0.5 truncate">{{ p.customer }}</div>
+            {% endif %}
           </div>
           {% if p.status == 'active' %}
             <span class="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5 text-xs whitespace-nowrap">aktiv</span>
@@ -146,7 +146,7 @@
         <div class="flex items-center gap-4 mt-3">
           <a href="/projects/{{ p.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
           <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
-                onsubmit="return confirm('Projekt {{ p.code }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
+                onsubmit="return confirm('Projekt {{ p.name }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
             <button class="text-sm text-rose-600 hover:underline">löschen</button>
           </form>
         </div>

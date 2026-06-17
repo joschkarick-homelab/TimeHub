@@ -168,10 +168,17 @@
   </form>
 </section>
 
-<section class="bg-white border border-slate-200 overflow-hidden">
+<section id="entries-section" class="bg-white border border-slate-200 overflow-hidden">
   <div class="flex items-center justify-between p-5 pb-3 gap-3 flex-wrap">
     <h2 class="font-semibold th-section-title th-section-olive th-outfit">Einträge (gruppiert nach Tag)</h2>
     <div class="flex items-center gap-3 flex-wrap">
+      {% if days %}
+        <button type="button" id="bulk-toggle"
+                class="h-9 px-3 border border-slate-300 text-slate-600 text-sm font-medium hover:border-purple-500"
+                aria-pressed="false">
+          ☑ Mehrfachauswahl
+        </button>
+      {% endif %}
       {% if sf_configured and sf_selectable_count %}
         <form id="sf-sync-form" method="post" action="/sync/salesforce/preview"
               class="flex items-center gap-2 flex-wrap">
@@ -211,6 +218,31 @@
     </div>
   </div>
 
+  {# Mass-select action bar — only visible once Mehrfachauswahl is toggled on.
+     Checkboxes in the rows below belong to this form via form="bulk-form". #}
+  {% if days %}
+    <form id="bulk-form" method="post" action="/entries/bulk-delete"
+          class="hidden items-center gap-3 flex-wrap px-5 pb-3"
+          onsubmit="return confirm('Ausgewählte Einträge wirklich löschen?');">
+      <input type="hidden" name="next" value="{{ filter_query }}" />
+      <span class="text-sm text-slate-600">
+        <span id="bulk-count">0</span> ausgewählt
+      </span>
+      <button type="button" id="bulk-select-all"
+              class="h-8 px-3 border border-slate-300 text-slate-600 text-xs font-medium">
+        Alle auswählen
+      </button>
+      <button type="button" id="bulk-clear"
+              class="h-8 px-3 border border-slate-300 text-slate-600 text-xs font-medium">
+        Auswahl aufheben
+      </button>
+      <button id="bulk-delete-btn" disabled
+              class="h-8 px-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+        🗑 Auswahl löschen
+      </button>
+    </form>
+  {% endif %}
+
   {% if days %}
   {# Ampel-Punkt einer Matrix-Zelle: grün=erledigt, gelb=offen/bereit,
      rot=blockiert/fehlgeschlagen, grau=nicht relevant. Tooltip trägt den Grund. #}
@@ -230,6 +262,7 @@
   <table class="w-full text-sm min-w-[640px]">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
+        <th class="bulk-col px-2 py-2 w-6"></th>
         {% if sf_configured %}<th class="px-2 py-2 w-6"></th>{% endif %}
         <th class="px-4 py-2">Datum</th>
         <th class="px-4 py-2">Projekt</th>
@@ -249,6 +282,10 @@
         {% for e in day.entries %}
           {% set p = projects_by_id.get(e.project_id) %}
           <tr class="border-t border-slate-100">
+            <td class="bulk-col px-2 py-2 align-middle">
+              <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="bulk-form"
+                     class="bulk-check h-4 w-4" title="Eintrag auswählen" />
+            </td>
             {% if sf_configured %}
               <td class="px-2 py-2 align-middle">
                 {% if sf_selectable.get(e.id) %}
@@ -276,19 +313,23 @@
               {% if e.sync_status == "manually_synced" %}
                 <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
                       onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
+                  <input type="hidden" name="next" value="{{ filter_query }}" />
                   <button class="text-xs text-slate-600 hover:underline"
                           title="Wieder als offen markieren">↶ wieder öffnen</button>
                 </form>
               {% endif %}
-              <a href="/entries/{{ e.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+              <a href="/entries/{{ e.id }}/edit?next={{ filter_query | urlencode }}"
+                 class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
               <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
                     onsubmit="return confirm('Eintrag wirklich löschen?');">
+                <input type="hidden" name="next" value="{{ filter_query }}" />
                 <button class="text-xs text-rose-600 hover:underline">löschen</button>
               </form>
             </td>
           </tr>
         {% endfor %}
         <tr class="bg-slate-50 border-t border-slate-200 text-slate-700 text-xs">
+          <td class="bulk-col px-2 py-1.5"></td>
           {% if sf_configured %}<td class="px-2 py-1.5"></td>{% endif %}
           <td class="px-4 py-1.5 font-medium">Σ {{ day.date }}</td>
           <td class="px-4 py-1.5">{{ day.entries|length }} Einträge</td>
@@ -315,6 +356,8 @@
         {% set p = projects_by_id.get(e.project_id) %}
         <div class="p-4">
           <div class="flex items-start gap-3">
+            <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="bulk-form"
+                   class="bulk-check bulk-col-m mt-1 h-4 w-4" title="Eintrag auswählen" />
             {% if sf_configured and sf_selectable.get(e.id) %}
               <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="sf-sync-form"
                      class="mt-1 h-4 w-4" title="Für Salesforce-Sync auswählen" />
@@ -346,14 +389,17 @@
                 {% endfor %}
               </div>
               <div class="flex items-center gap-4 mt-3">
-                <a href="/entries/{{ e.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
+                <a href="/entries/{{ e.id }}/edit?next={{ filter_query | urlencode }}"
+                   class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
                 <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
                       onsubmit="return confirm('Eintrag wirklich löschen?');">
+                  <input type="hidden" name="next" value="{{ filter_query }}" />
                   <button class="text-sm text-rose-600 hover:underline">löschen</button>
                 </form>
                 {% if e.sync_status == "manually_synced" %}
                   <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
                         onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
+                    <input type="hidden" name="next" value="{{ filter_query }}" />
                     <button class="text-sm text-slate-600 hover:underline">↶ wieder öffnen</button>
                   </form>
                 {% endif %}
@@ -368,4 +414,57 @@
   <p class="px-5 pb-5 text-slate-500">Keine Einträge im gewählten Zeitraum.</p>
   {% endif %}
 </section>
+
+<style>
+  /* Mass-select: checkbox column + action bar stay hidden until toggled on. */
+  .bulk-col, .bulk-col-m { display: none; }
+  #entries-section.bulk-active .bulk-col   { display: table-cell; }
+  #entries-section.bulk-active .bulk-col-m { display: inline-block; }
+  #entries-section.bulk-active #bulk-form  { display: flex; }
+</style>
+<script>
+  (function () {
+    var section = document.getElementById("entries-section");
+    var toggle  = document.getElementById("bulk-toggle");
+    if (!section || !toggle) return;
+    var countEl    = document.getElementById("bulk-count");
+    var delBtn     = document.getElementById("bulk-delete-btn");
+    var selectAll  = document.getElementById("bulk-select-all");
+    var clearBtn   = document.getElementById("bulk-clear");
+
+    function checks() {
+      return Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));
+    }
+    function selectedCount() {
+      var seen = {};
+      checks().forEach(function (c) { if (c.checked) seen[c.value] = true; });
+      return Object.keys(seen).length;
+    }
+    function refresh() {
+      var n = selectedCount();
+      if (countEl) countEl.textContent = n;
+      if (delBtn) delBtn.disabled = n === 0;
+    }
+    function setAll(state) { checks().forEach(function (c) { c.checked = state; }); refresh(); }
+
+    toggle.addEventListener("click", function () {
+      var on = section.classList.toggle("bulk-active");
+      toggle.setAttribute("aria-pressed", on ? "true" : "false");
+      toggle.classList.toggle("border-purple-500", on);
+      toggle.classList.toggle("text-indigo-600", on);
+      if (!on) setAll(false);
+      refresh();
+    });
+    // Desktop and mobile each render a checkbox per entry — keep the pair in sync.
+    checks().forEach(function (c) {
+      c.addEventListener("change", function () {
+        checks().forEach(function (o) { if (o.value === c.value) o.checked = c.checked; });
+        refresh();
+      });
+    });
+    if (selectAll) selectAll.addEventListener("click", function () { setAll(true); });
+    if (clearBtn)  clearBtn.addEventListener("click", function () { setAll(false); });
+    refresh();
+  })();
+</script>
 {% endblock %}

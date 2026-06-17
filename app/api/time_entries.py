@@ -27,15 +27,12 @@ def _build_filter_stmt(
     date_from: date | None,
     date_to: date | None,
     project_id: int | None,
-    user_id: int | None,
     sync_target: str | None,
     tag: str | None,
 ):
     stmt = select(TimeEntry).order_by(TimeEntry.entry_date.desc(), TimeEntry.id.desc())
-    if not current_user.is_admin:
-        stmt = stmt.where(TimeEntry.user_id == current_user.id)
-    elif user_id is not None:
-        stmt = stmt.where(TimeEntry.user_id == user_id)
+    # Time data is always scoped to the requesting user — admins included.
+    stmt = stmt.where(TimeEntry.user_id == current_user.id)
     if date_from is not None:
         stmt = stmt.where(TimeEntry.entry_date >= date_from)
     if date_to is not None:
@@ -61,7 +58,6 @@ def list_time_entries(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     project_id: int | None = Query(default=None),
-    user_id: int | None = Query(default=None),
     sync_target: str | None = Query(default=None),
     tag: str | None = Query(default=None),
     limit: int = Query(default=500, le=5000),
@@ -73,7 +69,6 @@ def list_time_entries(
         date_from=date_from,
         date_to=date_to,
         project_id=project_id,
-        user_id=user_id,
         sync_target=sync_target,
         tag=tag,
     ).limit(limit)
@@ -86,9 +81,11 @@ def list_time_entries(
 def _create_entry(
     db: Session, current_user: User, payload: TimeEntryCreate, rules=()
 ) -> TimeEntry:
-    target_user_id = payload.user_id or current_user.id
-    if target_user_id != current_user.id and not current_user.is_admin:
+    # Entries always belong to the requesting user — nobody (incl. admins) may
+    # create on behalf of another user.
+    if payload.user_id is not None and payload.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="cannot create entries for other users")
+    target_user_id = current_user.id
 
     project = db.get(Project, payload.project_id)
     # Projects are per-user: an entry may only reference its owner's project.
@@ -153,7 +150,7 @@ def get_entry(
     entry_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     entry = db.get(TimeEntry, entry_id)
-    if entry is None or (entry.user_id != current_user.id and not current_user.is_admin):
+    if entry is None or entry.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Not found")
     return entry
 
@@ -166,7 +163,7 @@ def update_entry(
     db: Session = Depends(get_db),
 ):
     entry = db.get(TimeEntry, entry_id)
-    if entry is None or (entry.user_id != current_user.id and not current_user.is_admin):
+    if entry is None or entry.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Not found")
     data = payload.model_dump(exclude_unset=True)
     for field, value in data.items():
@@ -189,7 +186,7 @@ def delete_entry(
     entry_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     entry = db.get(TimeEntry, entry_id)
-    if entry is None or (entry.user_id != current_user.id and not current_user.is_admin):
+    if entry is None or entry.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(entry)
     db.commit()
