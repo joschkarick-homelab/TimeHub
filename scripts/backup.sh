@@ -38,9 +38,10 @@ LOCAL_REPO="${LOCAL_REPO:-${BACKUP_ROOT}/restic-repo}"
 STAGING_DIR="${STAGING_DIR:-${BACKUP_ROOT}/staging}"
 
 # Whether to include stack.env (secrets) in the backup so a restore is
-# self-contained. restic encrypts the repo, so this is safe; set to false if
-# you re-render stack.env from GitHub secrets anyway.
-INCLUDE_ENV_FILE="${INCLUDE_ENV_FILE:-true}"
+# self-contained. Off by default: the secrets already live in GitHub secrets
+# and are re-rendered into stack.env on deploy. Set to true to make the backup
+# fully self-contained (restic encrypts the repo, so it is safe either way).
+INCLUDE_ENV_FILE="${INCLUDE_ENV_FILE:-false}"
 
 # restic auth (same password used for both repos)
 RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/etc/timehub/restic-password}"

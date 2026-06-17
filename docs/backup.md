@@ -10,7 +10,7 @@ jährlich gestaffelte Aufbewahrung).
 | Datenbestand | Volume | Backup? |
 |--------------|--------|---------|
 | Postgres-Datenbank (User, Zeiteinträge, Import-Formate) | `timehub_db` | **ja** — das wichtigste Asset |
-| Secrets / Config (`stack.env`) | Host `/opt/timehub` | ja (optional, in den Dump-Satz aufgenommen) |
+| Secrets / Config (`stack.env`) | Host `/opt/timehub` | optional (`INCLUDE_ENV_FILE`, Default `false`) |
 | Hochgeladene CSVs | `timehub_uploads` | **nein** — nur einmalig beim Import relevant |
 
 ## Architektur
@@ -113,9 +113,10 @@ restic -r /mnt/backup-hdd/restic-repo snapshots
 ```
 
 Nach einem Komplettverlust der LXC: Stack neu deployen (Compose +
-`stack.env`), dann `restore.sh --from s3` ausführen. Ist `stack.env` im Backup
-enthalten (`INCLUDE_ENV_FILE=true`), liegt es im wiederhergestellten
-Snapshot-Verzeichnis und kann von dort übernommen werden.
+`stack.env` — wird beim Deploy aus den GitHub-Secrets gerendert), dann
+`restore.sh --from s3` ausführen. Wer `stack.env` lieber im Backup hätte,
+setzt `INCLUDE_ENV_FILE=true`; es liegt dann im wiederhergestellten
+Snapshot-Verzeichnis.
 
 ## Restore regelmäßig testen
 
