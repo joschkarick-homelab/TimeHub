@@ -178,27 +178,40 @@ def test_preview_explicit_vor_ort_overrides_default(client, monkeypatch):
 
 
 def test_list_assignments_for_user_query_shape(monkeypatch):
-    """list_assignments_for_user matcht intern UND extern auf die E-Mail."""
+    """list_assignments_for_user matcht intern UND extern auf die E-Mail und
+    beschränkt auf aktuell auswählbare (aktiv, offen, laufend) PBs."""
     from app.services import salesforce as sfs
     captured = {}
     def fake_query(self, soql):
         captured["soql"] = soql
         return {"records": [
-            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo"},
-            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None},
+            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo",
+             "Projektnummer__c": "P00042", "AccountName__c": "ACME GmbH"},
+            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None,
+             "Projektnummer__c": None, "AccountName__c": None},
         ]}
     monkeypatch.setattr(sfs.SalesforceClient, "query", fake_query)
     client = sfs.SalesforceClient("u", "p", "")
     client.session_id = "x"
     client.instance_url = "https://x"
     items = sfs.list_assignments_for_user(client, "rick@mindsquare.de")
-    assert "rick@mindsquare.de" in captured["soql"]
-    assert "Mitarbeiter__r.Email" in captured["soql"]
-    assert "Externe_Projektbesetzung__r.Email" in captured["soql"]
-    assert "Geschlossen__c = false" in captured["soql"]
+    soql = captured["soql"]
+    assert "rick@mindsquare.de" in soql
+    assert "Mitarbeiter__r.Email" in soql
+    assert "Externe_Projektbesetzung__r.Email" in soql
+    assert "Geschlossen__c = false" in soql
+    assert "Aktiv__c = 'Ja'" in soql
+    assert "Projektstart__c <= TODAY" in soql
+    assert "Projektende__c >= TODAY" in soql
+    # New SELECT carries the searchable Klartext fields.
+    assert "Projektnummer__c" in soql
+    assert "AccountName__c" in soql
+    # Label shows project name + customer/number; search bundles the Klartext
+    # (Kunde, Projektname, Projektnummer) but NOT the PB-Nummer or SF-Id.
     assert items == [
-        {"value": "a01000000000111", "label": "Foo (PB-111)"},
-        {"value": "a01000000000222", "label": "PB-222"},
+        {"value": "a01000000000111", "label": "Foo (ACME GmbH · P00042)",
+         "search": "acme gmbh foo p00042"},
+        {"value": "a01000000000222", "label": "PB-222", "search": ""},
     ]
 
 

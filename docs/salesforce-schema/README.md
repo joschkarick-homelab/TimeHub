@@ -89,11 +89,19 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
 
 ## UI
 
-- Im Projekt-Edit (Ziel = salesforce) ist die Projektbesetzung ein
-  **Dropdown**, das beim Render live alle aktiven Projektbesetzungen des
-  eingeloggten Users über die SF-API holt (Match per `Mitarbeiter__r.Email`
-  ODER `Externe_Projektbesetzung__r.Email = user.email`). Fehlen SF-Creds
-  oder gibt es keine Treffer, fällt das UI auf ein freies Text-Input zurück.
+- Im Projekt-Edit (Ziel = salesforce) ist die Projektbesetzung eine
+  **Fuzzy-Such-Combobox**, die beim Render live die aktuell auswählbaren
+  Projektbesetzungen des eingeloggten Users über die SF-API holt (Match per
+  `Mitarbeiter__r.Email` ODER `Externe_Projektbesetzung__r.Email =
+  user.email`). Die Liste ist eingeschränkt auf PBs, die der User jetzt
+  wirklich bebuchen kann: `Aktiv__c = 'Ja'` (aktiv auswählbar),
+  `Geschlossen__c = false` (Status offen) und zurzeit laufend
+  (`Projektstart__c <= TODAY <= Projektende__c`; leere Start-/Endfelder gelten
+  als laufend). Gesucht wird per Fuzzy-Match über **Kunde** (`AccountName__c`),
+  **Projektname** (`Projektbezeichnung__c`) und **Projektnummer**
+  (`Projektnummer__c`, P0000…) — die PB-Nummer (`Name`) und interne SF-Ids
+  sind bewusst nicht suchbar. Fehlen SF-Creds oder gibt es keine Treffer,
+  fällt das UI auf ein freies Text-Input zurück.
 - Im Eintrag-Edit (effektives Ziel = salesforce) ist „Remote / Vor Ort" ein
   Dropdown mit Default **Remote**. Beim Sync gilt: explizit gesetzter Wert
   am Eintrag → ggf. Override am Projekt → Default des Felds.

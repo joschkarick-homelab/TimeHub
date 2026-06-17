@@ -37,6 +37,9 @@ class SyncField:
     default: str | None = None
     # Hint to the renderer: load runtime options from window.SYNC_DYNAMIC_OPTIONS[options_source].
     options_source: str | None = None
+    # Render as a fuzzy-search combobox instead of a plain <select>. Options
+    # may carry a `search` string (Klartext) the renderer matches against.
+    searchable: bool = False
 
 
 _JIRA_ISSUE = r"[A-Z][A-Z0-9]+-\d+"
@@ -70,10 +73,12 @@ TARGET_FIELDS: dict[str, list[SyncField]] = {
             level="project",
             required=True,
             pattern=r"[a-zA-Z0-9]{15,18}",
-            placeholder="a01...",
-            help="Id der Salesforce-Projektbesetzung; daraus werden Projekt und Mitarbeiter abgeleitet.",
-            # Dropdown mit allen aktiven, dem User zugeordneten PBs (Live-SOQL).
+            placeholder="Suchen: Kunde, Projektname oder Projektnummer (P0000…)",
+            help="Id der Salesforce-Projektbesetzung; daraus werden Projekt und Mitarbeiter abgeleitet. "
+                 "Suchbar nach Kunde, Projektname und Projektnummer.",
+            # Combobox mit den aktuell laufenden, offenen PBs des Users (Live-SOQL).
             options_source="sf_assignments",
+            searchable=True,
         ),
         SyncField(
             key="remote",
@@ -296,6 +301,7 @@ def _field_dict(f: SyncField) -> dict:
         "choices": [{"value": v, "label": lbl} for v, lbl in (f.choices or ())],
         "default": f.default or "",
         "options_source": f.options_source or "",
+        "searchable": f.searchable,
     }
 
 

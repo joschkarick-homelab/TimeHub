@@ -4,8 +4,9 @@
   // active target's fields are rendered (and thus submitted).
   //
   // Felder mit `choices` (statische Picklist) oder `options_source` (dynamische
-  // Liste aus window.SYNC_DYNAMIC_OPTIONS) werden als <select> gerendert; sonst
-  // als <input>. Vorbelegung: gespeicherter Wert > field.default > leer.
+  // Liste aus window.SYNC_DYNAMIC_OPTIONS) werden als <select> gerendert; ein
+  // `searchable`-Feld mit dynamischen Optionen wird zur Fuzzy-Such-Combobox.
+  // Sonst als <input>. Vorbelegung: gespeicherter Wert > field.default > leer.
   window.renderSyncFields = function (container, registry, target, current) {
     function esc(s) {
       return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -15,6 +16,111 @@
     function dynOptions(source) {
       var src = window.SYNC_DYNAMIC_OPTIONS || {};
       return src[source];
+    }
+    // --- Fuzzy matching: lower score is a better match, -1 means no match. ---
+    function subseqScore(token, text) {
+      var ti = 0, last = -1, gaps = 0;
+      for (var i = 0; i < text.length && ti < token.length; i++) {
+        if (text[i] === token[ti]) {
+          if (last >= 0) gaps += i - last - 1;
+          last = i; ti++;
+        }
+      }
+      return ti === token.length ? gaps : -1;
+    }
+    function fuzzyScore(query, text) {
+      query = String(query || "").toLowerCase().trim();
+      text = String(text || "").toLowerCase();
+      if (!query) return 0;
+      var tokens = query.split(/\s+/), total = 0;
+      for (var i = 0; i < tokens.length; i++) {
+        var t = tokens[i];
+        var idx = text.indexOf(t);
+        if (idx !== -1) { total += idx; continue; }   // substring: best
+        var sub = subseqScore(t, text);
+        if (sub < 0) return -1;                        // token missing entirely
+        total += 1000 + sub;                           // subsequence: worse
+      }
+      return total;
+    }
+    function optHaystack(o) {
+      // What the user can search on: the explicit `search` text (Klartext:
+      // Kunde, Projektname, Projektnummer) plus the visible label as fallback.
+      return (o.search != null ? o.search : "") + " " + (o.label || "");
+    }
+    function initCombobox(wrap, opts, value) {
+      var search = wrap.querySelector("[data-combo-search]");
+      var hidden = wrap.querySelector("[data-combo-value]");
+      var list = wrap.querySelector("[data-combo-list]");
+      var active = -1;
+      // Preselect: show the stored option's label; keep a raw id if it is no
+      // longer in the (now filtered) list so the value isn't silently lost.
+      var current = null;
+      for (var i = 0; i < opts.length; i++) {
+        if (String(opts[i].value) === String(value)) { current = opts[i]; break; }
+      }
+      hidden.value = value || "";
+      if (current) search.value = current.label || "";
+      else if (value) search.value = value;
+
+      function close() { list.classList.add("hidden"); active = -1; }
+      function pick(o) {
+        hidden.value = o.value != null ? String(o.value) : "";
+        search.value = o.label || "";
+        close();
+      }
+      function render() {
+        var q = search.value;
+        var scored = [];
+        for (var i = 0; i < opts.length; i++) {
+          var s = fuzzyScore(q, optHaystack(opts[i]));
+          if (s >= 0) scored.push({ o: opts[i], s: s });
+        }
+        scored.sort(function (a, b) { return a.s - b.s; });
+        scored = scored.slice(0, 50);
+        if (!scored.length) {
+          list.innerHTML = '<li class="px-2 py-1.5 text-xs text-slate-400">Kein Treffer</li>';
+        } else {
+          list.innerHTML = scored.map(function (e, idx) {
+            return '<li role="option" data-idx="' + idx + '" data-value="' + esc(e.o.value) + '"' +
+              ' class="px-2 py-1.5 text-sm cursor-pointer hover:bg-slate-100">' +
+              esc(e.o.label || e.o.value) + "</li>";
+          }).join("");
+        }
+        list._opts = scored.map(function (e) { return e.o; });
+        active = -1;
+        list.classList.remove("hidden");
+      }
+      function highlight() {
+        var items = list.querySelectorAll("li[data-idx]");
+        items.forEach(function (li, idx) {
+          li.classList.toggle("bg-slate-100", idx === active);
+        });
+        if (active >= 0 && items[active]) items[active].scrollIntoView({ block: "nearest" });
+      }
+      search.addEventListener("focus", render);
+      search.addEventListener("input", function () {
+        // Typing invalidates a previous pick until something is chosen again.
+        hidden.value = "";
+        render();
+      });
+      search.addEventListener("keydown", function (ev) {
+        var n = (list._opts || []).length;
+        if (ev.key === "ArrowDown") { ev.preventDefault(); if (n) { active = (active + 1) % n; highlight(); } }
+        else if (ev.key === "ArrowUp") { ev.preventDefault(); if (n) { active = (active - 1 + n) % n; highlight(); } }
+        else if (ev.key === "Enter") {
+          if (active >= 0 && list._opts && list._opts[active]) { ev.preventDefault(); pick(list._opts[active]); }
+        } else if (ev.key === "Escape") { close(); }
+      });
+      list.addEventListener("mousedown", function (ev) {
+        // mousedown (not click) so it fires before the input's blur.
+        var li = ev.target.closest("li[data-idx]");
+        if (!li || !list._opts) return;
+        ev.preventDefault();
+        var o = list._opts[parseInt(li.getAttribute("data-idx"), 10)];
+        if (o) pick(o);
+      });
+      search.addEventListener("blur", function () { setTimeout(close, 100); });
     }
     if (!container) return;
     container.innerHTML = "";
@@ -34,7 +140,20 @@
           esc(f.label) + (f.required ? ' <span class="text-rose-500">*</span>' : "") +
         "</label>";
       var control;
-      if (opts && opts.length) {
+      var combo = false;
+      if (f.searchable && opts && opts.length) {
+        // Fuzzy-Such-Combobox: sichtbares Suchfeld + verstecktes Wertfeld.
+        combo = true;
+        control =
+          '<div class="relative" data-combo>' +
+            '<input id="' + id + '" type="text" autocomplete="off" data-combo-search role="combobox"' +
+            ' placeholder="' + esc(f.placeholder || "Suchen…") + '"' +
+            ' class="w-full h-10 border border-slate-300 rounded px-2 bg-white" />' +
+            '<input type="hidden" name="' + name + '" data-combo-value />' +
+            '<ul data-combo-list role="listbox"' +
+            ' class="hidden absolute z-20 left-0 right-0 mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded shadow"></ul>' +
+          "</div>";
+      } else if (opts && opts.length) {
         var optionsHtml = "";
         if (!f.required) {
           optionsHtml += '<option value="">— keine Auswahl —</option>';
@@ -63,6 +182,7 @@
       var helpHtml = f.help ? '<p class="text-[11px] text-slate-500 mt-0.5">' + esc(f.help) + "</p>" : "";
       wrap.innerHTML = labelHtml + control + helpHtml;
       container.appendChild(wrap);
+      if (combo) initCombobox(wrap, opts, value);
     });
   };
 </script>
