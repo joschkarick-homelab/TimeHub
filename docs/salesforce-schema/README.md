@@ -94,11 +94,12 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
   Projektbesetzungen des eingeloggten Users über die SF-API holt (Match per
   `Mitarbeiter__r.Email` ODER `Externe_Projektbesetzung__r.Email =
   user.email`). Die Liste ist eingeschränkt auf PBs, die der User jetzt
-  wirklich bebuchen kann: `Projekt__r.Projektstatus__c != 'Abgeschlossen'`
-  (Projekt aktiv), `Geschlossen__c = false` (Status offen) und zurzeit
-  laufend — gestartet (`Projektstart__c <= TODAY`, leeres Startfeld erlaubt)
-  und Projektende in der Zukunft (`Projektende__c >= TODAY`; ohne Enddatum
-  kein Treffer). Gesucht wird per Fuzzy-Match über **Kunde** (`AccountName__c`),
+  wirklich bebuchen kann: `Projekt__r.Projektstatus__c != 'abgeschlossen'`
+  (Projekt aktiv; Picklist-Wert klein laut Schema), `Geschlossen__c = false`
+  (Status offen) und zurzeit laufend — gestartet
+  (`Projekt__r.Projektstart__c <= TODAY`, leeres Startfeld erlaubt) und
+  Projektende in der Zukunft (`Projekt__r.Projektende__c >= TODAY`; ohne
+  Enddatum kein Treffer). Gesucht wird per Fuzzy-Match über **Kunde** (`AccountName__c`),
   **Projektname** (`Projektbezeichnung__c`) und **Projektnummer**
   (`Projektnummer__c`, P0000…) — die PB-Nummer (`Name`) und interne SF-Ids
   sind bewusst nicht suchbar. Fehlen SF-Creds oder gibt es keine Treffer,

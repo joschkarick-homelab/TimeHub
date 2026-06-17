@@ -201,10 +201,10 @@ def test_list_assignments_for_user_query_shape(monkeypatch):
     assert "Mitarbeiter__r.Email" in soql
     assert "Externe_Projektbesetzung__r.Email" in soql
     assert "Geschlossen__c = false" in soql
-    assert "Projekt__r.Projektstatus__c != 'Abgeschlossen'" in soql
+    assert "Projekt__r.Projektstatus__c != 'abgeschlossen'" in soql
     assert "Aktiv__c = 'Ja'" not in soql
-    assert "Projektstart__c <= TODAY" in soql
-    assert "Projektende__c >= TODAY" in soql
+    assert "Projekt__r.Projektstart__c <= TODAY" in soql
+    assert "Projekt__r.Projektende__c >= TODAY" in soql
     # New SELECT carries the searchable Klartext fields.
     assert "Projektnummer__c" in soql
     assert "AccountName__c" in soql

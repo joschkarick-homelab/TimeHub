@@ -277,13 +277,13 @@ def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict
     Dropdown-fertige `{value, label, search}`-Einträge.
 
     Eingeschränkt auf Projektbesetzungen, die der User jetzt wirklich bebuchen
-    kann:
+    kann (Status/Datum am verknüpften Projekt, Schreibweise laut SF-Schema):
       * aktiv (Projekt nicht abgeschlossen)
-                          → `Projekt__r.Projektstatus__c != 'Abgeschlossen'`,
+                          → `Projekt__r.Projektstatus__c != 'abgeschlossen'`,
       * Status offen      → `Geschlossen__c = false`,
-      * zurzeit laufend   → gestartet (`Projektstart__c <= heute`, leeres
-        Startfeld erlaubt) und das Projektende liegt in der Zukunft
-        (`Projektende__c >= heute`; ohne gesetztes Enddatum kein Treffer).
+      * zurzeit laufend   → gestartet (`Projekt__r.Projektstart__c <= heute`,
+        leeres Startfeld erlaubt) und das Projektende liegt in der Zukunft
+        (`Projekt__r.Projektende__c >= heute`; ohne Enddatum kein Treffer).
 
     `search` bündelt Kunde (AccountName), Projektbezeichnung und Projektnummer
     (P0000…) als Klartext für die Fuzzy-Suche im Frontend — interne SF-Ids und
@@ -299,10 +299,10 @@ def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict
         "SELECT Id, Name, Projektbezeichnung__c, Projektnummer__c, AccountName__c "
         "FROM Projektbesetzung__c "
         f"WHERE (Mitarbeiter__r.Email = '{e}' OR Externe_Projektbesetzung__r.Email = '{e}') "
-        "AND Projekt__r.Projektstatus__c != 'Abgeschlossen' "
+        "AND Projekt__r.Projektstatus__c != 'abgeschlossen' "
         "AND Geschlossen__c = false "
-        "AND (Projektstart__c = null OR Projektstart__c <= TODAY) "
-        "AND Projektende__c >= TODAY "
+        "AND (Projekt__r.Projektstart__c = null OR Projekt__r.Projektstart__c <= TODAY) "
+        "AND Projekt__r.Projektende__c >= TODAY "
         "ORDER BY Projektbezeichnung__c NULLS LAST, Name"
     )
     res = client.query(soql)
