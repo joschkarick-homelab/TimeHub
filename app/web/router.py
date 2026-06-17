@@ -414,7 +414,8 @@ def _owned_entry_or_404(db: Session, entry_id: int, user: User) -> TimeEntry:
     entry = db.get(TimeEntry, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
-    if entry.user_id != user.id and not user.is_admin:
+    # Time data is per-user: only the owner may view or manage an entry.
+    if entry.user_id != user.id:
         raise HTTPException(status_code=403, detail="not your entry")
     return entry
 
@@ -2602,7 +2603,6 @@ def reports_page(
     date_to: str | None = None,
     project_id: str | None = None,
     customer: str | None = None,
-    user_id: str | None = None,
 ):
     from app.services import report_builder as rb
 
@@ -2636,12 +2636,6 @@ def reports_page(
             pid = int(project_id)
         except ValueError:
             pid = None
-    uid: int | None = None
-    if user_id and user.is_admin:
-        try:
-            uid = int(user_id)
-        except ValueError:
-            uid = None
 
     stmt = (
         select(TimeEntry, Project, User)
@@ -2649,11 +2643,8 @@ def reports_page(
         .join(User, User.id == TimeEntry.user_id)
         .order_by(TimeEntry.entry_date, TimeEntry.id)
     )
-    # Non-admins only ever see their own entries.
-    if not user.is_admin:
-        stmt = stmt.where(TimeEntry.user_id == user.id)
-    elif uid is not None:
-        stmt = stmt.where(TimeEntry.user_id == uid)
+    # Time data is always scoped to the requesting user — admins included.
+    stmt = stmt.where(TimeEntry.user_id == user.id)
     if df is not None:
         stmt = stmt.where(TimeEntry.entry_date >= df)
     if dt is not None:
@@ -2666,18 +2657,13 @@ def reports_page(
     rows = list(db.execute(stmt).all())
     report = rb.build_report(rows, active_group_by, detailed=active_detailed)
 
-    # Project filter mirrors the entry scoping above: non-admins only see their
-    # own projects; an admin keeps the cross-user view for reporting.
-    proj_stmt = select(Project).order_by(Project.code)
-    if not user.is_admin:
-        proj_stmt = proj_stmt.where(Project.user_id == user.id)
-    projects = list(db.execute(proj_stmt).scalars())
-    customers = sorted({p.customer for p in projects if p.customer})
-    users = (
-        list(db.execute(select(User).order_by(User.full_name)).scalars())
-        if user.is_admin
-        else []
+    # Project filter is scoped to the user's own projects, mirroring the entries.
+    projects = list(
+        db.execute(
+            select(Project).where(Project.user_id == user.id).order_by(Project.code)
+        ).scalars()
     )
+    customers = sorted({p.customer for p in projects if p.customer})
 
     return templates.TemplateResponse(
         "reports.html",
@@ -2692,11 +2678,9 @@ def reports_page(
             active_detailed=active_detailed,
             projects=projects,
             customers=customers,
-            users=users,
             date_from=df.isoformat() if df else "",
             date_to=dt.isoformat() if dt else "",
             project_id=pid or "",
             customer=customer or "",
-            user_id=uid or "",
         ),
     )
