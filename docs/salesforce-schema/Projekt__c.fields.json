@@ -1,0 +1,1740 @@
+[
+  {
+    "custom": false,
+    "label": "Datensatz-ID",
+    "length": 18,
+    "name": "Id",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "id"
+  },
+  {
+    "custom": false,
+    "label": "Inhaber-ID",
+    "length": 18,
+    "name": "OwnerId",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [
+      "Group",
+      "User"
+    ],
+    "relationshipName": "Owner",
+    "type": "reference"
+  },
+  {
+    "custom": false,
+    "label": "Gel\u00f6scht",
+    "length": 0,
+    "name": "IsDeleted",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": false,
+    "label": "Projektnummer",
+    "length": 80,
+    "name": "Name",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": false,
+    "label": "Datensatztyp-ID",
+    "length": 18,
+    "name": "RecordTypeId",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "RecordType"
+    ],
+    "relationshipName": "RecordType",
+    "type": "reference"
+  },
+  {
+    "custom": false,
+    "label": "Erstelldatum",
+    "length": 0,
+    "name": "CreatedDate",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "datetime"
+  },
+  {
+    "custom": false,
+    "label": "Ersteller-ID",
+    "length": 18,
+    "name": "CreatedById",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "CreatedBy",
+    "type": "reference"
+  },
+  {
+    "custom": false,
+    "label": "Zuletzt ge\u00e4ndert am",
+    "length": 0,
+    "name": "LastModifiedDate",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "datetime"
+  },
+  {
+    "custom": false,
+    "label": "ID f\u00fcr \"Zuletzt ge\u00e4ndert von\"",
+    "length": 18,
+    "name": "LastModifiedById",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "LastModifiedBy",
+    "type": "reference"
+  },
+  {
+    "custom": false,
+    "label": "System Modstamp",
+    "length": 0,
+    "name": "SystemModstamp",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "datetime"
+  },
+  {
+    "custom": false,
+    "label": "Letzte Aktivit\u00e4t am",
+    "length": 0,
+    "name": "LastActivityDate",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": false,
+    "label": "Datum der letzten Ansicht",
+    "length": 0,
+    "name": "LastViewedDate",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "datetime"
+  },
+  {
+    "custom": false,
+    "label": "Datum der letzten Referenzierung",
+    "length": 0,
+    "name": "LastReferencedDate",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "datetime"
+  },
+  {
+    "custom": true,
+    "label": "Abrechnungsart",
+    "length": 255,
+    "name": "Abrechnungsart__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Rechnung",
+        "value": "Rechnung"
+      },
+      {
+        "label": "Festpreis",
+        "value": "Festpreis"
+      },
+      {
+        "label": "Gutschrift",
+        "value": "Gutschrift"
+      },
+      {
+        "label": "Software Verkauf",
+        "value": "Software Verkauf"
+      },
+      {
+        "label": "Intern",
+        "value": "Intern"
+      },
+      {
+        "label": "Rahmenvertrag",
+        "value": "Rahmenvertrag"
+      },
+      {
+        "label": "Rahmenvertrag mit Kickback",
+        "value": "Rahmenvertrag mit Kickback"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Account",
+    "length": 18,
+    "name": "Account__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Account"
+    ],
+    "relationshipName": "Account__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Projektname",
+    "length": 255,
+    "name": "Bezeichnung__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Budget",
+    "length": 0,
+    "name": "Budget__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Endkunde",
+    "length": 18,
+    "name": "Endkunde__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Account"
+    ],
+    "relationshipName": "Endkunde__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Kategorie (Account)",
+    "length": 1300,
+    "name": "Kategorie_Account__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Kfm. Ansprechpartner Kunde",
+    "length": 18,
+    "name": "Kontakt__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "Kontakt__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Opportunity",
+    "length": 18,
+    "name": "Opportunity__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Opportunity"
+    ],
+    "relationshipName": "Opportunity__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Projektende",
+    "length": 0,
+    "name": "Projektende__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "mindsquare Projektleiter",
+    "length": 18,
+    "name": "Projektleiter__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "Projektleiter__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Projektstart",
+    "length": 0,
+    "name": "Projektstart__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Projektstatus",
+    "length": 255,
+    "name": "Projektstatus__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "l\u00e4uft",
+        "value": "l\u00e4uft"
+      },
+      {
+        "label": "geplant",
+        "value": "geplant"
+      },
+      {
+        "label": "abgeschlossen",
+        "value": "abgeschlossen"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Beschreibung der Abrechnung",
+    "length": 32768,
+    "name": "Beschreibung_der_Abrechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Zahlungsziel",
+    "length": 0,
+    "name": "Zahlungsziel__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Bestellnummer vom Kunden",
+    "length": 35,
+    "name": "Bestellnummer_Kunde__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Projektnotizen Operating",
+    "length": 32000,
+    "name": "Projektnotizen_Operating__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Kundenbetreuer",
+    "length": 1300,
+    "name": "Kundenbetreuer__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Unterschrift",
+    "length": 255,
+    "name": "Unterschrift__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Freigabe Kunde",
+        "value": "Freigabe Kunde"
+      },
+      {
+        "label": "Keine Kundenfreigabe erforderlich",
+        "value": "Keine Kundenfreigabe erforderlich"
+      },
+      {
+        "label": "Projektleiter mindsquare",
+        "value": "Projektleiter mindsquare"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "optionales Feld 2",
+    "length": 30,
+    "name": "optionalesFeld2__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "optionales Feld Wert 2",
+    "length": 30,
+    "name": "optionalesFeldWert2__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "optionales Feld Wert",
+    "length": 30,
+    "name": "optionalesFeldWert__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "optionales Feld",
+    "length": 30,
+    "name": "optionalesFeld__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Dienstleistungsart",
+    "length": 255,
+    "name": "Sparte__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "msPeople",
+        "value": "msPeople"
+      },
+      {
+        "label": "msSolution",
+        "value": "msSolution"
+      },
+      {
+        "label": "msService",
+        "value": "msService"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Fachbereichsleiter",
+    "length": 18,
+    "name": "Fachbereichsleiter__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "Fachbereichsleiter__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "QM Kontakt beim Kunden",
+    "length": 18,
+    "name": "QM_Kontakt__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "QM_Kontakt__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Abweichender Kundenbetreuer",
+    "length": 18,
+    "name": "Abweichender_Kundenbetreuer__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "Abweichender_Kundenbetreuer__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Adresszeile 1",
+    "length": 50,
+    "name": "Adresszeile_1__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Adresszeile 2",
+    "length": 50,
+    "name": "Adresszeile_2__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Adresszeile 3",
+    "length": 50,
+    "name": "Adresszeile_3__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Adresszeile 4",
+    "length": 50,
+    "name": "Adresszeile_4__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Adresszeile 5",
+    "length": 50,
+    "name": "Adresszeile_5__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Zusatzinfos auf der Rechnung",
+    "length": 255,
+    "name": "Zusatzinfos_fuer_Rechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Festpreis Abrechnungsstatus",
+    "length": 255,
+    "name": "Festpreis_Abrechnungsstatus__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Offen",
+        "value": "Offen"
+      },
+      {
+        "label": "Teilabgerechnet",
+        "value": "Teilabgerechnet"
+      },
+      {
+        "label": "Abgerechnet",
+        "value": "Abgerechnet"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Projektart",
+    "length": 255,
+    "name": "Projektart__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Neukundenprojekt",
+        "value": "Neukundenprojekt"
+      },
+      {
+        "label": "Bestandskundenprojekt",
+        "value": "Bestandskundenprojekt"
+      },
+      {
+        "label": "Folgeprojekt",
+        "value": "Folgeprojekt"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Erwarteter Umsatz",
+    "length": 0,
+    "name": "msExpectedRevenue__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Interne Kosten",
+    "length": 0,
+    "name": "msInternalCosts__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Budget \u00dcbrig (Tagesaktuell)",
+    "length": 0,
+    "name": "msBudgetLeft__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "After Sales Phase",
+    "length": 255,
+    "name": "msAfterSalesPhase__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Nicht begonnen",
+        "value": "Nicht begonnen"
+      },
+      {
+        "label": "Im Prozess",
+        "value": "Im Prozess"
+      },
+      {
+        "label": "Im mehrmaligen Nachfassen",
+        "value": "Im mehrmaligen Nachfassen"
+      },
+      {
+        "label": "Abgebrochen",
+        "value": "Abgebrochen"
+      },
+      {
+        "label": "Prozess ohne Ergebnis beendet",
+        "value": "Prozess ohne Ergebnis beendet"
+      },
+      {
+        "label": "Prozess mit Ergebnis beendet",
+        "value": "Prozess mit Ergebnis beendet"
+      },
+      {
+        "label": "Kein After Sales vorgesehen",
+        "value": "Kein After Sales vorgesehen"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Folge Opp",
+    "length": 18,
+    "name": "msFolgeOpp__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Opportunity"
+    ],
+    "relationshipName": "msFolgeOpp__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Kundenkontakt f\u00fcr After Sales",
+    "length": 18,
+    "name": "msKundenkontaktFuerAfterSales__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "msKundenkontaktFuerAfterSales__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "N\u00e4chster Kontrolltermin",
+    "length": 0,
+    "name": "msNaechsterKontrolltermin__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Next Step",
+    "length": 32768,
+    "name": "msNextStep__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Projekt",
+    "length": 18,
+    "name": "msProjekt__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Projekt__c"
+    ],
+    "relationshipName": "msProjekt__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Rahmenvertrag",
+    "length": 18,
+    "name": "msRahmenvertrag__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Projekt__c"
+    ],
+    "relationshipName": "msRahmenvertrag__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Rahmenvertragsvolumen",
+    "length": 0,
+    "name": "msRahmenvertragsvolumen__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Letzte QM-Abfrage",
+    "length": 0,
+    "name": "msLetzteQMAbfrage__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Verantwortlicher",
+    "length": 18,
+    "name": "msVerantwortlicher__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "msVerantwortlicher__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Helferfeld QM-Planungsstatus",
+    "length": 0,
+    "name": "msHelfer_QM_Planungsstatus__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Squad des Projektleiters",
+    "length": 1300,
+    "name": "Squad_des_Projektleiters__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "After Sales next Step Termin",
+    "length": 0,
+    "name": "msAfterSalesNextStepTermin__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Verantwortlicher (Formel)",
+    "length": 1300,
+    "name": "msVerantwortlicherFormel__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Folge Opp Formel",
+    "length": 1300,
+    "name": "msFolgeOppFormel__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Kundenkontakt f\u00fcr After Sales Formel",
+    "length": 1300,
+    "name": "msKundenkontaktFuerAfterSalesFormel__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Schlusstermin",
+    "length": 0,
+    "name": "msSchlusstermin__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "QM geplant",
+    "length": 0,
+    "name": "msQMGeplant__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "QM-Projekt abgeschlossen",
+    "length": 0,
+    "name": "msQMProjektAbgeschlossen__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "N\u00e4chste geplante QM-Abfrage",
+    "length": 0,
+    "name": "msNaechsteGeplanteAbfrage__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Fachbereich",
+    "length": 1300,
+    "name": "msFachbereich__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Abfrage in Zukunft geplant",
+    "length": 0,
+    "name": "msAbfrageInZukunftGeplant__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Anzahl QM-Abfragen",
+    "length": 0,
+    "name": "msAnzahlQMAbfragen__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "ProjektEndMonth",
+    "length": 0,
+    "name": "ProjektEndMonth__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "ms Projektleiter E-Mail",
+    "length": 1300,
+    "name": "ms_Projektleiter_E_Mail__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "ms Projektleiter Telefon",
+    "length": 1300,
+    "name": "ms_Projektleiter_Telefon__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Anzahl Freiberufler im Projekt",
+    "length": 0,
+    "name": "msAnzahlFBinProjekt__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Bemerkung f\u00fcr Leistungsnachweis",
+    "length": 255,
+    "name": "msActivityReportComment__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Projektadresse",
+    "length": 1300,
+    "name": "fbrProjektadresse__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Squadzuordnung",
+    "length": 1300,
+    "name": "Squadzuordnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "ProjektStartMonth",
+    "length": 0,
+    "name": "ProjektStartMonth__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "ProjektStartYear",
+    "length": 0,
+    "name": "ProjektStartYear__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Projektpriorit\u00e4t",
+    "length": 0,
+    "name": "Projektprioritaet__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "FBL bei Migration behalten",
+    "length": 0,
+    "name": "FBL_bei_Migration_behalten__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "jbtest_Prognose",
+    "length": 0,
+    "name": "jbtest_Prognose__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Email f\u00fcr Rechnungsversand alternativ",
+    "length": 80,
+    "name": "ln20_Alt_Rechnungsemail__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "email"
+  },
+  {
+    "custom": true,
+    "label": "Projekt in meinem Fachbereich",
+    "length": 0,
+    "name": "ProjektInMeinemFachbereich__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Rechnungskontakt Alternativ",
+    "length": 18,
+    "name": "ln20_Rechnungskontakt_Alternativ__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "ln20_Rechnungskontakt_Alternativ__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Link zum \u00d6ffnen",
+    "length": 1300,
+    "name": "LinkzumOeffnen__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "QM \u00dcberf\u00e4llig",
+    "length": 0,
+    "name": "QM_Ueberfaellig__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Expected Outcome",
+    "length": 0,
+    "name": "Expected_Outcome__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Geplante Marge",
+    "length": 0,
+    "name": "GeplanteMarge__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "percent"
+  },
+  {
+    "custom": true,
+    "label": "Geplante Marge in \u20ac",
+    "length": 0,
+    "name": "GeplanteMargeBetrag__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Total netto abgerechnet",
+    "length": 0,
+    "name": "Totally_billed_netto__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Bin ich Projektleiter?",
+    "length": 0,
+    "name": "BinIchProjektleiter__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Hat Referenzfolien",
+    "length": 0,
+    "name": "IsReferenzprojekt__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Keyword(s)",
+    "length": 255,
+    "name": "Keyword_s__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Referenzkontakt",
+    "length": 18,
+    "name": "Referenzkontakt__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "Referenzkontakt__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Fachbereich Projektmanager",
+    "length": 1300,
+    "name": "Fachbereich_Projektmanager__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Projektstatus Sortierbar",
+    "length": 0,
+    "name": "Projektstatus_Sortierbar__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "double"
+  },
+  {
+    "custom": true,
+    "label": "Anforderer",
+    "length": 255,
+    "name": "Anforderer__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Kundensegment",
+    "length": 255,
+    "name": "Kundensegment__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "IT f\u00fcr Vertrieb",
+        "value": "IT f\u00fcr Vertrieb"
+      },
+      {
+        "label": "IT f\u00fcr HR",
+        "value": "IT f\u00fcr HR"
+      },
+      {
+        "label": "IT f\u00fcr Produktion/Logistik",
+        "value": "IT f\u00fcr Produktion/Logistik"
+      },
+      {
+        "label": "IT f\u00fcr IT",
+        "value": "IT f\u00fcr IT"
+      },
+      {
+        "label": "KI",
+        "value": "KI"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Bereich",
+    "length": 255,
+    "name": "Bereich__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Service",
+        "value": "Service"
+      },
+      {
+        "label": "Projektumsetzung",
+        "value": "Projektumsetzung"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Access Key",
+    "length": 20,
+    "name": "Access_Key__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Genehmiger",
+    "length": 18,
+    "name": "Genehmiger__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "Genehmiger__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Ansprechpartner Resourcing",
+    "length": 18,
+    "name": "AnsprechpartnerResourcing__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "User"
+    ],
+    "relationshipName": "AnsprechpartnerResourcing__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Rechnungssperre",
+    "length": 0,
+    "name": "Rechnungssperre__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Betrag Regelabrechnung",
+    "length": 0,
+    "name": "Betrag_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "currency"
+  },
+  {
+    "custom": true,
+    "label": "Enddatum Regelabrechnung",
+    "length": 0,
+    "name": "Enddatum_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Erstellmonat Regelabrechnung",
+    "length": 255,
+    "name": "Erstellmonat_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "1",
+        "value": "1"
+      },
+      {
+        "label": "2",
+        "value": "2"
+      },
+      {
+        "label": "3",
+        "value": "3"
+      },
+      {
+        "label": "4",
+        "value": "4"
+      },
+      {
+        "label": "5",
+        "value": "5"
+      },
+      {
+        "label": "6",
+        "value": "6"
+      },
+      {
+        "label": "7",
+        "value": "7"
+      },
+      {
+        "label": "8",
+        "value": "8"
+      },
+      {
+        "label": "9",
+        "value": "9"
+      },
+      {
+        "label": "10",
+        "value": "10"
+      },
+      {
+        "label": "11",
+        "value": "11"
+      },
+      {
+        "label": "12",
+        "value": "12"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Erstelltag Regelabrechnung",
+    "length": 255,
+    "name": "Erstelltag_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "1",
+        "value": "1"
+      },
+      {
+        "label": "2",
+        "value": "2"
+      },
+      {
+        "label": "3",
+        "value": "3"
+      },
+      {
+        "label": "4",
+        "value": "4"
+      },
+      {
+        "label": "5",
+        "value": "5"
+      },
+      {
+        "label": "6",
+        "value": "6"
+      },
+      {
+        "label": "7",
+        "value": "7"
+      },
+      {
+        "label": "8",
+        "value": "8"
+      },
+      {
+        "label": "9",
+        "value": "9"
+      },
+      {
+        "label": "10",
+        "value": "10"
+      },
+      {
+        "label": "11",
+        "value": "11"
+      },
+      {
+        "label": "12",
+        "value": "12"
+      },
+      {
+        "label": "13",
+        "value": "13"
+      },
+      {
+        "label": "14",
+        "value": "14"
+      },
+      {
+        "label": "15",
+        "value": "15"
+      },
+      {
+        "label": "16",
+        "value": "16"
+      },
+      {
+        "label": "17",
+        "value": "17"
+      },
+      {
+        "label": "18",
+        "value": "18"
+      },
+      {
+        "label": "19",
+        "value": "19"
+      },
+      {
+        "label": "20",
+        "value": "20"
+      },
+      {
+        "label": "21",
+        "value": "21"
+      },
+      {
+        "label": "22",
+        "value": "22"
+      },
+      {
+        "label": "23",
+        "value": "23"
+      },
+      {
+        "label": "24",
+        "value": "24"
+      },
+      {
+        "label": "25",
+        "value": "25"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "N\u00e4chster Leistungszeitraum",
+    "length": 255,
+    "name": "N_chster_Leistungszeitraum__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "N\u00e4chstes Rechnungsdatum",
+    "length": 0,
+    "name": "Naechstes_Rechnungsdatum__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "PB fur Regelabrechnung",
+    "length": 18,
+    "name": "PB_fur_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Projektbesetzung__c"
+    ],
+    "relationshipName": "PB_fur_Regelabrechnung__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Positionstext Regelabrechnung",
+    "length": 255,
+    "name": "Positionstext_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Serienmuster Regelabrechnung",
+    "length": 255,
+    "name": "Serienmuster_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [
+      {
+        "label": "Monatlich",
+        "value": "Monatlich"
+      },
+      {
+        "label": "Quartalsweise",
+        "value": "Quartalsweise"
+      },
+      {
+        "label": "J\u00e4hrlich",
+        "value": "J\u00e4hrlich"
+      }
+    ],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "picklist"
+  },
+  {
+    "custom": true,
+    "label": "Startdatum Regelabrechnung",
+    "length": 0,
+    "name": "Startdatum_Regelabrechnung__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "\u00dcbern\u00e4chstes Rechnungsdatum",
+    "length": 0,
+    "name": "Uebernaechstes_Rechnungsdatum__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "\u00dcbern\u00e4chster Leistungszeitraum",
+    "length": 255,
+    "name": "bern_chster_Leistungszeitraum__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "string"
+  },
+  {
+    "custom": true,
+    "label": "Erster Projekttag",
+    "length": 0,
+    "name": "msFirstProjectday__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "date"
+  },
+  {
+    "custom": true,
+    "label": "Sammelrechnung",
+    "length": 0,
+    "name": "Total_Invoice__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Darf als Referenzkontakt genannt werden?",
+    "length": 0,
+    "name": "ConsentfromCustomer__c",
+    "nillable": false,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "boolean"
+  },
+  {
+    "custom": true,
+    "label": "Notizen zum Referenzkontakt",
+    "length": 2000,
+    "name": "Notizen_zum_Referenzkontakt__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "textarea"
+  },
+  {
+    "custom": true,
+    "label": "Referenzkontakt",
+    "length": 18,
+    "name": "Reference_contact__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [
+      "Contact"
+    ],
+    "relationshipName": "Reference_contact__r",
+    "type": "reference"
+  },
+  {
+    "custom": true,
+    "label": "Referenzfolie",
+    "length": 255,
+    "name": "Referenceslides__c",
+    "nillable": true,
+    "picklistValues": [],
+    "referenceTo": [],
+    "relationshipName": null,
+    "type": "url"
+  }
+]
