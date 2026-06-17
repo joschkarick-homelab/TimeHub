@@ -613,9 +613,7 @@ def bulk_delete_entries(
 ):
     """Delete several entries at once (mass-select mode on the dashboard).
     Scoped to the user's own entries; the active filter is preserved via next."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     back = _safe_next(next)
     if not entry_ids:
         sep = "&" if "?" in back else "?"
@@ -2153,9 +2151,7 @@ async def import_preview(
     """Dry-run the import and show what would be created — no rows are written.
     The uploaded CSV is carried into the confirm form (base64) so the actual
     import doesn't require re-selecting the file."""
-    user = _maybe_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    user = _require_login(request, db)
     fmt = db.get(ImportFormat, format_id)
     if fmt is None or (not fmt.is_global and fmt.owner_id != user.id and not user.is_admin):
         raise HTTPException(status_code=404, detail="format not found")
