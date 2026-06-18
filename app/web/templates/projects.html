@@ -10,7 +10,16 @@
 {% endif %}
 
 <section class="bg-white border border-slate-200 p-5 mb-6">
-  <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">Neues Projekt</h2>
+  <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+    <h2 class="font-semibold th-section-title th-section-purple th-outfit">Neues Projekt</h2>
+    {% if sf_configured %}
+      <a href="/projects/import-salesforce"
+         class="h-9 px-3 inline-flex items-center bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium"
+         title="Projekte aus deinen aktuellen Salesforce-Projektbesetzungen anlegen">
+        ↓ Import aus Salesforce-Projekten
+      </a>
+    {% endif %}
+  </div>
   <form method="post" action="/projects" class="grid sm:grid-cols-6 gap-3 items-end">
     <label class="sm:col-span-2 text-sm">
       <span class="block font-medium mb-1 text-xs">Name</span>

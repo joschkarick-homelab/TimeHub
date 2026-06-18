@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Project
+from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
 from app.web.common import (
     _KNOWN_SYNC_TARGETS,
@@ -52,6 +53,38 @@ def _unique_project_code(db: Session, name: str, user_id: int) -> str:
     return f"{base}-{i}"
 
 
+# Distinct, dark-theme-friendly hues handed out to freshly imported projects so
+# they're easy to tell apart on the dashboard (Tailwind-500 palette).
+_IMPORT_COLORS = [
+    "#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
+    "#8b5cf6", "#ec4899", "#14b8a6", "#84cc16", "#f97316",
+]
+
+
+def _next_import_color(taken: set[str], index: int) -> str:
+    """First palette colour not already in use, so imports don't all look alike
+    and tend to differ from existing projects too. Once the palette is
+    exhausted it cycles by `index` (the running import count) so a batch still
+    spreads across the palette instead of repeating one hue."""
+    for c in _IMPORT_COLORS:
+        if c not in taken:
+            return c
+    return _IMPORT_COLORS[index % len(_IMPORT_COLORS)]
+
+
+def _existing_sf_assignment_ids(db: Session, user_id: int) -> set[str]:
+    """Salesforce-Projektbesetzungs-Ids, die bereits an einem Projekt des Users
+    hinterlegt sind — Grundlage dafür, schon importierte PBs auszublenden."""
+    ids: set[str] = set()
+    for (md,) in db.execute(
+        select(Project.sync_metadata).where(Project.user_id == user_id)
+    ).all():
+        aid = ((md or {}).get("salesforce") or {}).get("assignment_id")
+        if aid:
+            ids.add(aid)
+    return ids
+
+
 @router.get("/projects", response_class=HTMLResponse)
 def projects_page(
     request: Request,
@@ -76,6 +109,7 @@ def projects_page(
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("project"),
             sync_dynamic_options=_sync_dynamic_options(db, user),
+            sf_configured=sf_svc.credentials_configured(db),
             statuses=_KNOWN_STATUSES,
             flash=flash,
             error=error,
@@ -123,6 +157,130 @@ async def projects_create(
         )
     return RedirectResponse(
         url=f"/projects?flash=Projekt+'{p.code}'+angelegt",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.get("/projects/import-salesforce", response_class=HTMLResponse)
+def projects_import_sf_form(
+    request: Request, db: Session = Depends(get_db), error: str | None = None
+):
+    """Liste der aktuell laufenden Salesforce-Projektbesetzungen des Users
+    (gleiche Filter wie das PB-Dropdown), beschränkt auf jene, die noch an
+    keinem Projekt hinterlegt sind — zum Ankreuzen und Anlegen."""
+    user = _require_login(request, db)
+    if not sf_svc.credentials_configured(db):
+        return RedirectResponse(
+            url="/projects?error=Salesforce+ist+nicht+konfiguriert",
+            status_code=status.HTTP_302_FOUND,
+        )
+    client = sf_svc.client_from_settings(db)
+    assignments: list[dict] = []
+    sf_error: str | None = None
+    if client is None or not user.email:
+        sf_error = "Keine Salesforce-Verbindung oder fehlende E-Mail-Adresse."
+    else:
+        try:
+            existing = _existing_sf_assignment_ids(db, user.id)
+            assignments = [
+                a
+                for a in sf_svc.assignments_for_import(client, user.email)
+                if a["assignment_id"] not in existing
+            ]
+        except sf_svc.SalesforceError as exc:
+            log.info("SF project import lookup failed: %s", exc)
+            sf_error = f"Salesforce-Abfrage fehlgeschlagen: {exc}"
+    return templates.TemplateResponse(
+        "projects_import_sf.html",
+        _ctx(request, user, assignments=assignments, sf_error=sf_error, error=error),
+    )
+
+
+@router.post("/projects/import-salesforce", response_class=HTMLResponse)
+async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)):
+    """Legt für jede angekreuzte Projektbesetzung ein Projekt an (Ziel:
+    salesforce, mit hinterlegter assignment_id). Re-fetch + Re-Dedup, damit eine
+    inzwischen angelegte oder weggefallene PB nicht doppelt/fälschlich landet."""
+    user = _require_login(request, db)
+    if not sf_svc.credentials_configured(db):
+        return RedirectResponse(
+            url="/projects?error=Salesforce+ist+nicht+konfiguriert",
+            status_code=status.HTTP_302_FOUND,
+        )
+    form = await request.form()
+    selected = set(form.getlist("assignment_ids"))
+    if not selected:
+        return RedirectResponse(
+            url="/projects?error=Keine+Projektbesetzung+ausgewählt",
+            status_code=status.HTTP_302_FOUND,
+        )
+    client = sf_svc.client_from_settings(db)
+    if client is None or not user.email:
+        return RedirectResponse(
+            url="/projects?error=Keine+Salesforce-Verbindung",
+            status_code=status.HTTP_302_FOUND,
+        )
+    try:
+        available = {
+            a["assignment_id"]: a
+            for a in sf_svc.assignments_for_import(client, user.email)
+        }
+    except sf_svc.SalesforceError as exc:
+        log.info("SF project import failed: %s", exc)
+        return RedirectResponse(
+            url="/projects?error=Salesforce-Abfrage+fehlgeschlagen",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    existing = _existing_sf_assignment_ids(db, user.id)
+    taken_colors = {
+        (c or "").lower()
+        for (c,) in db.execute(
+            select(Project.color).where(Project.user_id == user.id)
+        ).all()
+        if c
+    }
+    sf_fields = sf.project_fields("salesforce")
+    created = 0
+    for aid in selected:
+        a = available.get(aid)
+        if a is None or aid in existing:
+            continue  # stale selection or imported in the meantime
+        base = a["number"] or a["name"]
+        color = _next_import_color(taken_colors, created)
+        taken_colors.add(color)
+        p = Project(
+            user_id=user.id,
+            name=(a["name"] or base)[:255],
+            code=_unique_project_code(db, base, user.id),
+            customer=(a["customer"] or None),
+            color=color,
+            default_sync_target="salesforce",
+            status="active",
+        )
+        p.sync_metadata, _ = sf.apply_fields(
+            {}, "salesforce", sf_fields, {"assignment_id": aid}
+        )
+        db.add(p)
+        db.flush()  # so the next _unique_project_code sees this code
+        existing.add(aid)
+        created += 1
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return RedirectResponse(
+            url="/projects?error=Import+fehlgeschlagen+(Code-Kollision)",
+            status_code=status.HTTP_302_FOUND,
+        )
+    if created == 0:
+        return RedirectResponse(
+            url="/projects?flash=Keine+neuen+Projekte+angelegt",
+            status_code=status.HTTP_302_FOUND,
+        )
+    return RedirectResponse(
+        url=f"/projects?flash={created}+Projekt(e)+aus+Salesforce+angelegt",
         status_code=status.HTTP_302_FOUND,
     )
 

@@ -271,10 +271,12 @@ def _assignment_label(project_name: str, customer: str, number: str,
     return f"{head} ({' · '.join(suffix)})" if suffix else head
 
 
-def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict]:
-    """Aktuell auswählbare Projektbesetzungen des Users mit der gegebenen
-    E-Mail — interner Mitarbeiter ODER externer Contact. Liefert
-    Dropdown-fertige `{value, label, search}`-Einträge.
+def _query_assignment_records(client: SalesforceClient, email: str) -> list[dict]:
+    """Führt die Projektbesetzungs-SOQL für den User aus und normalisiert die
+    Records. Geteilt vom Projektbesetzungs-Dropdown
+    (`list_assignments_for_user`) und dem Projekt-Import
+    (`assignments_for_import`), damit die Filter-Kriterien an genau einer Stelle
+    leben.
 
     Eingeschränkt auf Projektbesetzungen, die der User jetzt wirklich bebuchen
     kann (Status/Datum am verknüpften Projekt, Schreibweise laut SF-Schema):
@@ -285,13 +287,9 @@ def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict
         leeres Startfeld erlaubt) und das Projektende liegt in der Zukunft
         (`Projekt__r.Projektende__c >= heute`; ohne Enddatum kein Treffer).
 
-    `search` bündelt Kunde (AccountName), Projektbezeichnung und Projektnummer
-    (P0000…) als Klartext für die Fuzzy-Suche im Frontend — interne SF-Ids und
-    die PB-Nummer sind bewusst NICHT enthalten.
-
-    Wenn die E-Mail-Adresse unplausibel ist (z. B. ein Hochkomma enthält),
-    wird ohne Query eine leere Liste zurückgegeben — die Eingabe steckt direkt
-    im SOQL, also wird sie defensiv geprüft."""
+    Wenn die E-Mail-Adresse unplausibel ist (z. B. ein Hochkomma enthält), wird
+    ohne Query eine leere Liste zurückgegeben — die Eingabe steckt direkt im
+    SOQL, also wird sie defensiv geprüft."""
     e = (email or "").strip()
     if not e or len(e) > 254 or any(c in e for c in ("'", "\\", "\n", "\r")):
         return []
@@ -308,15 +306,59 @@ def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict
     res = client.query(soql)
     out: list[dict] = []
     for r in res.get("records") or []:
-        name = (r.get("Name") or "").strip()
-        bez = (r.get("Projektbezeichnung__c") or "").strip()
-        customer = (r.get("AccountName__c") or "").strip()
-        number = (r.get("Projektnummer__c") or "").strip()
+        out.append({
+            "id": r["Id"],
+            "pb_number": (r.get("Name") or "").strip(),
+            "project_name": (r.get("Projektbezeichnung__c") or "").strip(),
+            "customer": (r.get("AccountName__c") or "").strip(),
+            "number": (r.get("Projektnummer__c") or "").strip(),
+        })
+    return out
+
+
+def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict]:
+    """Aktuell auswählbare Projektbesetzungen des Users mit der gegebenen
+    E-Mail — interner Mitarbeiter ODER externer Contact. Liefert
+    Dropdown-fertige `{value, label, search}`-Einträge.
+
+    Filter-Kriterien siehe `_query_assignment_records`.
+
+    `search` bündelt Kunde (AccountName), Projektbezeichnung und Projektnummer
+    (P0000…) als Klartext für die Fuzzy-Suche im Frontend — interne SF-Ids und
+    die PB-Nummer sind bewusst NICHT enthalten."""
+    out: list[dict] = []
+    for r in _query_assignment_records(client, email):
+        customer, bez, number = r["customer"], r["project_name"], r["number"]
         search = " ".join(p for p in (customer, bez, number) if p).lower()
         out.append({
-            "value": r["Id"],
-            "label": _assignment_label(bez, customer, number, name),
+            "value": r["id"],
+            "label": _assignment_label(bez, customer, number, r["pb_number"]),
             "search": search,
+        })
+    return out
+
+
+def assignments_for_import(client: SalesforceClient, email: str) -> list[dict]:
+    """Strukturierte Projektbesetzungen für den Projekt-Import — gleiche
+    Filter-Kriterien wie das Projektbesetzungs-Dropdown
+    (`list_assignments_for_user`), aber mit getrennten Feldern, aus denen sich
+    ein lokales Projekt anlegen lässt::
+
+        {assignment_id, name, customer, number, label}
+
+    `name` ist die Projektbezeichnung (Fallback: Projektnummer bzw. PB-Nummer);
+    `label` ist die menschenlesbare Dropdown-Schreibweise für die Anzeige."""
+    out: list[dict] = []
+    for r in _query_assignment_records(client, email):
+        bez, customer, number, pb = (
+            r["project_name"], r["customer"], r["number"], r["pb_number"],
+        )
+        out.append({
+            "assignment_id": r["id"],
+            "name": bez or number or pb,
+            "customer": customer,
+            "number": number,
+            "label": _assignment_label(bez, customer, number, pb),
         })
     return out
 

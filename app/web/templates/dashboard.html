@@ -294,7 +294,10 @@
                 {% endif %}
               </td>
             {% endif %}
-            <td class="px-4 py-2">{{ e.entry_date }}</td>
+            {# Datum nur einmal je Tagesgruppe — auf der ersten Zeile. #}
+            <td class="px-4 py-2 whitespace-nowrap {% if loop.first %}font-medium{% endif %}">
+              {% if loop.first %}{{ day.date | de_day_label }}{% endif %}
+            </td>
             <td class="px-4 py-2">
               {% if p %}
                 <span class="inline-block w-2 h-2 rounded-full align-middle"
@@ -304,7 +307,7 @@
                 <span class="text-slate-400 italic">Unbekanntes Projekt</span>
               {% endif %}
             </td>
-            <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
+            <td class="px-4 py-2 tabular-nums whitespace-nowrap">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
             <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
             {% for cell in entry_matrix.get(e.id, []) %}
               <td class="px-2 py-2 text-center">{{ status_dot(cell) }}</td>
@@ -331,9 +334,9 @@
         <tr class="bg-slate-50 border-t border-slate-200 text-slate-700 text-xs">
           <td class="bulk-col px-2 py-1.5"></td>
           {% if sf_configured %}<td class="px-2 py-1.5"></td>{% endif %}
-          <td class="px-4 py-1.5 font-medium">Σ {{ day.date }}</td>
-          <td class="px-4 py-1.5">{{ day.entries|length }} Einträge</td>
-          <td class="px-4 py-1.5 tabular-nums font-semibold">
+          <td class="px-4 py-1.5 font-medium whitespace-nowrap">Σ</td>
+          <td class="px-4 py-1.5 whitespace-nowrap">{{ day.entries|length }} Einträge</td>
+          <td class="px-4 py-1.5 tabular-nums font-semibold whitespace-nowrap">
             {{ '%.2f'|format(day.total_minutes / 60) }} h
           </td>
           <td colspan="5"></td>
@@ -347,7 +350,7 @@
   <div class="md:hidden divide-y divide-slate-100">
     {% for day in days %}
       <div class="flex items-center justify-between px-4 py-2 bg-slate-50 border-t border-slate-200 text-xs text-slate-700">
-        <span class="font-medium">{{ day.date }}</span>
+        <span class="font-medium">{{ day.date | de_day_label }}</span>
         <span class="tabular-nums">{{ day.entries|length }} Einträge ·
           <span class="font-semibold">{{ '%.2f'|format(day.total_minutes / 60) }} h</span>
         </span>
@@ -381,7 +384,7 @@
                 <div class="text-sm text-slate-600 mt-0.5 break-words">{{ e.description }}</div>
               {% endif %}
               <div class="flex items-center gap-3 flex-wrap mt-2 text-xs text-slate-500">
-                <span>{{ e.entry_date }}</span>
+                {# Datum steht im Tages-Header — hier nur noch die Sync-Status-Punkte. #}
                 {% for cell in entry_matrix.get(e.id, []) %}
                   <span class="inline-flex items-center gap-1">
                     {{ status_dot(cell) }}<span>{{ matrix_targets[loop.index0][1] }}</span>
