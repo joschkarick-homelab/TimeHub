@@ -24,6 +24,35 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
+# ── German date formatting ────────────────────────────────────────────────────
+# Templates render `date` objects in German notation (DD.MM.YYYY) via the
+# `de_date` Jinja filter. We map weekday names ourselves instead of relying on
+# locale.setlocale(), which needs the de_DE locale installed in the container.
+_DE_WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+
+
+def de_date(value: date | datetime | str | None, weekday: bool = False) -> str:
+    """Format a date as ``17.06.2026`` (optionally prefixed ``Mi, 17.06.2026``).
+
+    Tolerates ``None``/empty and ISO strings so it can be dropped onto any value
+    a template might hand it without guarding first.
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        try:
+            value = datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            return value
+    formatted = value.strftime("%d.%m.%Y")
+    if weekday:
+        return f"{_DE_WEEKDAYS[value.weekday()]}, {formatted}"
+    return formatted
+
+
+templates.env.filters["de_date"] = de_date
+
+
 # ── CSRF protection ──────────────────────────────────────────────────────────
 # The web UI authenticates via a session cookie, so every state-changing form
 # POST needs a CSRF token. We use a per-session synchronizer token: it lives in
