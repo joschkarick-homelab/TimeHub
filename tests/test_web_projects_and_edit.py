@@ -194,3 +194,90 @@ def test_format_edit_persists_changes(client):
         "duration_minutes": "Hours",
         "project_code": "Project",
     }
+
+
+# ── Import aus Salesforce-Projekten ──────────────────────────────────────────
+
+_SF_IMPORT_FAKE = [
+    {"assignment_id": "a01000000000111", "name": "Asklepios Faktura",
+     "customer": "Asklepios", "number": "P00042",
+     "label": "Asklepios Faktura (Asklepios · P00042)"},
+    {"assignment_id": "a01000000000222", "name": "Globex Rollout",
+     "customer": "Globex", "number": "P00043",
+     "label": "Globex Rollout (Globex · P00043)"},
+]
+
+
+class _FakeSFClient:
+    """Stand-in client. The dropdown's live SOQL (via _sync_dynamic_options)
+    hits .query on the projects page, so it must not blow up; the import list
+    itself is stubbed via assignments_for_import below."""
+
+    def query(self, soql):
+        return {"records": []}
+
+
+def _patch_sf_import(monkeypatch):
+    from app.services import salesforce as sfs
+    monkeypatch.setattr(sfs, "credentials_configured", lambda db: True)
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _FakeSFClient())
+    monkeypatch.setattr(
+        sfs, "assignments_for_import",
+        lambda client, email: [dict(a) for a in _SF_IMPORT_FAKE],
+    )
+
+
+def test_sf_import_button_and_guard_when_not_configured(client, monkeypatch):
+    from app.services import salesforce as sfs
+    _login_session(client)
+    monkeypatch.setattr(sfs, "credentials_configured", lambda db: False)
+    # No Salesforce → no button on the projects page …
+    assert "Import aus Salesforce-Projekten" not in client.get("/projects").text
+    # … and the import route bounces back with an error.
+    r = client.get("/projects/import-salesforce", follow_redirects=False)
+    assert r.status_code == 302
+    assert "error=Salesforce" in r.headers["location"]
+
+
+def test_sf_import_lists_creates_and_dedupes(client, monkeypatch):
+    _login_session(client)
+    _patch_sf_import(monkeypatch)
+    token = _login_api(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    # Button is offered once SF is configured.
+    assert "Import aus Salesforce-Projekten" in client.get("/projects").text
+
+    # Import page lists both open assignments with customer + number.
+    r = client.get("/projects/import-salesforce")
+    assert r.status_code == 200
+    assert "Asklepios Faktura" in r.text and "Globex Rollout" in r.text
+    assert "P00042" in r.text
+
+    # Create only the first one.
+    r = client.post(
+        "/projects/import-salesforce",
+        data={"assignment_ids": ["a01000000000111"]},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert "flash=1+Projekt" in r.headers["location"]
+
+    # The new project exists, is linked to Salesforce …
+    projects = client.get("/api/v1/projects", headers=h).json()
+    created = next(p for p in projects if p["code"] == "P00042")
+    assert created["name"] == "Asklepios Faktura"
+    assert created["default_sync_target"] == "salesforce"
+
+    # … and is no longer offered for import, while the other one still is.
+    r = client.get("/projects/import-salesforce")
+    assert "Asklepios Faktura" not in r.text  # already imported → filtered out
+    assert "Globex Rollout" in r.text
+
+
+def test_sf_import_requires_selection(client, monkeypatch):
+    _login_session(client)
+    _patch_sf_import(monkeypatch)
+    r = client.post("/projects/import-salesforce", data={}, follow_redirects=False)
+    assert r.status_code == 302
+    assert "error=Keine" in r.headers["location"]

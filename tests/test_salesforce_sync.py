@@ -227,6 +227,38 @@ def test_list_assignments_for_user_rejects_bad_email():
     assert sfs.list_assignments_for_user(client, "") == []
 
 
+def test_assignments_for_import_shape(monkeypatch):
+    """assignments_for_import reuses the staffing SOQL but returns the
+    structured fields the project import builds a Project from."""
+    from app.services import salesforce as sfs
+
+    def fake_query(self, soql):
+        # same staffing filter as the dropdown
+        assert "Projektbesetzung__c" in soql
+        assert "Geschlossen__c = false" in soql
+        return {"records": [
+            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo",
+             "Projektnummer__c": "P00042", "AccountName__c": "ACME GmbH"},
+            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None,
+             "Projektnummer__c": None, "AccountName__c": None},
+        ]}
+
+    monkeypatch.setattr(sfs.SalesforceClient, "query", fake_query)
+    client = sfs.SalesforceClient("u", "p", "")
+    client.session_id = "x"
+    client.instance_url = "https://x"
+    items = sfs.assignments_for_import(client, "rick@mindsquare.de")
+    assert items == [
+        {"assignment_id": "a01000000000111", "name": "Foo", "customer": "ACME GmbH",
+         "number": "P00042", "label": "Foo (ACME GmbH · P00042)"},
+        # all project fields empty → name falls back to the PB-Nummer
+        {"assignment_id": "a01000000000222", "name": "PB-222", "customer": "",
+         "number": "", "label": "PB-222"},
+    ]
+    # bad email is guarded just like the dropdown path
+    assert sfs.assignments_for_import(client, "evil'--") == []
+
+
 def test_describe_sobject_rejects_garbage_names():
     import pytest
 
