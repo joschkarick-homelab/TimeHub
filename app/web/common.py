@@ -53,6 +53,35 @@ def de_date(value: date | datetime | str | None, weekday: bool = False) -> str:
 templates.env.filters["de_date"] = de_date
 
 
+def de_day_label(value: date | datetime | str | None, today: date | None = None) -> str:
+    """Relative German day headline used once per day-group.
+
+    ``Heute · 17.06.2026`` / ``Gestern · 16.06.2026`` for today/yesterday,
+    otherwise the weekday: ``Mi · 15.06.2026``. The full date is always kept
+    so longer groups still carry their day context. ``today`` is injectable for
+    deterministic tests; it defaults to the server's current date.
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        try:
+            value = datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            return value
+    if isinstance(value, datetime):
+        value = value.date()
+    full = value.strftime("%d.%m.%Y")
+    delta = ((today or date.today()) - value).days
+    if delta == 0:
+        return f"Heute · {full}"
+    if delta == 1:
+        return f"Gestern · {full}"
+    return f"{_DE_WEEKDAYS[value.weekday()]} · {full}"
+
+
+templates.env.filters["de_day_label"] = de_day_label
+
+
 # ── CSRF protection ──────────────────────────────────────────────────────────
 # The web UI authenticates via a session cookie, so every state-changing form
 # POST needs a CSRF token. We use a per-session synchronizer token: it lives in

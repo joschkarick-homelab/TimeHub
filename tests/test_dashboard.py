@@ -35,6 +35,17 @@ def test_de_date_filter_formats_german_with_optional_weekday():
     assert de_date("2026-06-17") == "17.06.2026"
 
 
+def test_de_day_label_relative_and_weekday():
+    from app.web.common import de_day_label
+
+    today = date(2026, 6, 18)  # a Thursday
+    assert de_day_label(date(2026, 6, 18), today=today) == "Heute · 18.06.2026"
+    assert de_day_label(date(2026, 6, 17), today=today) == "Gestern · 17.06.2026"
+    # older days fall back to the weekday prefix
+    assert de_day_label(date(2026, 6, 15), today=today) == "Mo · 15.06.2026"
+    assert de_day_label(None, today=today) == ""
+
+
 def test_dashboard_renders_dates_in_german_format(client):
     """Grouped entries must show the German DD.MM.YYYY date, not ISO."""
     _login_session(client)
@@ -60,10 +71,9 @@ def test_dashboard_renders_dates_in_german_format(client):
     )
     r = client.get("/?date_from=2026-06-17&date_to=2026-06-17")
     assert r.status_code == 200
-    # German entry date rendered; ISO form for that date no longer in the table.
+    # German date rendered once per group (prefix is today-relative, so we only
+    # assert on the stable date part, not Heute/Gestern/weekday).
     assert "17.06.2026" in r.text
-    # Day-subtotal row carries the weekday prefix.
-    assert "Mi, 17.06.2026" in r.text
 
 
 def test_dashboard_filters_by_date_range(client):
