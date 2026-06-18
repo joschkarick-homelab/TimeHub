@@ -275,6 +275,41 @@ def test_sf_import_lists_creates_and_dedupes(client, monkeypatch):
     assert "Globex Rollout" in r.text
 
 
+def test_sf_import_links_assignment_and_varies_colors(client, monkeypatch):
+    from app.services import salesforce as sfs
+    _login_session(client)
+    # Own, unique assignments so the shared session DB from other tests can't
+    # dedupe these away.
+    monkeypatch.setattr(sfs, "credentials_configured", lambda db: True)
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _FakeSFClient())
+    fakes = [
+        {"assignment_id": "a01000000000333", "name": "Color One",
+         "customer": "C1", "number": "P00050", "label": "x"},
+        {"assignment_id": "a01000000000444", "name": "Color Two",
+         "customer": "C2", "number": "P00051", "label": "x"},
+    ]
+    monkeypatch.setattr(sfs, "assignments_for_import",
+                        lambda client, email: [dict(a) for a in fakes])
+    token = _login_api(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    r = client.post(
+        "/projects/import-salesforce",
+        data={"assignment_ids": ["a01000000000333", "a01000000000444"]},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert "flash=2+Projekt" in r.headers["location"]
+
+    by_code = {p["code"]: p for p in client.get("/api/v1/projects", headers=h).json()}
+    p1, p2 = by_code["P00050"], by_code["P00051"]
+    # assignment_id is stored under the salesforce target …
+    assert p1["sync_metadata"]["salesforce"]["assignment_id"] == "a01000000000333"
+    assert p2["sync_metadata"]["salesforce"]["assignment_id"] == "a01000000000444"
+    # … and the two imported projects got distinct colours.
+    assert p1["color"] != p2["color"]
+
+
 def test_sf_import_requires_selection(client, monkeypatch):
     _login_session(client)
     _patch_sf_import(monkeypatch)

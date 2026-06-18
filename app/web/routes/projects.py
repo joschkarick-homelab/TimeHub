@@ -53,6 +53,25 @@ def _unique_project_code(db: Session, name: str, user_id: int) -> str:
     return f"{base}-{i}"
 
 
+# Distinct, dark-theme-friendly hues handed out to freshly imported projects so
+# they're easy to tell apart on the dashboard (Tailwind-500 palette).
+_IMPORT_COLORS = [
+    "#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
+    "#8b5cf6", "#ec4899", "#14b8a6", "#84cc16", "#f97316",
+]
+
+
+def _next_import_color(taken: set[str], index: int) -> str:
+    """First palette colour not already in use, so imports don't all look alike
+    and tend to differ from existing projects too. Once the palette is
+    exhausted it cycles by `index` (the running import count) so a batch still
+    spreads across the palette instead of repeating one hue."""
+    for c in _IMPORT_COLORS:
+        if c not in taken:
+            return c
+    return _IMPORT_COLORS[index % len(_IMPORT_COLORS)]
+
+
 def _existing_sf_assignment_ids(db: Session, user_id: int) -> set[str]:
     """Salesforce-Projektbesetzungs-Ids, die bereits an einem Projekt des Users
     hinterlegt sind — Grundlage dafür, schon importierte PBs auszublenden."""
@@ -214,6 +233,13 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
         )
 
     existing = _existing_sf_assignment_ids(db, user.id)
+    taken_colors = {
+        (c or "").lower()
+        for (c,) in db.execute(
+            select(Project.color).where(Project.user_id == user.id)
+        ).all()
+        if c
+    }
     sf_fields = sf.project_fields("salesforce")
     created = 0
     for aid in selected:
@@ -221,12 +247,14 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
         if a is None or aid in existing:
             continue  # stale selection or imported in the meantime
         base = a["number"] or a["name"]
+        color = _next_import_color(taken_colors, created)
+        taken_colors.add(color)
         p = Project(
             user_id=user.id,
             name=(a["name"] or base)[:255],
             code=_unique_project_code(db, base, user.id),
             customer=(a["customer"] or None),
-            color="#6366f1",
+            color=color,
             default_sync_target="salesforce",
             status="active",
         )
