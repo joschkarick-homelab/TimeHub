@@ -1,0 +1,15 @@
+[Unit]
+Description=TimeHub backup (pg_dump -> restic HDD -> restic copy S3)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=TIMEHUB_BACKUP_CONFIG=/etc/timehub/backup.env
+ExecStart=/opt/timehub/scripts/backup.sh
+# Don't let a hanging dump/upload run forever.
+TimeoutStartSec=3600
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

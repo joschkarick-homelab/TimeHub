@@ -1,0 +1,11 @@
+[Unit]
+Description=Run TimeHub backup daily
+
+[Timer]
+# Daily at 02:30. Persistent=true catches up a missed run (e.g. host was off).
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
