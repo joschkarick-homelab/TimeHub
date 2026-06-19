@@ -37,51 +37,135 @@
     </div>
   </section>
 
-  <section class="bg-white border border-slate-200 rounded-lg p-5">
-    <h2 class="font-semibold mb-3">Details</h2>
-    <ul class="text-sm divide-y divide-slate-100">
-      {% for r in results %}
-        <li class="py-2 flex flex-wrap items-baseline justify-between gap-3">
-          <div class="flex items-baseline gap-2 min-w-0">
-            {% if r.status == "synced" %}
-              <span class="text-emerald-600 font-semibold">✓</span>
-            {% elif r.status == "failed" %}
-              <span class="text-rose-600 font-semibold">✗</span>
-            {% else %}
-              <span class="text-slate-400 font-semibold">–</span>
-            {% endif %}
-            <span class="font-mono text-slate-500">#{{ r.entry.id }}</span>
-            <span>{{ r.entry.entry_date }}</span>
-            <span class="tabular-nums">{{ '%.2f'|format(r.entry.duration_minutes / 60) }} h</span>
-            {% if r.entry.description %}
-              <span class="text-slate-600 truncate">— {{ r.entry.description }}</span>
-            {% endif %}
-          </div>
-          <div class="text-xs">
-            {% if r.status == "synced" %}
-              <span class="text-emerald-700">
-                Salesforce-Id:
-                {% if instance_url %}
-                  <a href="{{ instance_url }}/{{ r.id }}" target="_blank" rel="noopener"
-                     class="font-mono hover:underline">{{ r.id }}</a>
+  {# --- Fehlgeschlagene Einträge: prominent, mit Sprung ins Projekt/zum Eintrag --- #}
+  {% if failed %}
+    <section class="bg-white border border-rose-200 rounded-lg overflow-hidden mb-4">
+      <div class="px-5 pt-5 pb-3">
+        <h2 class="font-semibold text-rose-700">
+          ✗ Fehlgeschlagene Einträge ({{ failed }})
+        </h2>
+        <p class="text-xs text-slate-500 mt-1">
+          Diese Einträge wurden <strong>nicht</strong> nach Salesforce übertragen.
+          Ursache prüfen, im Projekt (z. B. Projektbesetzung) oder am Eintrag
+          beheben und erneut synchronisieren.
+        </p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[720px]">
+          <thead class="bg-slate-50 text-slate-600 text-left">
+            <tr>
+              <th class="px-4 py-2">Datum</th>
+              <th class="px-4 py-2">Projekt</th>
+              <th class="px-4 py-2 text-right">Dauer</th>
+              <th class="px-4 py-2">Beschreibung</th>
+              <th class="px-4 py-2">Fehler</th>
+              <th class="px-4 py-2 text-right">Beheben</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in results if r.status == "failed" %}
+              {% set p = projects_by_id.get(r.entry.project_id) %}
+              <tr class="border-t border-slate-100 bg-rose-50">
+                <td class="px-4 py-2 whitespace-nowrap">{{ r.entry.entry_date | de_date }}</td>
+                <td class="px-4 py-2">
+                  {% if p %}
+                    <span class="inline-block w-2 h-2 rounded-full align-middle"
+                          style="background: {{ p.color }}"></span>
+                    {{ p.display_label }}
+                  {% else %}
+                    <span class="text-slate-400 italic">Unbekanntes Projekt</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                  {{ '%.2f'|format(r.entry.duration_minutes / 60) }} h
+                </td>
+                <td class="px-4 py-2 text-slate-600">{{ r.entry.description }}</td>
+                <td class="px-4 py-2 text-rose-700">{{ r.error }}</td>
+                <td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                  {% if p %}
+                    <a href="/projects/{{ p.id }}/edit"
+                       class="text-xs text-indigo-600 hover:underline"
+                       title="Projekt-Sync-Daten (z. B. Salesforce-Projektbesetzung) bearbeiten">
+                      → Projekt
+                    </a>
+                  {% endif %}
+                  <a href="/entries/{{ r.entry.id }}/edit?next=/sync"
+                     class="text-xs text-indigo-600 hover:underline"
+                     title="Eintrag bearbeiten">→ Eintrag</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <div class="px-5 pt-5 pb-3">
+      <h2 class="font-semibold">Alle verarbeiteten Einträge</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead class="bg-slate-50 text-slate-600 text-left">
+          <tr>
+            <th class="px-3 py-2 w-6"></th>
+            <th class="px-4 py-2">Datum</th>
+            <th class="px-4 py-2">Projekt</th>
+            <th class="px-4 py-2 text-right">Dauer</th>
+            <th class="px-4 py-2">Ergebnis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+            {% set p = projects_by_id.get(r.entry.project_id) %}
+            <tr class="border-t border-slate-100 {% if r.status == 'failed' %}bg-rose-50{% endif %}">
+              <td class="px-3 py-2 text-center">
+                {% if r.status == "synced" %}
+                  <span class="text-emerald-600 font-semibold">✓</span>
+                {% elif r.status == "failed" %}
+                  <span class="text-rose-600 font-semibold">✗</span>
                 {% else %}
-                  <span class="font-mono">{{ r.id }}</span>
+                  <span class="text-slate-400 font-semibold">–</span>
                 {% endif %}
-              </span>
-              {% if r.warning %}
-                <span class="text-amber-700">⚠ {{ r.warning }}</span>
-              {% endif %}
-            {% elif r.status == "failed" %}
-              <span class="text-rose-700">{{ r.error }}</span>
-            {% else %}
-              <span class="text-slate-500">
-                {{ r.reason }}{% if r.id %} (Id: <span class="font-mono">{{ r.id }}</span>){% endif %}
-              </span>
-            {% endif %}
-          </div>
-        </li>
-      {% endfor %}
-    </ul>
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap">{{ r.entry.entry_date | de_date }}</td>
+              <td class="px-4 py-2">
+                {{ p.display_label if p else '—' }}
+                {% if r.entry.description %}
+                  <span class="text-slate-400">· {{ r.entry.description }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                {{ '%.2f'|format(r.entry.duration_minutes / 60) }} h
+              </td>
+              <td class="px-4 py-2 text-xs">
+                {% if r.status == "synced" %}
+                  <span class="text-emerald-700">
+                    Salesforce-Id:
+                    {% if instance_url %}
+                      <a href="{{ instance_url }}/{{ r.id }}" target="_blank" rel="noopener"
+                         class="font-mono hover:underline">{{ r.id }}</a>
+                    {% else %}
+                      <span class="font-mono">{{ r.id }}</span>
+                    {% endif %}
+                  </span>
+                  {% if r.warning %}
+                    <span class="text-amber-700">⚠ {{ r.warning }}</span>
+                  {% endif %}
+                {% elif r.status == "failed" %}
+                  <span class="text-rose-700">{{ r.error }}</span>
+                {% else %}
+                  <span class="text-slate-500">
+                    {{ r.reason }}{% if r.id %} (Id: <span class="font-mono">{{ r.id }}</span>){% endif %}
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <div class="mt-4 flex gap-3">

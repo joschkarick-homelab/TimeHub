@@ -1,6 +1,6 @@
 import logging
 import secrets
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import (
@@ -165,13 +165,16 @@ def _require_admin(request: Request, db: Session) -> User:
     return user
 
 
-_THEMES = {"indigo", "mindsquare", "dark"}
+# Themes offered in the UI; each is a real, working palette (see base.html).
+# "dark" is the default look.
+_THEMES = {"dark", "light", "mindsquare"}
+_DEFAULT_THEME = "dark"
 
 
 def _ctx(request: Request, user: User | None, **extra) -> dict:
     theme = request.cookies.get("theme")
     if theme not in _THEMES:
-        theme = "indigo"
+        theme = _DEFAULT_THEME
     return {
         "request": request,
         "user": user,
@@ -181,9 +184,17 @@ def _ctx(request: Request, user: User | None, **extra) -> dict:
     }
 
 
-def _filter_query(df: date | None, dt: date | None, project_id: int | None) -> str:
+def _filter_query(
+    df: date | None,
+    dt: date | None,
+    project_id: int | None,
+    customer: str | None = None,
+) -> str:
     """Rebuild the dashboard filter as a relative URL, so CRUD actions can
-    bounce back to the exact same filtered view instead of resetting to '/'."""
+    bounce back to the exact same filtered view instead of resetting to '/'.
+
+    The resolved (concrete) dates are used so the result set is reproduced
+    one-to-one, even when the active view came from a relative range token."""
     from urllib.parse import urlencode
 
     params = {}
@@ -193,7 +204,66 @@ def _filter_query(df: date | None, dt: date | None, project_id: int | None) -> s
         params["date_to"] = dt.isoformat()
     if project_id is not None:
         params["project_id"] = project_id
+    if customer:
+        params["customer"] = customer
     return "/?" + urlencode(params) if params else "/"
+
+
+# ── Relative date ranges ──────────────────────────────────────────────────────
+# Saved views and the filter bars offer relative ranges so a standing view stays
+# meaningful over time (e.g. "this_month" always tracks the current month).
+# Only ``custom`` falls back to explicit date_from/date_to.
+DATE_RANGES: dict[str, str] = {
+    "all": "Gesamter Zeitraum",
+    "this_week": "Diese Woche",
+    "last_week": "Letzte Woche",
+    "this_month": "Dieser Monat",
+    "last_month": "Letzter Monat",
+    "this_year": "Dieses Jahr",
+    "custom": "Benutzerdefiniert",
+}
+
+
+def _month_end(d: date) -> date:
+    """Last day of the month containing ``d``."""
+    from calendar import monthrange
+
+    return d.replace(day=monthrange(d.year, d.month)[1])
+
+
+def resolve_date_range(
+    token: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    *,
+    today: date | None = None,
+) -> tuple[date | None, date | None]:
+    """Translate a relative range token into a concrete (from, to) window.
+
+    ``custom`` (and any unknown token) returns the explicit dates unchanged;
+    ``all`` returns (None, None). ``today`` is injectable for deterministic
+    tests and defaults to the server's current date.
+    """
+    today = today or date.today()
+    if token == "all":
+        return None, None
+    if token == "this_week":
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=6)
+    if token == "last_week":
+        start = today - timedelta(days=today.weekday() + 7)
+        return start, start + timedelta(days=6)
+    if token == "this_month":
+        start = today.replace(day=1)
+        return start, _month_end(start)
+    if token == "last_month":
+        first_this = today.replace(day=1)
+        prev_end = first_this - timedelta(days=1)
+        return prev_end.replace(day=1), prev_end
+    if token == "this_year":
+        return today.replace(month=1, day=1), today.replace(month=12, day=31)
+    # custom / unknown → use the explicit dates as-is.
+    return date_from, date_to
 
 
 def _parse_date(value: str | None) -> date | None:

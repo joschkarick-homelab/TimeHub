@@ -149,19 +149,19 @@ def test_dashboard_dropdown_uses_display_label(client):
 def test_theme_switcher_sets_cookie_and_renders_data_attr(client):
     _login_session(client)
     r = client.get("/")
-    # default is indigo
-    assert 'data-theme="indigo"' in r.text
+    # default is dark
+    assert 'data-theme="dark"' in r.text
 
     r = client.post(
-        "/settings/theme", data={"theme": "dark"}, follow_redirects=False,
+        "/settings/theme", data={"theme": "light"}, follow_redirects=False,
         headers={"referer": "/"},
     )
     assert r.status_code == 302
     cookie = r.headers["set-cookie"]
-    assert "theme=dark" in cookie
+    assert "theme=light" in cookie
 
-    r = client.get("/", cookies={"theme": "dark"})
-    assert 'data-theme="dark"' in r.text
+    r = client.get("/", cookies={"theme": "light"})
+    assert 'data-theme="light"' in r.text
 
 
 def test_theme_switcher_falls_back_on_bogus_value(client):
@@ -172,7 +172,7 @@ def test_theme_switcher_falls_back_on_bogus_value(client):
     )
     assert r.status_code == 302
     cookie = r.headers["set-cookie"]
-    assert "theme=indigo" in cookie  # forced back to a known theme
+    assert "theme=dark" in cookie  # forced back to the default theme
 
 
 # ---------- Profile ----------

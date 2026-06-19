@@ -245,6 +245,7 @@ def sync_salesforce_preview(
             item_errors=[],
             sf_error=sf_error,
             entries=entries,
+            projects_by_id=proj_lookup,
             pushable_count=pushable_count,
             error=None,
         ),
@@ -352,6 +353,7 @@ def sync_salesforce_execute(
             failed=failed,
             skipped=skipped_count,
             instance_url=client.instance_url,
+            projects_by_id=proj_lookup,
             error=None,
         ),
     )

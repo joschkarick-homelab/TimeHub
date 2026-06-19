@@ -12,19 +12,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
-from app.models import EntrySync, ImportFormat, Project, TimeEntry, User
+from app.models import EntrySync, ImportFormat, Project, SavedView, TimeEntry, User
 from app.services import entry_sync as es_svc
 from app.services import reports as report_svc
 from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
 from app.web.common import (
     DASHBOARD_ENTRY_CAP,
+    DATE_RANGES,
     _ctx,
     _filter_query,
     _group_by_day,
     _parse_date,
     _require_login,
     _visible_formats,
+    resolve_date_range,
     templates,
 )
 
@@ -36,28 +38,61 @@ router = APIRouter()
 def index(
     request: Request,
     db: Session = Depends(get_db),
+    date_range: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     project_id: str | None = None,
+    customer: str | None = None,
+    view: str | None = None,
     error: str | None = None,
     flash: str | None = None,
 ):
     user = _require_login(request, db)
 
-    df = _parse_date(date_from)
-    dt = _parse_date(date_to)
-    project_id_int: int | None = None
-    if project_id:
+    # The user's saved dashboard views, plus the one currently applied (if any).
+    saved_views = list(
+        db.execute(
+            select(SavedView)
+            .where(SavedView.user_id == user.id, SavedView.kind == "dashboard")
+            .order_by(SavedView.name)
+        ).scalars()
+    )
+    active_view: SavedView | None = None
+    if view:
         try:
-            project_id_int = int(project_id)
+            vid = int(view)
         except ValueError:
-            project_id_int = None
-    # Default filter window: the current week (Mon–Sun), so the list is tightly
-    # bounded to what you're most likely working on right now.
-    if df is None and dt is None and project_id_int is None:
-        today = date.today()
-        df = today - timedelta(days=today.weekday())
-        dt = df + timedelta(days=6)
+            vid = None
+        if vid is not None:
+            active_view = next((v for v in saved_views if v.id == vid), None)
+
+    if active_view is not None:
+        range_token = active_view.date_range
+        df, dt = resolve_date_range(range_token, active_view.date_from, active_view.date_to)
+        project_id_int = active_view.project_id
+        customer = active_view.customer or ""
+    else:
+        df = _parse_date(date_from)
+        dt = _parse_date(date_to)
+        project_id_int = None
+        if project_id:
+            try:
+                project_id_int = int(project_id)
+            except ValueError:
+                project_id_int = None
+        customer = (customer or "").strip()
+        # Resolve the range: an explicit token wins; otherwise default to the
+        # current week (the list is then tightly bounded to "now"), unless an
+        # explicit date / project / customer filter is already in play.
+        range_token = date_range if date_range in DATE_RANGES else None
+        if range_token is None:
+            if df is not None or dt is not None:
+                range_token = "custom"
+            elif project_id_int is not None or customer:
+                range_token = "all"
+            else:
+                range_token = "this_week"
+        df, dt = resolve_date_range(range_token, df, dt)
 
     stmt = (
         select(TimeEntry)
@@ -71,6 +106,14 @@ def index(
         stmt = stmt.where(TimeEntry.entry_date <= dt)
     if project_id_int is not None:
         stmt = stmt.where(TimeEntry.project_id == project_id_int)
+    if customer:
+        stmt = stmt.where(
+            TimeEntry.project_id.in_(
+                select(Project.id).where(
+                    Project.user_id == user.id, Project.customer == customer
+                )
+            )
+        )
 
     entries = list(db.execute(stmt.limit(DASHBOARD_ENTRY_CAP + 1)).scalars())
     truncated = len(entries) > DASHBOARD_ENTRY_CAP
@@ -90,6 +133,7 @@ def index(
         for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
     }
     projects_by_id = {p.id: p for p in projects}
+    customers = sorted({p.customer for p in proj_lookup.values() if p.customer})
     total_minutes = sum(e.duration_minutes for e in entries)
 
     entry_status = {
@@ -157,10 +201,16 @@ def index(
             entry_count=len(entries),
             sf_week_hours=sf_week_hours,
             today=date.today().isoformat(),
+            date_range=range_token,
+            date_ranges=DATE_RANGES,
             date_from=df.isoformat() if df else "",
             date_to=dt.isoformat() if dt else "",
             project_id=project_id_int or "",
-            filter_query=_filter_query(df, dt, project_id_int),
+            customer=customer or "",
+            customers=customers,
+            saved_views=saved_views,
+            active_view=active_view,
+            filter_query=_filter_query(df, dt, project_id_int, customer or None),
             formats=formats,
             truncated=truncated,
             entry_cap=DASHBOARD_ENTRY_CAP,
@@ -180,6 +230,7 @@ def entries_export(
     date_from: str | None = None,
     date_to: str | None = None,
     project_id: str | None = None,
+    customer: str | None = None,
 ):
     user = _require_login(request, db)
 
@@ -213,6 +264,8 @@ def entries_export(
         stmt = stmt.where(TimeEntry.entry_date <= dt)
     if project_id_int is not None:
         stmt = stmt.where(TimeEntry.project_id == project_id_int)
+    if customer:
+        stmt = stmt.where(Project.customer == customer)
     rows = list(db.execute(stmt).all())
 
     try:

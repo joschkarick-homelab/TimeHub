@@ -15,6 +15,7 @@ from app.db import get_db
 from app.models import User
 from app.security import create_access_token, verify_password
 from app.web.common import (
+    _DEFAULT_THEME,
     _THEMES,
     _ctx,
     _require_login,
@@ -57,7 +58,7 @@ def logout(request: Request):
 @router.post("/settings/theme")
 def set_theme(request: Request, theme: str = Form(...)):
     if theme not in _THEMES:
-        theme = "indigo"
+        theme = _DEFAULT_THEME
     referer = request.headers.get("referer") or "/"
     resp = RedirectResponse(url=referer, status_code=status.HTTP_302_FOUND)
     # 1 year cookie; SameSite=lax so it survives the inline form POST.

@@ -442,7 +442,10 @@
         e.stopPropagation();
         menu.classList.toggle("open");
       });
-      document.addEventListener("click", function () {
+      // Close only when the click lands outside the menu and its trigger —
+      // interacting with anything inside (e.g. the theme picker) keeps it open.
+      document.addEventListener("click", function (e) {
+        if (btn.contains(e.target) || menu.contains(e.target)) return;
         menu.classList.remove("open");
       });
     })();

@@ -11,12 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Project, TimeEntry, User
+from app.models import Project, SavedView, TimeEntry, User
 from app.web.common import (
+    DATE_RANGES,
     REPORT_ROW_CAP,
     _ctx,
     _parse_date,
     _require_login,
+    resolve_date_range,
     templates,
 )
 
@@ -31,41 +33,78 @@ def reports_page(
     preset: str | None = None,
     group_by: list[str] | None = Query(default=None),
     detailed: str | None = None,
+    date_range: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     project_id: str | None = None,
     customer: str | None = None,
+    view: str | None = None,
+    flash: str | None = None,
+    error: str | None = None,
 ):
     from app.services import report_builder as rb
 
     user = _require_login(request, db)
 
-    # Resolve grouping: an explicit preset wins; else custom group_by + detailed.
-    if preset and preset in rb.PRESETS:
-        cfg = rb.PRESETS[preset]
-        active_group_by = cfg["group_by"]
-        active_detailed = cfg["detailed"]
-    elif group_by:
-        active_group_by = [g for g in group_by if g in rb.DIMENSIONS]
-        active_detailed = detailed in ("1", "true", "on", "yes")
+    # The user's saved report views, plus the one currently applied (if any).
+    saved_views = list(
+        db.execute(
+            select(SavedView)
+            .where(SavedView.user_id == user.id, SavedView.kind == "reports")
+            .order_by(SavedView.name)
+        ).scalars()
+    )
+    active_view: SavedView | None = None
+    if view:
+        try:
+            vid = int(view)
+        except ValueError:
+            vid = None
+        if vid is not None:
+            active_view = next((v for v in saved_views if v.id == vid), None)
+
+    if active_view is not None:
+        # A saved view fully defines grouping + filters; preset is cleared.
         preset = None
+        active_group_by = [g for g in active_view.group_by if g in rb.DIMENSIONS]
+        active_detailed = active_view.detailed
+        range_token = active_view.date_range
+        df, dt = resolve_date_range(range_token, active_view.date_from, active_view.date_to)
+        pid = active_view.project_id
+        customer = active_view.customer or ""
     else:
-        # default landing view
-        preset = "weekly_detailed"
-        cfg = rb.PRESETS[preset]
-        active_group_by = cfg["group_by"]
-        active_detailed = cfg["detailed"]
+        # Resolve grouping: an explicit preset wins; else custom group_by + detailed.
+        if preset and preset in rb.PRESETS:
+            cfg = rb.PRESETS[preset]
+            active_group_by = cfg["group_by"]
+            active_detailed = cfg["detailed"]
+        elif group_by:
+            active_group_by = [g for g in group_by if g in rb.DIMENSIONS]
+            active_detailed = detailed in ("1", "true", "on", "yes")
+            preset = None
+        else:
+            # default landing view
+            preset = "weekly_detailed"
+            cfg = rb.PRESETS[preset]
+            active_group_by = cfg["group_by"]
+            active_detailed = cfg["detailed"]
+
+        # Resolve the date window: explicit token wins; else custom from the
+        # explicit dates; reports default to the full range ('all').
+        range_token = date_range if date_range in DATE_RANGES else None
+        if range_token is None:
+            range_token = "custom" if (date_from or date_to) else "all"
+        df, dt = resolve_date_range(range_token, _parse_date(date_from), _parse_date(date_to))
+        pid = None
+        if project_id:
+            try:
+                pid = int(project_id)
+            except ValueError:
+                pid = None
+        customer = (customer or "").strip()
+
     if not active_group_by:
         active_group_by = ["day"]
-
-    df = _parse_date(date_from)
-    dt = _parse_date(date_to)
-    pid: int | None = None
-    if project_id:
-        try:
-            pid = int(project_id)
-        except ValueError:
-            pid = None
 
     stmt = (
         select(TimeEntry, Project, User)
@@ -110,10 +149,16 @@ def reports_page(
             active_detailed=active_detailed,
             projects=projects,
             customers=customers,
+            date_range=range_token,
+            date_ranges=DATE_RANGES,
             date_from=df.isoformat() if df else "",
             date_to=dt.isoformat() if dt else "",
             project_id=pid or "",
             customer=customer or "",
+            saved_views=saved_views,
+            active_view=active_view,
+            flash=flash,
+            error=error,
             report_truncated=report_truncated,
             report_cap=REPORT_ROW_CAP,
         ),
