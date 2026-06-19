@@ -7,6 +7,7 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import Project, User
 from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
+from app.services import entry_sync as es_svc
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -63,6 +64,9 @@ def update_project(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
     db.add(project)
+    # Re-open entries stuck on a stale failed status so a corrected project
+    # (e.g. a fixed Salesforce assignment) is picked up by the sync again.
+    es_svc.reset_open_syncs_for_project(db, project)
     try:
         db.commit()
     except IntegrityError as e:

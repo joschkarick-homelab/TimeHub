@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
-from app.models import EntrySync
+from app.models import EntrySync, TimeEntry
 from app.models._enums import SyncStatus
 from app.services import sync_fields as sf
 from app.services.sync_rules import resolve_targets
@@ -44,6 +45,46 @@ def reconcile_entry_syncs(db: Session, entry, project, rules=()) -> list[str]:
             db.delete(es)
 
     return desired
+
+
+def reset_open_syncs_for_project(db: Session, project) -> int:
+    """Re-open every not-yet-completed sync row of the project's entries.
+
+    When a project is corrected — e.g. a previously invalid Salesforce
+    assignment is fixed — its entries are often stuck on a stale ``failed``
+    status from the earlier push attempt and the automatic sync skips them.
+    Resetting those rows back to ``pending`` (and clearing the last error)
+    lets the normal flow pick them up again. Completed rows
+    (synced / manually_synced) carry a remote reference and are left intact.
+
+    The legacy ``TimeEntry.sync_status`` mirror is reset too, since the
+    Salesforce execute flow keys its idempotency check off it. Returns the
+    number of entries that were touched. The caller commits.
+    """
+    entries = list(
+        db.execute(
+            select(TimeEntry)
+            .where(TimeEntry.project_id == project.id)
+            .options(selectinload(TimeEntry.entry_syncs))
+        ).scalars()
+    )
+    touched = 0
+    for entry in entries:
+        changed = False
+        for es in (entry.entry_syncs or []):
+            if es.status not in _PROTECTED and es.status != SyncStatus.PENDING:
+                es.status = SyncStatus.PENDING
+                es.last_error = None
+                es.synced_at = None
+                db.add(es)
+                changed = True
+        if entry.sync_status not in _PROTECTED and entry.sync_status != SyncStatus.PENDING:
+            entry.sync_status = SyncStatus.PENDING
+            db.add(entry)
+            changed = True
+        if changed:
+            touched += 1
+    return touched
 
 
 def _find_row(entry, target) -> EntrySync | None:

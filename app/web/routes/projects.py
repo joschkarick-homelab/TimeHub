@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Project
+from app.services import entry_sync as es_svc
 from app.services import salesforce as sf_svc
 from app.services import sync_fields as sf
 from app.web.common import (
@@ -332,6 +333,9 @@ async def projects_update(
         values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
         project.sync_metadata, _ = sf.apply_fields(project.sync_metadata, target, fields, values)
     db.add(project)
+    # Re-open entries stuck on a stale failed status so a corrected project
+    # (e.g. a fixed Salesforce assignment) is picked up by the sync again.
+    es_svc.reset_open_syncs_for_project(db, project)
     try:
         db.commit()
     except IntegrityError:
