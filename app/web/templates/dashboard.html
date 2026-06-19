@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_saved_views.html" import views_bar %}
 {% block content %}
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
@@ -141,22 +142,7 @@
 
   {# --- Saved views --- #}
   <div class="mb-4">
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs font-medium text-slate-500 mr-1">Ansichten:</span>
-      {% for v in saved_views %}
-        <span class="inline-flex items-center border
-                     {% if active_view and active_view.id == v.id %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white border-slate-300{% endif %}">
-          <a href="/?view={{ v.id }}" class="px-2.5 py-1 text-sm">{{ v.name }}</a>
-          <form method="post" action="/views/{{ v.id }}/delete" class="inline" data-no-loading="true"
-                onsubmit="return confirm('Ansicht „{{ v.name }}“ löschen?');">
-            <input type="hidden" name="next" value="/" />
-            <button class="px-1.5 py-1 text-xs opacity-70 hover:opacity-100" title="Ansicht löschen">✕</button>
-          </form>
-        </span>
-      {% else %}
-        <span class="text-xs text-slate-400">noch keine gespeichert</span>
-      {% endfor %}
-    </div>
+    {{ views_bar(saved_views, active_view, "/", "Ansichten:") }}
   </div>
 
   <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-6 gap-3 items-end">

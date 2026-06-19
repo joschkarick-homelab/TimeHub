@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
-from app.models import EntrySync, ImportFormat, Project, SavedView, TimeEntry, User
+from app.models import EntrySync, ImportFormat, Project, TimeEntry, User
 from app.services import entry_sync as es_svc
 from app.services import reports as report_svc
 from app.services import salesforce as sf_svc
@@ -26,7 +26,9 @@ from app.web.common import (
     _parse_date,
     _require_login,
     _visible_formats,
+    load_saved_views,
     resolve_date_range,
+    resolve_range_param,
     templates,
 )
 
@@ -49,31 +51,13 @@ def index(
 ):
     user = _require_login(request, db)
 
-    # The user's saved dashboard views, plus the one currently applied (if any).
-    saved_views = list(
-        db.execute(
-            select(SavedView)
-            .where(SavedView.user_id == user.id, SavedView.kind == "dashboard")
-            .order_by(SavedView.name)
-        ).scalars()
-    )
-    active_view: SavedView | None = None
-    if view:
-        try:
-            vid = int(view)
-        except ValueError:
-            vid = None
-        if vid is not None:
-            active_view = next((v for v in saved_views if v.id == vid), None)
-
+    saved_views, active_view = load_saved_views(db, user, "dashboard", view)
     if active_view is not None:
         range_token = active_view.date_range
         df, dt = resolve_date_range(range_token, active_view.date_from, active_view.date_to)
         project_id_int = active_view.project_id
         customer = active_view.customer or ""
     else:
-        df = _parse_date(date_from)
-        dt = _parse_date(date_to)
         project_id_int = None
         if project_id:
             try:
@@ -81,18 +65,10 @@ def index(
             except ValueError:
                 project_id_int = None
         customer = (customer or "").strip()
-        # Resolve the range: an explicit token wins; otherwise default to the
-        # current week (the list is then tightly bounded to "now"), unless an
-        # explicit date / project / customer filter is already in play.
-        range_token = date_range if date_range in DATE_RANGES else None
-        if range_token is None:
-            if df is not None or dt is not None:
-                range_token = "custom"
-            elif project_id_int is not None or customer:
-                range_token = "all"
-            else:
-                range_token = "this_week"
-        df, dt = resolve_date_range(range_token, df, dt)
+        # Default to the current week (list tightly bounded to "now"), unless a
+        # project/customer filter is in play — then show the full history.
+        default = "all" if (project_id_int is not None or customer) else "this_week"
+        range_token, df, dt = resolve_range_param(date_range, date_from, date_to, default=default)
 
     stmt = (
         select(TimeEntry)

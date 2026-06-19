@@ -11,14 +11,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Project, SavedView, TimeEntry, User
+from app.models import Project, TimeEntry, User
 from app.web.common import (
     DATE_RANGES,
     REPORT_ROW_CAP,
     _ctx,
-    _parse_date,
     _require_login,
+    load_saved_views,
     resolve_date_range,
+    resolve_range_param,
     templates,
 )
 
@@ -46,23 +47,7 @@ def reports_page(
 
     user = _require_login(request, db)
 
-    # The user's saved report views, plus the one currently applied (if any).
-    saved_views = list(
-        db.execute(
-            select(SavedView)
-            .where(SavedView.user_id == user.id, SavedView.kind == "reports")
-            .order_by(SavedView.name)
-        ).scalars()
-    )
-    active_view: SavedView | None = None
-    if view:
-        try:
-            vid = int(view)
-        except ValueError:
-            vid = None
-        if vid is not None:
-            active_view = next((v for v in saved_views if v.id == vid), None)
-
+    saved_views, active_view = load_saved_views(db, user, "reports", view)
     if active_view is not None:
         # A saved view fully defines grouping + filters; preset is cleared.
         preset = None
@@ -89,12 +74,8 @@ def reports_page(
             active_group_by = cfg["group_by"]
             active_detailed = cfg["detailed"]
 
-        # Resolve the date window: explicit token wins; else custom from the
-        # explicit dates; reports default to the full range ('all').
-        range_token = date_range if date_range in DATE_RANGES else None
-        if range_token is None:
-            range_token = "custom" if (date_from or date_to) else "all"
-        df, dt = resolve_date_range(range_token, _parse_date(date_from), _parse_date(date_to))
+        # Reports show the full history unless filtered (default range 'all').
+        range_token, df, dt = resolve_range_param(date_range, date_from, date_to, default="all")
         pid = None
         if project_id:
             try:

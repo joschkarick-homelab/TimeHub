@@ -14,7 +14,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import ImportFormat, Project, TimeEntry, User
+from app.models import ImportFormat, Project, SavedView, TimeEntry, User
 from app.services import app_settings as app_settings_svc
 from app.services import salesforce as sf_svc
 
@@ -264,6 +264,53 @@ def resolve_date_range(
         return today.replace(month=1, day=1), today.replace(month=12, day=31)
     # custom / unknown → use the explicit dates as-is.
     return date_from, date_to
+
+
+def resolve_range_param(
+    date_range: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    *,
+    default: str,
+    today: date | None = None,
+) -> tuple[str, date | None, date | None]:
+    """Turn the raw filter querystring into ``(token, from, to)``.
+
+    An explicit, known range token wins; absent that, explicit dates imply
+    ``custom`` and everything else falls back to ``default``. Shared by the
+    dashboard and reports filter bars so their range handling can't drift.
+    """
+    token = date_range if date_range in DATE_RANGES else None
+    if token is None:
+        token = "custom" if (date_from or date_to) else default
+    df, dt = resolve_date_range(token, _parse_date(date_from), _parse_date(date_to), today=today)
+    return token, df, dt
+
+
+def load_saved_views(
+    db: Session, user: User, kind: str, view: str | None
+) -> tuple[list[SavedView], SavedView | None]:
+    """Return ``(all of the user's views for this page, the selected one)``.
+
+    ``view`` is the raw querystring id; an unknown/invalid id yields ``None``
+    for the active view without raising.
+    """
+    rows = list(
+        db.execute(
+            select(SavedView)
+            .where(SavedView.user_id == user.id, SavedView.kind == kind)
+            .order_by(SavedView.name)
+        ).scalars()
+    )
+    active: SavedView | None = None
+    if view:
+        try:
+            vid = int(view)
+        except ValueError:
+            vid = None
+        if vid is not None:
+            active = next((v for v in rows if v.id == vid), None)
+    return rows, active
 
 
 def _parse_date(value: str | None) -> date | None:
