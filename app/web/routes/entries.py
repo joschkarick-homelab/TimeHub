@@ -42,17 +42,21 @@ async def create_entry(
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
+    back = _safe_next(next)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
     try:
         duration = _resolve_duration(start, end, duration_minutes)
     except ValueError as e:
+        sep = "&" if "?" in back else "?"
         return RedirectResponse(
-            url=f"/?error={e}".replace(" ", "+"), status_code=status.HTTP_302_FOUND
+            url=f"{back}{sep}error={e}".replace(" ", "+"),
+            status_code=status.HTTP_302_FOUND,
         )
     entry = TimeEntry(
         user_id=user.id,
@@ -76,13 +80,14 @@ async def create_entry(
     db.flush()
     es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
-    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=back, status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/entries/{entry_id}/edit", response_class=HTMLResponse)
 def edit_entry_form(
     request: Request, entry_id: int, db: Session = Depends(get_db),
     error: str | None = None, next: str | None = None,
+    modal: str | None = None,
 ):
     user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
@@ -91,8 +96,11 @@ def edit_entry_form(
             select(Project).where(Project.user_id == user.id).order_by(Project.code)
         ).scalars()
     )
+    # `modal=1` yields the bare form fragment for the shared edit modal on the
+    # dashboard/calendar; otherwise the full standalone page (and direct links).
+    template = "_entry_form.html" if modal else "entry_edit.html"
     return templates.TemplateResponse(
-        "entry_edit.html",
+        template,
         _ctx(
             request,
             user,
@@ -202,15 +210,19 @@ def bulk_delete_entries(
 def mark_entries_manually_synced(
     request: Request,
     entry_ids: list[int] = Form(default_factory=list),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Markiere die ausgewählten Einträge als 'manuell erfasst' (sync_status=
     manually_synced). Damit verschwinden sie aus der Sync-Auswahl und werden
     auch vom Stapel-Push übersprungen — gedacht für alte Monate, die schon
-    direkt in Salesforce erfasst wurden."""
+    direkt in Salesforce erfasst wurden. Der aktive Dashboard-Filter bleibt
+    über `next` erhalten."""
     user = _require_login(request, db)
+    back = _safe_next(next)
     if not entry_ids:
-        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+        sep = "&" if "?" in back else "?"
+        return RedirectResponse(url=f"{back}{sep}error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
     stmt = select(TimeEntry).where(
         TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id,
@@ -224,7 +236,8 @@ def mark_entries_manually_synced(
         db.add(e)
         n += 1
     db.commit()
-    return RedirectResponse(url=f"/?flash={n}+Einträge+als+manuell+erfasst+markiert",
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(url=f"{back}{sep}flash={n}+Einträge+als+manuell+erfasst+markiert",
                             status_code=status.HTTP_302_FOUND)
 
 

@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 {% set total_h = 24 * px_per_hour %}
+{# Where edits should return to: the exact calendar view you opened them from. #}
+{% set cal_next = "/calendar?start=" + start + "&days=" + days_n|string %}
 
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
@@ -56,7 +58,8 @@
         {% if col.untimed %}
           <div class="mt-1 max-h-16 overflow-y-auto">
             {% for e in col.untimed %}
-              <a href="/entries/{{ e.id }}/edit"
+              <a href="/entries/{{ e.id }}/edit?next={{ cal_next | urlencode }}"
+                 data-edit-url="/entries/{{ e.id }}/edit?modal=1&next={{ cal_next | urlencode }}"
                  class="flex items-center gap-1 text-[10px] text-slate-600 hover:text-indigo-600 truncate py-0.5"
                  title="Ohne Uhrzeit – {{ e.project_label }}{% if e.needs_sync and not e.ready %} · fehlt: {{ e.missing | join(', ') }}{% endif %}">
                 <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0" style="background: {{ e.color }};"></span>
@@ -108,14 +111,17 @@
   </div>
 </div>
 
-<script id="cal-data" type="application/json">{{ {"px_per_hour": px_per_hour, "projects": projects_json, "registry": sync_field_registry}|tojson }}</script>
+<script id="cal-data" type="application/json">{{ {"px_per_hour": px_per_hour, "projects": projects_json, "registry": sync_field_registry, "next": cal_next}|tojson }}</script>
 {% include "_sync_fields_js.html" %}
+{% include "_entry_form_js.html" %}
+{% include "_entry_modal.html" %}
 <script>
 (function () {
   var cfg = JSON.parse(document.getElementById("cal-data").textContent);
   var PX_PER_HOUR = cfg.px_per_hour;
   var PROJECTS = cfg.projects || [];
   var REGISTRY = cfg.registry || {};
+  var CAL_NEXT = cfg.next || "/calendar";
   var PX_PER_MIN = PX_PER_HOUR / 60;
   var SNAP = 15;
   var container = document.getElementById("cal-scroll");
@@ -133,12 +139,17 @@
     }
   } catch (e) { container.scrollTop = 7 * PX_PER_HOUR; }
 
-  function reloadKeepScroll() {
+  function stashScroll() {
     try {
       sessionStorage.setItem("calScroll", JSON.stringify({ t: container.scrollTop, l: container.scrollLeft }));
     } catch (e) {}
-    location.reload();
   }
+  function reloadKeepScroll() { stashScroll(); location.reload(); }
+
+  // The shared edit modal navigates back here on save/delete (redirect to
+  // `next`); stash the scroll first so the restore-on-load logic above keeps
+  // the day in view.
+  window.entryModalBeforeSubmit = stashScroll;
 
   function snap(m) { return Math.max(0, Math.min(1440, Math.round(m / SNAP) * SNAP)); }
   function fmt(m) {
@@ -243,8 +254,10 @@
     if (st.block) st.block.style.cursor = "grab";
 
     if (!st.moved) {
-      // treat as a click → open the edit page
-      window.location.href = "/entries/" + st.id + "/edit";
+      // treat as a click → open the edit modal (in place, no page change)
+      window.openEntryEditModal(
+        "/entries/" + st.id + "/edit?modal=1&next=" + encodeURIComponent(CAL_NEXT)
+      );
       return;
     }
 
