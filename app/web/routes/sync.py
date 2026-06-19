@@ -92,6 +92,9 @@ async def sync_fill_project_fields(
         project.sync_metadata, target, submitted, values
     )
     db.add(project)
+    # A corrected project field (e.g. the Salesforce assignment) should re-open
+    # entries stuck on a stale failed status so the sync retries them.
+    es_svc.reset_open_syncs_for_project(db, project)
     db.commit()
     return _sync_redirect_with_warnings(warnings, "Projekt-Daten gespeichert")
 
