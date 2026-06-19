@@ -85,6 +85,79 @@ def test_dashboard_renders_next_on_delete_forms(client):
     assert '/entries/bulk-delete' in r.text
 
 
+# ---------- edit modal + filter-preserving actions ----------
+
+def test_edit_modal_returns_bare_fragment(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    eid = _make_entry(client, h, pid, "2026-04-10")
+
+    nxt = "/?date_from=2026-04-01&date_to=2026-04-30"
+    r = client.get(f"/entries/{eid}/edit?modal=1&next={nxt}")
+    assert r.status_code == 200
+    # The fragment is just the form — no full-page chrome (<html>/<head>).
+    assert "<html" not in r.text
+    assert 'class="th-entry-form' in r.text
+    # Return target is carried into the form (as the next hidden field) so
+    # saving lands back on the filter. (& is HTML-escaped in the attribute.)
+    assert 'name="next"' in r.text
+    assert "date_from=2026-04-01" in r.text
+
+
+def test_edit_form_still_renders_full_page_without_modal(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    eid = _make_entry(client, h, pid, "2026-04-11")
+    r = client.get(f"/entries/{eid}/edit")
+    assert r.status_code == 200
+    assert "<html" in r.text
+    assert "Eintrag bearbeiten" in r.text
+
+
+def test_dashboard_edit_buttons_open_modal(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    _make_entry(client, h, pid, date.today().isoformat())
+    r = client.get("/")
+    assert r.status_code == 200
+    # Edit is now a modal trigger, not a navigation to the standalone page.
+    assert "data-edit-url=" in r.text
+    assert "modal=1" in r.text
+
+
+def test_create_entry_preserves_filter_via_next(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    nxt = f"/?date_from=2026-05-01&date_to=2026-05-31&project_id={pid}"
+    r = client.post(
+        "/entries",
+        data={"entry_date": "2026-05-15", "project_id": str(pid),
+              "duration_minutes": "60", "next": nxt},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert r.headers["location"] == nxt
+
+
+def test_mark_synced_preserves_filter_via_next(client):
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    eid = _make_entry(client, h, pid, "2026-06-15")
+    nxt = f"/?date_from=2026-06-01&date_to=2026-06-30&project_id={pid}"
+    r = client.post("/entries/mark-synced",
+                    data={"entry_ids": [eid], "next": nxt},
+                    follow_redirects=False)
+    assert r.status_code == 302
+    loc = r.headers["location"]
+    assert loc.startswith(nxt)
+    assert "flash=1" in loc
+
+
 # ---------- bulk delete (mass-select) ----------
 
 def test_bulk_delete_removes_selected_and_keeps_filter(client):
