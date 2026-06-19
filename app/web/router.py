@@ -16,6 +16,7 @@ from app.web.routes import (
     projects,
     reports,
     sync,
+    views,
 )
 
 router = APIRouter(include_in_schema=False, dependencies=[Depends(csrf_protect)])
@@ -30,6 +31,7 @@ for _m in (
     projects,
     reports,
     sync,
+    views,
 ):
     router.include_router(_m.router)
 

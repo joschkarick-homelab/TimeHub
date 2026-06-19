@@ -70,9 +70,14 @@ def test_split_transform_lands_on_both_rows(client):
     r = client.post(f"/api/v1/import-formats/{fmt['id']}/run",
                     files={"file": ("d.csv", csv, "text/csv")}, headers=h)
     assert r.status_code == 201 and r.json()["created"] == 2, r.json()
+    # Scope to this test's own project: the shared session DB also holds entries
+    # from other tests on the same dates, so key only on SPLITP's rows.
+    projects = client.get("/api/v1/projects", headers=h).json()
+    splitp_id = next(p["id"] for p in projects if p["code"] == "SPLITP")
     entries = client.get("/api/v1/time-entries", headers=h).json()
     on_dates = {e["entry_date"]: e["sync_metadata_override"] for e in entries
-                if e["entry_date"] in ("2026-04-10", "2026-04-11")}
+                if e["project_id"] == splitp_id
+                and e["entry_date"] in ("2026-04-10", "2026-04-11")}
     # Both rows landed — the freeform one just fails the Jira pattern (a UI
     # readiness check), but the value is stored either way.
     assert on_dates["2026-04-10"] == {"jira": {"issue_key": "Implementierung"}}

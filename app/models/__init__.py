@@ -4,6 +4,7 @@ from app.models.csv_template import CsvTemplate
 from app.models.entry_sync import EntrySync
 from app.models.import_format import ImportFormat
 from app.models.project import Project
+from app.models.saved_view import SavedView
 from app.models.sync_rule import SyncRule
 from app.models.time_entry import TimeEntry
 from app.models.user import User
@@ -15,6 +16,7 @@ __all__ = [
     "EntrySync",
     "ImportFormat",
     "Project",
+    "SavedView",
     "SyncRule",
     "TimeEntry",
     "User",
