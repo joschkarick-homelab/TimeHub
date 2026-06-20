@@ -73,6 +73,17 @@ def _next_import_color(taken: set[str], index: int) -> str:
     return _IMPORT_COLORS[index % len(_IMPORT_COLORS)]
 
 
+def _distinct_customers(db: Session, user_id: int) -> list[str]:
+    """Alphabetisch sortierte, eindeutige Kundennamen aus den Projekten des
+    Users — Grundlage für die Autocomplete-Vorschläge in den Projektformularen."""
+    rows = db.execute(
+        select(Project.customer)
+        .where(Project.user_id == user_id, Project.customer.isnot(None))
+        .distinct()
+    ).all()
+    return sorted({c.strip() for (c,) in rows if c and c.strip()})
+
+
 def _existing_sf_assignment_ids(db: Session, user_id: int) -> set[str]:
     """Salesforce-Projektbesetzungs-Ids, die bereits an einem Projekt des Users
     hinterlegt sind — Grundlage dafür, schon importierte PBs auszublenden."""
@@ -107,6 +118,7 @@ def projects_page(
             user,
             projects=projects,
             project_status=project_status,
+            customers=_distinct_customers(db, user.id),
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("project"),
             sync_dynamic_options=_sync_dynamic_options(db, user),
@@ -296,6 +308,7 @@ def projects_edit_form(request: Request, project_id: int, db: Session = Depends(
             request,
             user,
             project=project,
+            customers=_distinct_customers(db, user.id),
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("project"),
             sync_dynamic_options=_sync_dynamic_options(db, user),

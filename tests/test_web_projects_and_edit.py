@@ -79,6 +79,36 @@ def test_projects_edit_and_delete(client):
     assert client.get(f"/api/v1/projects/{pid}", headers=h).status_code == 404
 
 
+def test_customer_autocomplete_offers_existing_customers(client):
+    _login_session(client)
+    # Create projects with distinct customers so they become suggestions.
+    for name, cust in [("AutoA", "Globex GmbH"), ("AutoB", "Acme AG")]:
+        client.post(
+            "/projects",
+            data={"name": name, "customer": cust, "default_sync_target": "intern",
+                  "status": "active", "color": "#123456"},
+            follow_redirects=False,
+        )
+
+    # Create form (projects page) wires up the autocomplete and ships the list.
+    r = client.get("/projects")
+    assert r.status_code == 200
+    assert "data-customer-ac" in r.text
+    assert "window.TH_CUSTOMERS" in r.text
+    assert "Globex GmbH" in r.text
+    assert "Acme AG" in r.text
+
+    # Edit form carries the same suggestions.
+    token = _login_api(client)
+    h = {"Authorization": f"Bearer {token}"}
+    pid = next(p["id"] for p in client.get("/api/v1/projects", headers=h).json()
+               if p["name"] == "AutoA")
+    r = client.get(f"/projects/{pid}/edit")
+    assert r.status_code == 200
+    assert "data-customer-ac" in r.text
+    assert "Acme AG" in r.text
+
+
 def test_projects_create_rejects_duplicate_code(client):
     _login_session(client)
     client.post(

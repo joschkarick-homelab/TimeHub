@@ -31,10 +31,10 @@
              title="Optional – wird sonst automatisch aus dem Namen erzeugt"
              class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
     </label>
-    <label class="sm:col-span-1 text-sm">
+    <div class="sm:col-span-1 text-sm">
       <span class="block font-medium mb-1 text-xs">Kunde</span>
-      <input name="customer" class="w-full h-10 border border-slate-300 rounded px-2" />
-    </label>
+      {% include "_customer_field.html" %}
+    </div>
     <label class="sm:col-span-1 text-sm">
       <span class="block font-medium mb-1 text-xs">Ziel</span>
       <select name="default_sync_target" id="new-sync-target"
@@ -70,6 +70,7 @@
     update();
   })();
 </script>
+{% include "_customer_field_js.html" %}
 
 <section class="bg-white border border-slate-200 overflow-hidden">
   <div class="px-5 pt-5 pb-3">
