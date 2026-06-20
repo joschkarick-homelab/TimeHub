@@ -19,11 +19,11 @@
                title="Stabiler Schlüssel für Import/Export — bei Bedarf anpassbar"
                class="w-full h-10 border border-slate-300 rounded px-2 font-mono" />
       </label>
-      <label class="text-sm">
+      <div class="text-sm">
         <span class="block font-medium mb-1">Kunde</span>
-        <input name="customer" value="{{ project.customer or '' }}"
-               class="w-full h-10 border border-slate-300 rounded px-2" />
-      </label>
+        {% set customer_value = project.customer %}
+        {% include "_customer_field.html" %}
+      </div>
       <label class="text-sm">
         <span class="block font-medium mb-1">Farbe</span>
         <input type="color" name="color" value="{{ project.color }}"
@@ -72,4 +72,5 @@
     update();
   })();
 </script>
+{% include "_customer_field_js.html" %}
 {% endblock %}
