@@ -137,6 +137,9 @@ Anwesenheiten/Pausen und setzt Buchungsabschlüsse. Genau unser Aufwands-Push.
   robuster bei document/literal + WS-Security.
 - **E-BCS-3: `subject`/`task` werden durch ein Arbeitspaket-Feld ersetzt**
   (`default_work_package` am Projekt + `work_package` am Eintrag).
+- **E-BCS-4: Auth via Impersonation über den System-User `Synchronisation`**
+  (statt Self-Auth pro Berater) — funktioniert mit MS-OAuth, eine Credential in
+  TimeHub, Auth-User lizenzfrei, Buchung läuft im Scope des Beraters.
 
 Die WSDL liegt versioniert unter [`docs/bcs/TimerecordingWebService.wsdl`](bcs/TimerecordingWebService.wsdl).
 
@@ -164,20 +167,37 @@ Die WSDL trägt die Policy `UsernameTokenOverTransport`
 - **WS-Security UsernameToken Profile 1.1**, PasswordType **PasswordText**
   (Klartext), zwingend über **HTTPS** (Transport-Security).
 - **Keine** Spaces/Zeilenumbrüche um Username/Password.
-- Alle Operationen laufen im **Permission-Kontext des Login-Users**; dieser wird
-  als `insUserOid`/`updUserOid` geführt → **dedizierter technischer User**
-  (Projektron-Empfehlung), der für die Berater bucht.
+- **Authentifizierung als System-User `Synchronisation`** (Entscheidung
+  E-BCS-4). Self-Auth pro Berater wurde verworfen: BCS-Login läuft über
+  MS-OAuth → keine nutzbaren lokalen Passwörter, und TimeHub müsste sonst N
+  Secrets halten.
 
-### 4.3 Benötigte Berechtigungen (Admin) — *aktueller Blocker*
+**Impersonation** (statt stellvertretendem Buchen über Rechte): zusätzlich zum
+WSSE-Header wird ein **`<ImpersonateAs>`**-Header mit dem **BCS-Username** des
+Beraters gesendet. Die Operation läuft dann im **Scope dieses Beraters**, er
+wird als `insUserOid` geführt. Beispiel:
 
-Für den technischen Service-User:
+```xml
+<soapenv:Header>
+  <wsse:Security>…UsernameToken: Synchronisation…</wsse:Security>
+  <ImpersonateAs>pl1</ImpersonateAs>
+</soapenv:Header>
+```
 
-1. **Systemrecht „Webservices nutzen"** (über Rolle/Gruppe in der
-   Rechteverwaltung; exakter Label-Wortlaut steht im internen PDF).
-2. **Funktionale Buch-Rechte:** Aufwände erfassen/ändern — und zwar **stellver-
-   tretend für andere User**, da der Service-User für die Berater bucht (siehe
-   §4.5, Anforderung „User-Match").
-3. Lese-Recht auf die buchbaren **Arbeitspakete/Vorgänge** der Zielprojekte.
+In `zeep` über `_soapheaders` neben dem `UsernameToken`-WSSE-Plugin.
+
+### 4.3 Benötigte Berechtigungen / Setup (Admin) — *aktueller Blocker*
+
+1. **`impersonationOids` am `TimerecordingWebService` konfigurieren** — die OIDs
+   der Berater, die imitiert werden dürfen:
+   `<Service name="TimerecordingWebService" activated="true" impersonationOids="…"/>`.
+2. **WS-Lizenz für die betroffenen Berater.** ⚠️ Jeder **imitierte** User braucht
+   die Webservice-Lizenz; der System-User `Synchronisation` (`5_JUser`) ist
+   **ausgenommen**. „Lizenz aktiviert" ≠ „allen Beratern zugewiesen" — das ist
+   der eigentliche Kostentreiber und muss geprüft werden.
+3. **`Synchronisation`-Login-Daten** an TimeHub (verschlüsselt im AppSetting-Store).
+4. Der imitierte Berater braucht die normalen **Buch-Rechte** + Lese-Recht auf
+   die buchbaren **Arbeitspakete** seiner Projekte (läuft in seinem Scope).
 
 ### 4.4 Relevante Operationen (aus WSDL)
 
@@ -197,8 +217,8 @@ Für den technischen Service-User:
 | --- | --- | --- |
 | 1 | Arbeitspaket pro Projekt **oder** Eintrag | Registry-Feld umstellen (s.u.): `bcs.default_work_package` (Projekt, optional) → `bcs.work_package` (Eintrag, Pflicht, `inherit_from_project`). Exakt das Jira-Muster `default_issue → issue_key`. |
 | 2 | Dropdown aktiver Arbeitspakete | `options_source="bcs_work_packages"`, `searchable=True`; befüllt in `_sync_dynamic_options()` analog `sf_assignments` — nur **buchbare** APs des Users. *Offene Frage: welche WS-Op liefert die Liste? (`GetTimeRecordAttributes` o. `GetTimeTrackingSettings`; ggf. zusätzlicher Struktur-WS.)* |
-| 3 | User-Match per E-Mail (BCS via MS-OAuth) | TimeHub-User.email → BCS-User-OID auflösen, OID im Request mitgeben (Service-User bucht stellvertretend). *Offene Frage: Auflösung E-Mail→OID — nimmt eine Op einen User-Parameter? sonst Zusatz-WS nötig.* |
-| 4 | Login per WS-Security UsernameToken 1.1 | `zeep` + `zeep.wsse.username.UsernameToken` (PasswordText), HTTPS. Credentials wie SF im `AppSetting`-Store, Fernet-verschlüsselt. |
+| 3 | User-Match per E-Mail (BCS via MS-OAuth) | TimeHub-User.email → **BCS-Username** auflösen, als `<ImpersonateAs>` mitsenden (Impersonation, E-BCS-4). *Offene Frage: Auflösung E-Mail→Username/OID — welche Op/welcher WS? sonst Zusatz-WS nötig.* |
+| 4 | Login per WS-Security UsernameToken 1.1 | `zeep` + `zeep.wsse.username.UsernameToken` (System-User `Synchronisation`, PasswordText) + `<ImpersonateAs>`-Header via `_soapheaders`, HTTPS. Eine Credential im `AppSetting`-Store, Fernet-verschlüsselt. |
 | 5 | Schreiben → bei Erfolg BCS-Status grün | `CreateOrUpdateTimeRecord` → bei Erfolg `set_target_status(db, entry, "bcs", "synced", external_ref=<timeRecordOid>)`; bei Fault `failed` mit Fehlertext. Identisch zum SF-Execute-Flow (`sync.py`). |
 | 6 | „Nur eine Dauer pro Tag pro AP?" | **Sehr wahrscheinlich ja** — Validierung + defensives Design in §4.6. |
 
@@ -251,13 +271,14 @@ der Gruppe als `external_ref` gespeichert (gemeinsame Idempotenz).
 ### 4.8 Offen / benötigt (vor Implementierung)
 
 - [x] Lizenz aktiviert (06/2026); WSDL vorhanden & Endpunkt bestätigt.
-- [ ] **Berechtigungen** für den Service-User (inkl. stellvertretendes Buchen) —
-      *aktueller Blocker*.
+- [ ] **Admin-Setup** (§4.3): `impersonationOids` konfiguriert, WS-Lizenz den
+      Beratern zugewiesen, `Synchronisation`-Credentials vorhanden — *Blocker*.
 - [ ] **XSD-Teile** (`?xsd=1…12`) — für die exakte Input-Struktur von
-      `CreateOrUpdateTimeRecord` (Pflichtfelder, Dauer-Kodierung, User-OID,
+      `CreateOrUpdateTimeRecord` (Pflichtfelder, Dauer-Kodierung,
       Arbeitspaket-OID, Datum, Beschreibung) und `GetTimeRecordAttributes`.
 - [ ] **Arbeitspaket-Liste:** welche Op liefert die buchbaren APs des Users?
-- [ ] **E-Mail→BCS-User-OID:** über welche Op/welchen WS?
+- [ ] **E-Mail→BCS-Username/OID:** über welche Op/welchen WS? (für
+      `ImpersonateAs`-Header + `impersonationOids`-Config).
 - [ ] `GetTimeTrackingSettings`-Antwort (Granularität) → bestätigt Anforderung 6.
 
 ---
