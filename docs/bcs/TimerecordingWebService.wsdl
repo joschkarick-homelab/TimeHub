@@ -1,0 +1,728 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy" xmlns:wsaw="http://www.w3.org/2006/05/addressing/wsdl" name="TimerecordingWebService" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <wsp:Policy xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" wsu:Id="UsernameTokenOverTransport">
+    <wsp:ExactlyOne>
+      <wsp:All>
+        <sp:SignedSupportingTokens xmlns:sp="http://schemas.xmlsoap.org/ws/2005/07/securitypolicy">
+          <wsp:Policy>
+            <sp:UsernameToken sp:IncludeToken="http://schemas.xmlsoap.org/ws/2005/07/securitypolicy/IncludeToken/AlwaysToRecipient"/>
+          </wsp:Policy>
+        </sp:SignedSupportingTokens>
+      </wsp:All>
+    </wsp:ExactlyOne>
+  </wsp:Policy>
+
+  <wsdl:types>
+    <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:tns="http://www.projektron.de/ws/timerecording" targetNamespace="http://www.projektron.de/ws/timerecording" attributeFormDefault="unqualified" elementFormDefault="qualified">
+
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=10"/>
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=8"/>
+
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=1"/>
+
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=11"/>
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=3"/>
+
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=9"/>
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=4"/>
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=5"/>
+
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=6"/>
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=12"/>
+
+      <xsd:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=7"/>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="GetTimeTrackingSettingsRequest">
+    <wsdl:part name="getTimeTrackingSettings" element="tns:GetTimeTrackingSettings"/>
+  </wsdl:message>
+  <wsdl:message name="GetTimeTrackingSettingsResponse">
+    <wsdl:part name="getTimeTrackingSettingsResponse" element="tns:GetTimeTrackingSettingsResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetTimeRecordAttributesRequest">
+    <wsdl:part name="getTimeRecordAttributes" element="tns:GetTimeRecordAttributes"/>
+  </wsdl:message>
+  <wsdl:message name="GetTimeRecordAttributesResponse">
+    <wsdl:part name="getTimeRecordAttributesResponse" element="tns:GetTimeRecordAttributesResponse"/>
+  </wsdl:message>
+  <wsdl:message name="UnexpectedLanguageException">
+    <wsdl:part name="unexpectedLanguage" element="tns:UnexpectedLanguage"/>
+  </wsdl:message>
+
+  <wsdl:message name="TrackAttendancesAndBreaksRequest">
+    <wsdl:part name="trackAttendancesAndBreaks" element="tns:TrackAttendancesAndBreaks"/>
+  </wsdl:message>
+  <wsdl:message name="TrackAttendancesAndBreaksResponse">
+    <wsdl:part name="trackAttendancesAndBreaksResponse" element="tns:TrackAttendancesAndBreaksResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetAttendancesAndBreaksRequest">
+    <wsdl:part name="getAttendancesAndBreaks" element="tns:GetAttendancesAndBreaks"/>
+  </wsdl:message>
+  <wsdl:message name="GetAttendancesAndBreaksResponse">
+    <wsdl:part name="getAttendancesAndBreaksResponse" element="tns:GetAttendancesAndBreaksResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="ChangeAttendancesAndBreaksRequest">
+    <wsdl:part name="changeAttendancesAndBreaks" element="tns:ChangeAttendancesAndBreaks"/>
+  </wsdl:message>
+  <wsdl:message name="ChangeAttendancesAndBreaksResponse">
+    <wsdl:part name="changeAttendancesAndBreaksReponse" element="tns:ChangeAttendancesAndBreaksResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="DeleteAttendancesAndBreaksRequest">
+    <wsdl:part name="deleteAttendancesAndBreaks" element="tns:DeleteAttendancesAndBreaks"/>
+  </wsdl:message>
+  <wsdl:message name="DeleteAttendancesAndBreaksResponse">
+    <wsdl:part name="deleteAttendancesAndBreaksResponse" element="tns:DeleteAttendancesAndBreaksResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetTimesheetRequest">
+    <wsdl:part name="getTimesheet" element="tns:GetTimesheet"/>
+  </wsdl:message>
+  <wsdl:message name="GetTimesheetResponse">
+    <wsdl:part name="getTimesheetResponse" element="tns:GetTimesheetResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="CountTimesheetEntriesRequest">
+    <wsdl:part name="countTimesheetEntries" element="tns:CountTimesheetEntries"/>
+  </wsdl:message>
+  <wsdl:message name="CountTimesheetEntriesResponse">
+    <wsdl:part name="countTimesheetEntriesResponse" element="tns:CountTimesheetEntriesResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="CreateOrUpdateTimeRecordRequest">
+    <wsdl:part name="createOrUpdateTimeRecord" element="tns:CreateOrUpdateTimeRecord"/>
+  </wsdl:message>
+  <wsdl:message name="CreateOrUpdateTimeRecordResponse">
+    <wsdl:part name="createOrUpdateTimeRecordResponse" element="tns:CreateOrUpdateTimeRecordResponse"/>
+  </wsdl:message>
+  <wsdl:message name="UnableToCreateOrUpdateTimeRecordException">
+    <wsdl:part name="unableToCreateOrUpdateTimeRecord" element="tns:UnableToCreateOrUpdateTimeRecord"/>
+  </wsdl:message>
+  <wsdl:message name="ViolatedConstraintException">
+    <wsdl:part name="violatedConstraint" element="tns:ViolatedConstraint"/>
+  </wsdl:message>
+
+  <wsdl:message name="DeleteTimeRecordRequest">
+    <wsdl:part name="deleteTimeRecord" element="tns:DeleteTimeRecord"/>
+  </wsdl:message>
+  <wsdl:message name="DeleteTimeRecordResponse">
+    <wsdl:part name="deleteTimeRecordResponse" element="tns:DeleteTimeRecordResponse"/>
+  </wsdl:message>
+  <wsdl:message name="UnableToDeleteTimeRecordException">
+    <wsdl:part name="unableToDeleteTimeRecord" element="tns:UnableToDeleteTimeRecord"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetTimeRecordRequest">
+    <wsdl:part name="getTimeRecord" element="tns:GetTimeRecord"/>
+  </wsdl:message>
+  <wsdl:message name="GetTimeRecordResponse">
+    <wsdl:part name="getTimeRecordResponse" element="tns:GetTimeRecordResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetTimeRecordsRequest">
+    <wsdl:part name="getTimeRecords" element="tns:GetTimeRecords"/>
+  </wsdl:message>
+  <wsdl:message name="GetTimeRecordsResponse">
+    <wsdl:part name="getTimeRecordsResponse" element="tns:GetTimeRecordsResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetClosureDateRequest">
+    <wsdl:part name="getClosureDate" element="tns:GetClosureDate"/>
+  </wsdl:message>
+  <wsdl:message name="GetClosureDateResponse">
+    <wsdl:part name="getClosureDateResponse" element="tns:GetClosureDateResponse"/>
+  </wsdl:message>
+  <wsdl:message name="SetClosureDateRequest">
+    <wsdl:part name="setClosureDate" element="tns:SetClosureDate"/>
+  </wsdl:message>
+  <wsdl:message name="SetClosureDateResponse">
+    <wsdl:part name="setClosureDateResponse" element="tns:SetClosureDateResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="GetHoursWorkedSummaryRequest">
+    <wsdl:part name="getHoursWorkedSummary" element="tns:GetHoursWorkedSummary"/>
+  </wsdl:message>
+  <wsdl:message name="GetHoursWorkedSummaryResponse">
+    <wsdl:part name="GetHoursWorkedSummaryResponse" element="tns:GetHoursWorkedSummaryResponse"/>
+  </wsdl:message>
+  <wsdl:message name="IllegalEvaluationPeriodException">
+    <wsdl:part name="illegalEvaluationPeriod" element="tns:IllegalEvaluationPeriod"/>
+  </wsdl:message>
+
+  <wsdl:message name="AccessDeniedException">
+    <wsdl:part name="accessDenied" element="tns:AccessDenied"/>
+  </wsdl:message>
+  <wsdl:message name="UnableToPerformException">
+    <wsdl:part name="unableToPerform" element="tns:UnableToPerform"/>
+  </wsdl:message>
+
+  <wsdl:portType name="TimerecordingWebServicePortType" wsp:PolicyURIs="#UsernameTokenOverTransport">
+    <wsdl:operation name="GetTimeTrackingSettings">
+      <wsdl:input message="tns:GetTimeTrackingSettingsRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetTimeTrackingSettings"/>
+      <wsdl:output message="tns:GetTimeTrackingSettingsResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetTimeTrackingSettingsResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetTimeTrackingSettingsAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecordAttributes">
+      <wsdl:documentation>Gets Time record's attributes</wsdl:documentation>
+      <wsdl:input message="tns:GetTimeRecordAttributesRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetTimeRecordAttributes"/>
+      <wsdl:output message="tns:GetTimeRecordAttributesResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetTimeRecordAttributesResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetTimeRecordAttributesAccessDeniedException"/>
+      <wsdl:fault name="UnexpectedLanguageFault" message="tns:UnexpectedLanguageException" wsaw:Action="urn:GetTimeRecordAttributesUnexpectedLanguageException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="TrackAttendancesAndBreaks">
+      <wsdl:input message="tns:TrackAttendancesAndBreaksRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/TrackAttendancesAndBreaks"/>
+      <wsdl:output message="tns:TrackAttendancesAndBreaksResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/TrackAttendancesAndBreaksResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:TrackAttendancesAndBreaksAccessDeniedException"/>
+      <wsdl:fault name="UnableToPerformFault" message="tns:UnableToPerformException" wsaw:Action="urn:TrackAttendancesAndBreaksUnableToPerformException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetAttendancesAndBreaks">
+      <wsdl:input message="tns:GetAttendancesAndBreaksRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetAttendancesAndBreaks"/>
+      <wsdl:output message="tns:GetAttendancesAndBreaksResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetAttendancesAndBreaksResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetAttendancesAndBreaksAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="ChangeAttendancesAndBreaks">
+      <wsdl:input message="tns:ChangeAttendancesAndBreaksRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/ChangeAttendancesAndBreaks"/>
+      <wsdl:output message="tns:ChangeAttendancesAndBreaksResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/ChangeAttendancesAndBreaksResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:ChangeAttendancesAndBreaksAccessDeniedException"/>
+      <wsdl:fault name="UnableToPerformFault" message="tns:UnableToPerformException" wsaw:Action="urn:ChangeAttendancesAndBreaksUnableToPerformException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeleteAttendancesAndBreaks">
+      <wsdl:input message="tns:DeleteAttendancesAndBreaksRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/DeleteAttendancesAndBreaks"/>
+      <wsdl:output message="tns:DeleteAttendancesAndBreaksResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/DeleteAttendancesAndBreaksResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:DeleteAttendancesAndBreaksAccessDeniedException"/>
+      <wsdl:fault name="UnableToPerformFault" message="tns:UnableToPerformException" wsaw:Action="urn:DeleteAttendancesAndBreaksUnableToPerformException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimesheet">
+      <wsdl:input message="tns:GetTimesheetRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetTimesheet"/>
+      <wsdl:output message="tns:GetTimesheetResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetTimesheetResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetTimesheetAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="CountTimesheetEntries">
+      <wsdl:input message="tns:CountTimesheetEntriesRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/CountTimesheetEntries"/>
+      <wsdl:output message="tns:CountTimesheetEntriesResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/CountTimesheetEntriesResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:CountTimesheetEntriesAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="CreateOrUpdateTimeRecord">
+      <wsdl:documentation>Creates or updates a time record</wsdl:documentation>
+      <wsdl:input message="tns:CreateOrUpdateTimeRecordRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/CreateOrUpdateTimeRecord"/>
+      <wsdl:output message="tns:CreateOrUpdateTimeRecordResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/CreateOrUpdateTimeRecordResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:CreateOrUpdateTimeRecordAccessDeniedException"/>
+      <wsdl:fault name="UnableToCreateOrUpdateTimeRecordFault" message="tns:UnableToCreateOrUpdateTimeRecordException" wsaw:Action="urn:CreateOrUpdateTimeRecordUnableToCreateOrUpdateTimeRecordException"/>
+      <wsdl:fault name="ViolatedConstraintExceptionFault" message="tns:ViolatedConstraintException" wsaw:Action="urn:CreateOrUpdateTimeRecordViolatedConstraintException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeleteTimeRecord">
+      <wsdl:documentation>Deletes a time record</wsdl:documentation>
+      <wsdl:input message="tns:DeleteTimeRecordRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/DeleteTimeRecord"/>
+      <wsdl:output message="tns:DeleteTimeRecordResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/DeleteTimeRecordResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:DeleteTimeRecordAccessDeniedException"/>
+      <wsdl:fault name="UnableToDeleteTimeRecordFault" message="tns:UnableToDeleteTimeRecordException" wsaw:Action="urn:DeleteTimeRecordUnableToDeleteTimeRecordException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecord">
+      <wsdl:input message="tns:GetTimeRecordRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetTimeRecord"/>
+      <wsdl:output message="tns:GetTimeRecordResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetTimeRecordResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetTimeRecordAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecords">
+      <wsdl:input message="tns:GetTimeRecordsRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetTimeRecords"/>
+      <wsdl:output message="tns:GetTimeRecordsResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetTimeRecordsResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetTimeRecordsAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetClosureDate">
+      <wsdl:input message="tns:GetClosureDateRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetClosureDate"/>
+      <wsdl:output message="tns:GetClosureDateResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetClosureDateResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetClosureDateAccessDeniedException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="SetClosureDate">
+      <wsdl:input message="tns:SetClosureDateRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/SetClosureDate"/>
+      <wsdl:output message="tns:SetClosureDateResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/SetClosureDateResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:SetClosureDateAccessDeniedException"/>
+      <wsdl:fault name="UnableToPerformFault" message="tns:UnableToPerformException" wsaw:Action="urn:SetClosureDateUnableToPerformException"/>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetHoursWorkedSummary">
+      <wsdl:input message="tns:GetHoursWorkedSummaryRequest" wsaw:Action="http://www.projektron.de/ws/timerecording/GetHoursWorkedSummary"/>
+      <wsdl:output message="tns:GetHoursWorkedSummaryResponse" wsaw:Action="http://www.projektron.de/ws/timerecording/TimerecordingWebService/GetHoursWorkedSummaryResponse"/>
+      <wsdl:fault name="AccessDeniedFault" message="tns:AccessDeniedException" wsaw:Action="urn:GetHoursWorkedSummaryAccessDeniedException"/>
+      <wsdl:fault name="IllegalEvaluationPeriodFault" message="tns:IllegalEvaluationPeriodException" wsaw:Action="urn:GetHoursWorkedSummaryIllegalEvaluationPeriodException"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="TimerecordingWebServiceSoap11Binding" type="tns:TimerecordingWebServicePortType">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="document"/>
+
+    <wsdl:operation name="GetTimeTrackingSettings">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeTrackingSettings" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecordAttributes">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeRecordAttributes" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnexpectedLanguageFault">
+        <soap:fault name="UnexpectedLanguageFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="TrackAttendancesAndBreaks">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/TrackAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetAttendancesAndBreaks">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="ChangeAttendancesAndBreaks">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/ChangeAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeleteAttendancesAndBreaks">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/DeleteAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimesheet">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimesheet" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="CountTimesheetEntries">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/CountTimesheetEntries" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="CreateOrUpdateTimeRecord">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/CreateOrUpdateTimeRecord" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToCreateOrUpdateTimeRecordFault">
+        <soap:fault name="UnableToCreateOrUpdateTimeRecordFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="ViolatedConstraintExceptionFault">
+        <soap:fault name="ViolatedConstraintExceptionFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeleteTimeRecord">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/DeleteTimeRecord" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToDeleteTimeRecordFault">
+        <soap:fault name="UnableToDeleteTimeRecordFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecord">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeRecord" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecords">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeRecords" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetClosureDate">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetClosureDate" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="SetClosureDate">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/SetClosureDate" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetHoursWorkedSummary">
+      <soap:operation soapAction="http://www.projektron.de/ws/timerecording/GetHoursWorkedSummary" style="document"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="IllegalEvaluationPeriodFault">
+        <soap:fault name="IllegalEvaluationPeriodFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:binding name="TimerecordingWebServiceSoap12Binding" type="tns:TimerecordingWebServicePortType">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" style="document"/>
+
+    <wsdl:operation name="GetTimeTrackingSettings">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeTrackingSettings" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecordAttributes">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeRecordAttributes" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnexpectedLanguageFault">
+        <soap12:fault name="UnexpectedLanguageFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="TrackAttendancesAndBreaks">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/TrackAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap12:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetAttendancesAndBreaks">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="ChangeAttendancesAndBreaks">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/ChangeAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap12:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeleteAttendancesAndBreaks">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/DeleteAttendancesAndBreaks" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap12:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimesheet">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimesheet" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="CountTimesheetEntries">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/CountTimesheetEntries" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="CreateOrUpdateTimeRecord">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/CreateOrUpdateTimeRecord" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToCreateOrUpdateTimeRecordFault">
+        <soap12:fault name="UnableToCreateOrUpdateTimeRecordFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="ViolatedConstraintExceptionFault">
+        <soap12:fault name="ViolatedConstraintExceptionFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="DeleteTimeRecord">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/DeleteTimeRecord" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToDeleteTimeRecordFault">
+        <soap12:fault name="UnableToDeleteTimeRecordFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecord">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeRecord" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetTimeRecords">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetTimeRecords" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetClosureDate">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetClosureDate" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="SetClosureDate">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/SetClosureDate" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="UnableToPerformFault">
+        <soap12:fault name="UnableToPerformFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+
+    <wsdl:operation name="GetHoursWorkedSummary">
+      <soap12:operation soapAction="http://www.projektron.de/ws/timerecording/GetHoursWorkedSummary" style="document"/>
+      <wsdl:input>
+        <soap12:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal"/>
+      </wsdl:output>
+      <wsdl:fault name="AccessDeniedFault">
+        <soap12:fault name="AccessDeniedFault" use="literal"/>
+      </wsdl:fault>
+      <wsdl:fault name="IllegalEvaluationPeriodFault">
+        <soap12:fault name="IllegalEvaluationPeriodFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="TimerecordingWebService">
+    <wsdl:port name="TimerecordingWebServiceHttpSoap11Endpoint" binding="tns:TimerecordingWebServiceSoap11Binding">
+      <soap:address location="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService"/>
+    </wsdl:port>
+    <wsdl:port name="TimerecordingWebServiceHttpSoap12Endpoint" binding="tns:TimerecordingWebServiceSoap12Binding">
+      <soap12:address location="http://localhost:8080/webservices/TimerecordingWebService/"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

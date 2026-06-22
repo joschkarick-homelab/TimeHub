@@ -132,62 +132,127 @@ Beschreibung, Bearbeiter/User).
 laut BCS-Doku legt er neue Buchungen an, fragt/ändert/löscht bestehende, bucht
 Anwesenheiten/Pausen und setzt Buchungsabschlüsse. Genau unser Aufwands-Push.
 
-### 4.1 Endpunkt / WSDL (verifiziert aus BCS-Doku)
+Die WSDL liegt versioniert unter [`docs/bcs/TimerecordingWebService.wsdl`](bcs/TimerecordingWebService.wsdl).
 
-Die Webservices liegen **als Geschwister-Kontext neben `/bcs`**, NICHT darunter.
-Bei App unter `…/bcs` lautet das Muster:
+### 4.1 Endpunkt / WSDL (verifiziert aus WSDL)
+
+Pfad ist **`/webservices/…`** (Geschwister-Kontext neben `/bcs`), bestätigt
+durch den abgerufenen `soap:address`:
 
 ```
-https://<host>/webservices/TimerecordingWebService          (SOAP-Requests)
-https://<host>/webservices/TimerecordingWebService?wsdl      (WSDL 1.1)
-https://<host>/webservices/TimerecordingWebService?wsdl2     (WSDL 2.0)
+SOAP 1.1: https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService
+WSDL:     …/webservices/TimerecordingWebService?wsdl   (1.1) | ?wsdl2 (2.0)
+XSD-Teile:…/webservices/TimerecordingWebService?xsd=1 … ?xsd=12
 ```
 
-→ Für mindsquare also voraussichtlich
-`https://mindsquare.bcs-hosting.de/webservices/TimerecordingWebService?wsdl2`
-(**ohne** `/bcs/`-Präfix — der Pfad mit `/bcs/webservices/…` ergab „page does
-not exist or no permission").
+- Style: **document/literal**, SOAP 1.1 **und** 1.2 Binding vorhanden.
+- ⚠️ **WSDL-Fallstrick:** Der SOAP-**1.2**-Port zeigt im `soap12:address` auf
+  `http://localhost:8080/…` (BCS-Default, nicht ersetzt). Daher **SOAP 1.1**
+  nutzen *oder* die Endpoint-Adresse im Client hart überschreiben.
 
-### 4.2 Auth (verifiziert aus BCS-Doku)
+### 4.2 Auth (verifiziert aus WSDL-Policy + Doku)
+
+Die WSDL trägt die Policy `UsernameTokenOverTransport`
+(`SignedSupportingTokens` → `UsernameToken`, `AlwaysToRecipient`):
 
 - **WS-Security UsernameToken Profile 1.1**, PasswordType **PasswordText**
-  (Klartext) im SOAP-Header. Kein OAuth.
-- **Zwingend HTTPS**, da Passwort im Klartext übertragen wird.
+  (Klartext), zwingend über **HTTPS** (Transport-Security).
 - **Keine** Spaces/Zeilenumbrüche um Username/Password.
 - Alle Operationen laufen im **Permission-Kontext des Login-Users**; dieser wird
-  als `insUserOid`/`updUserOid` in BCS geführt.
-- **Dedizierter technischer User** empfohlen (Projektron-Empfehlung), nicht ein
-  persönlicher Account.
+  als `insUserOid`/`updUserOid` geführt → **dedizierter technischer User**
+  (Projektron-Empfehlung), der für die Berater bucht.
 
-### 4.3 Benötigte Berechtigungen (Admin)
+### 4.3 Benötigte Berechtigungen (Admin) — *aktueller Blocker*
 
-Drei Ebenen — alle für den technischen Service-User:
+Für den technischen Service-User:
 
 1. **Systemrecht „Webservices nutzen"** (über Rolle/Gruppe in der
    Rechteverwaltung; exakter Label-Wortlaut steht im internen PDF).
-2. **Funktionale Buch-Rechte:** Aufwände auf den Zielprojekten erfassen/ändern/
-   löschen — sonst geht die WSDL, aber Calls scheitern an Fachrechten.
-3. Service-User anlegen + Login-Daten an TimeHub (verschlüsselt).
+2. **Funktionale Buch-Rechte:** Aufwände erfassen/ändern — und zwar **stellver-
+   tretend für andere User**, da der Service-User für die Berater bucht (siehe
+   §4.5, Anforderung „User-Match").
+3. Lese-Recht auf die buchbaren **Arbeitspakete/Vorgänge** der Zielprojekte.
 
-### 4.4 Grobplan Implementierung
+### 4.4 Relevante Operationen (aus WSDL)
 
-- **Protokoll:** SOAP via `zeep` (Python), WSDL vom BCS-Host ziehen.
-- **Auth:** UsernameToken (s. §4.2); Credentials verschlüsselt in der DB
-  (wie bei Salesforce, Fernet aus `SECRET_KEY`).
-- **Client:** analog zum Salesforce-Push als Sync-Target-Client, der
-  `EntrySync(target="bcs")` von `pending` nach `synced`/`failed` bringt
-  (`preview → execute`-Muster wiederverwenden).
-- **Mapping:** `subject`/`task` auf die `TimerecordingWebService`-Felder
-  abbilden; `external_ref` = von BCS zurückgegebene Buchungs-ID für
-  Idempotenz/Updates.
+| Operation | Zweck im Sync |
+| --- | --- |
+| **`CreateOrUpdateTimeRecord`** | **Kern-Op**: Buchung anlegen/aktualisieren (Upsert). Faults: `AccessDenied`, `UnableToCreateOrUpdate`, **`ViolatedConstraint`**. |
+| `GetTimeRecord` / `GetTimeRecords` | Bestehende Buchungen lesen (Idempotenz, Re-Sync). |
+| `DeleteTimeRecord` | Buchung löschen (für künftiges „Eintrag in TimeHub gelöscht → BCS nachziehen"). |
+| `GetTimeTrackingSettings` | Konfigurierte Zeiterfassungs-Granularität — **klärt Anforderung „eine Dauer pro Tag/AP"** (§4.6). |
+| `GetTimeRecordAttributes` | Attribut-/Wertelisten einer Buchung — **Kandidat für die Arbeitspaket-Liste** (§4.5, Dropdown). |
+| `GetClosureDate` / `SetClosureDate` | Buchungsabschluss; Push gegen abgeschlossene Tage scheitert sonst hart. |
+| Attendances/Breaks-Ops | Anwesenheit/Pausen — **nicht** für Aufwands-Push nötig. |
 
-### 4.5 Offen für Stufe 2
+### 4.5 Mapping der Anforderungen auf das Design
 
-- [x] Lizenz aktiviert (06/2026).
-- [ ] Berechtigungen für Service-User gesetzt (siehe §4.3) — *aktuell blockierend*.
-- [ ] Korrekten WSDL-Endpunkt bestätigen (Pfad ohne `/bcs/`, siehe §4.1).
-- [ ] Exakte Request-Struktur des `TimerecordingWebService` (Felder fürs
-      Anlegen einer Buchung) aus der internen Doku übernehmen.
+| # | Anforderung | Umsetzung |
+| --- | --- | --- |
+| 1 | Arbeitspaket pro Projekt **oder** Eintrag | Registry-Feld umstellen (s.u.): `bcs.default_work_package` (Projekt, optional) → `bcs.work_package` (Eintrag, Pflicht, `inherit_from_project`). Exakt das Jira-Muster `default_issue → issue_key`. |
+| 2 | Dropdown aktiver Arbeitspakete | `options_source="bcs_work_packages"`, `searchable=True`; befüllt in `_sync_dynamic_options()` analog `sf_assignments` — nur **buchbare** APs des Users. *Offene Frage: welche WS-Op liefert die Liste? (`GetTimeRecordAttributes` o. `GetTimeTrackingSettings`; ggf. zusätzlicher Struktur-WS.)* |
+| 3 | User-Match per E-Mail (BCS via MS-OAuth) | TimeHub-User.email → BCS-User-OID auflösen, OID im Request mitgeben (Service-User bucht stellvertretend). *Offene Frage: Auflösung E-Mail→OID — nimmt eine Op einen User-Parameter? sonst Zusatz-WS nötig.* |
+| 4 | Login per WS-Security UsernameToken 1.1 | `zeep` + `zeep.wsse.username.UsernameToken` (PasswordText), HTTPS. Credentials wie SF im `AppSetting`-Store, Fernet-verschlüsselt. |
+| 5 | Schreiben → bei Erfolg BCS-Status grün | `CreateOrUpdateTimeRecord` → bei Erfolg `set_target_status(db, entry, "bcs", "synced", external_ref=<timeRecordOid>)`; bei Fault `failed` mit Fehlertext. Identisch zum SF-Execute-Flow (`sync.py`). |
+| 6 | „Nur eine Dauer pro Tag pro AP?" | **Sehr wahrscheinlich ja** — Validierung + defensives Design in §4.6. |
+
+### 4.6 Anforderung 6 validieren — „eine Dauer pro Tag pro Arbeitspaket"
+
+**Indizien aus der WSDL sprechen dafür:**
+- Die Op heißt `CreateOr**Update**` (Upsert-Semantik, nicht reines Create).
+- Eigener Fault **`ViolatedConstraintException`** — passt zu einer Eindeutig-
+  keits-Constraint auf (User, Datum, Vorgang).
+- Entspricht dem BCS-Standard „Tagesaufwand pro Vorgang".
+
+**Aber nicht bewiesen** ohne die Input-XSD von `CreateOrUpdateTimeRecord` und
+`GetTimeTrackingSettings`. Zwei To-dos:
+- `GetTimeTrackingSettings` aufrufen → zeigt die konfigurierte Granularität.
+- Input-XSD prüfen: braucht ein Update die bestehende `timeRecordOid`, oder
+  ist es ein Upsert über den Natürlichen Schlüssel (User+Datum+Vorgang)?
+
+**Defensives Design (unabhängig vom Ergebnis):** TimeHub erlaubt mehrere Ein-
+träge/Tag/Projekt; BCS evtl. nur eine Buchung/Tag/AP. Der BCS-Push
+**aggregiert deshalb vor dem Senden pro (User, Datum, Arbeitspaket)**:
+Dauern summieren, Beschreibungen zusammenführen. Damit ist es egal, ob BCS eine
+oder mehrere Buchungen erlaubt; die `timeRecordOid` wird auf **allen** Einträgen
+der Gruppe als `external_ref` gespeichert (gemeinsame Idempotenz).
+
+> **Architektur-Hinweis:** Das ist der wesentliche Unterschied zum SF-Push
+> (dort 1 Eintrag → 1 `Zeiterfassung__c`). Der BCS-Push ist ein
+> **Gruppierungs-Push** (n Einträge → 1 Buchung). `EntrySync` bleibt pro
+> Eintrag, teilt sich aber `external_ref` und Status innerhalb der Gruppe.
+
+### 4.7 Implementierungsplan (Code-Anfasspunkte)
+
+1. **Dependency:** `zeep` in `requirements.txt` (SOAP + WS-Security). Hand-
+   gerolltes XML wie bei SF wäre bei document/literal + WSSE zu fehleranfällig.
+2. **`app/services/bcs.py`** (neu, Pendant zu `salesforce.py`): zeep-Client aus
+   Settings, `CreateOrUpdateTimeRecord`, `get_time_records`, Arbeitspaket-Liste,
+   E-Mail→User-OID, Credential-Store (`bcs.username`/`bcs.password`/`bcs.wsdl_url`).
+3. **`app/services/bcs_push.py`** (neu, Pendant zu `sf_push.py`): read-only
+   Resolver, der Einträge pro (User, Datum, AP) **gruppiert** und je Gruppe ein
+   Payload + Blockier-Gründe liefert (Abschluss-Datum, fehlendes AP, …).
+4. **`sync_fields.py`:** `bcs`-Block von `subject`/`task` auf
+   `default_work_package` (Projekt) + `work_package` (Eintrag) umstellen.
+5. **`common.py::_sync_dynamic_options`:** `bcs_work_packages` ergänzen.
+6. **`web/routes/sync.py`:** BCS-`preview`/`execute` analog SF; bei Erfolg
+   `set_target_status(... "bcs", "synced", external_ref=...)`.
+7. **`web/routes/admin.py`:** BCS-Credential-Maske + Verbindungstest
+   (`GetTimeTrackingSettings` als Smoke-Test) analog SF-Settings.
+8. **Alembic:** keine Schema-Migration nötig — alles in den vorhandenen
+   JSON-Spalten (`sync_metadata` / `sync_metadata_override`) und `EntrySync`.
+
+### 4.8 Offen / benötigt (vor Implementierung)
+
+- [x] Lizenz aktiviert (06/2026); WSDL vorhanden & Endpunkt bestätigt.
+- [ ] **Berechtigungen** für den Service-User (inkl. stellvertretendes Buchen) —
+      *aktueller Blocker*.
+- [ ] **XSD-Teile** (`?xsd=1…12`) — für die exakte Input-Struktur von
+      `CreateOrUpdateTimeRecord` (Pflichtfelder, Dauer-Kodierung, User-OID,
+      Arbeitspaket-OID, Datum, Beschreibung) und `GetTimeRecordAttributes`.
+- [ ] **Arbeitspaket-Liste:** welche Op liefert die buchbaren APs des Users?
+- [ ] **E-Mail→BCS-User-OID:** über welche Op/welchen WS?
+- [ ] `GetTimeTrackingSettings`-Antwort (Granularität) → bestätigt Anforderung 6.
 
 ---
 
@@ -202,6 +267,8 @@ Drei Ebenen — alle für den technischen Service-User:
 3. Auf Basis der Projektron-Antwort entscheiden: CSV-Import nutzbar? Oder direkt
    Stufe 2 (Webservices) ansteuern?
 
-> **Update 06/2026:** Webservice-Lizenz ist da → Stufe 2 ist direkt machbar,
-> sobald die **Berechtigungen** für einen technischen Service-User stehen
-> (siehe §4.3). Das ist aktuell der einzige Blocker.
+> **Update 06/2026:** Webservice-Lizenz ist da, WSDL liegt vor, Endpunkt/Auth
+> sind verifiziert → wir gehen **direkt Stufe 2** (Webservice-Push, §4). CSV
+> bleibt nur Fallback. Verbleibende Blocker vor dem Bau: **Berechtigungen** des
+> Service-Users (§4.3) und die **XSD-Teile** für die exakte Request-Struktur
+> (§4.8).
