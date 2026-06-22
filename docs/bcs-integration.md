@@ -175,12 +175,17 @@ Die WSDL trägt die Policy `UsernameTokenOverTransport`
 **Impersonation** (statt stellvertretendem Buchen über Rechte): zusätzlich zum
 WSSE-Header wird ein **`<ImpersonateAs>`**-Header mit dem **BCS-Username** des
 Beraters gesendet. Die Operation läuft dann im **Scope dieses Beraters**, er
-wird als `insUserOid` geführt. Beispiel:
+wird als `insUserOid` geführt.
+
+**`ImpersonateAs` = TimeHub-User.email.** Annahme (vom Fachbereich bestätigt):
+BCS-Username == E-Mail == TimeHub-`user.email`. Damit ist **kein** separates
+`email→username`-Mapping nötig — der Header wird direkt aus `user.email`
+gefüllt. (Ändert sich das, wird ein Lookup nachgezogen.) Beispiel:
 
 ```xml
 <soapenv:Header>
   <wsse:Security>…UsernameToken: Synchronisation…</wsse:Security>
-  <ImpersonateAs>pl1</ImpersonateAs>
+  <ImpersonateAs>berater@firma.de</ImpersonateAs>
 </soapenv:Header>
 ```
 
@@ -206,8 +211,9 @@ In `zeep` über `_soapheaders` neben dem `UsernameToken`-WSSE-Plugin.
 | **`CreateOrUpdateTimeRecord`** | **Kern-Op**: Buchung anlegen/aktualisieren (Upsert). Faults: `AccessDenied`, `UnableToCreateOrUpdate`, **`ViolatedConstraint`**. |
 | `GetTimeRecord` / `GetTimeRecords` | Bestehende Buchungen lesen (Idempotenz, Re-Sync). |
 | `DeleteTimeRecord` | Buchung löschen (für künftiges „Eintrag in TimeHub gelöscht → BCS nachziehen"). |
+| **`GetTimesheet`** | Liefert die **buchbaren Arbeitspakete** des Users → Quelle fürs AP-Dropdown (§4.5, Anf. 2). |
 | `GetTimeTrackingSettings` | Konfigurierte Zeiterfassungs-Granularität — **klärt Anforderung „eine Dauer pro Tag/AP"** (§4.6). |
-| `GetTimeRecordAttributes` | Attribut-/Wertelisten einer Buchung — **Kandidat für die Arbeitspaket-Liste** (§4.5, Dropdown). |
+| `GetTimeRecordAttributes` | Attribut-/Wertelisten einer Buchung. |
 | `GetClosureDate` / `SetClosureDate` | Buchungsabschluss; Push gegen abgeschlossene Tage scheitert sonst hart. |
 | Attendances/Breaks-Ops | Anwesenheit/Pausen — **nicht** für Aufwands-Push nötig. |
 
@@ -216,8 +222,8 @@ In `zeep` über `_soapheaders` neben dem `UsernameToken`-WSSE-Plugin.
 | # | Anforderung | Umsetzung |
 | --- | --- | --- |
 | 1 | Arbeitspaket pro Projekt **oder** Eintrag | Registry-Feld umstellen (s.u.): `bcs.default_work_package` (Projekt, optional) → `bcs.work_package` (Eintrag, Pflicht, `inherit_from_project`). Exakt das Jira-Muster `default_issue → issue_key`. |
-| 2 | Dropdown aktiver Arbeitspakete | `options_source="bcs_work_packages"`, `searchable=True`; befüllt in `_sync_dynamic_options()` analog `sf_assignments` — nur **buchbare** APs des Users. *Offene Frage: welche WS-Op liefert die Liste? (`GetTimeRecordAttributes` o. `GetTimeTrackingSettings`; ggf. zusätzlicher Struktur-WS.)* |
-| 3 | User-Match per E-Mail (BCS via MS-OAuth) | TimeHub-User.email → **BCS-Username** auflösen, als `<ImpersonateAs>` mitsenden (Impersonation, E-BCS-4). *Offene Frage: Auflösung E-Mail→Username/OID — welche Op/welcher WS? sonst Zusatz-WS nötig.* |
+| 2 | Dropdown aktiver Arbeitspakete | `options_source="bcs_work_packages"`, `searchable=True`; befüllt in `_sync_dynamic_options()` analog `sf_assignments` — buchbare APs des Users via **`GetTimesheet`**. |
+| 3 | User-Match per E-Mail (BCS via MS-OAuth) | `<ImpersonateAs>` = `user.email` direkt (BCS-Username == E-Mail == TimeHub-E-Mail; kein Lookup nötig, E-BCS-4). |
 | 4 | Login per WS-Security UsernameToken 1.1 | `zeep` + `zeep.wsse.username.UsernameToken` (System-User `Synchronisation`, PasswordText) + `<ImpersonateAs>`-Header via `_soapheaders`, HTTPS. Eine Credential im `AppSetting`-Store, Fernet-verschlüsselt. |
 | 5 | Schreiben → bei Erfolg BCS-Status grün | `CreateOrUpdateTimeRecord` → bei Erfolg `set_target_status(db, entry, "bcs", "synced", external_ref=<timeRecordOid>)`; bei Fault `failed` mit Fehlertext. Identisch zum SF-Execute-Flow (`sync.py`). |
 | 6 | „Nur eine Dauer pro Tag pro AP?" | **Sehr wahrscheinlich ja** — Validierung + defensives Design in §4.6. |
@@ -272,13 +278,14 @@ der Gruppe als `external_ref` gespeichert (gemeinsame Idempotenz).
 
 - [x] Lizenz aktiviert (06/2026); WSDL vorhanden & Endpunkt bestätigt.
 - [ ] **Admin-Setup** (§4.3): `impersonationOids` konfiguriert, WS-Lizenz den
-      Beratern zugewiesen, `Synchronisation`-Credentials vorhanden — *Blocker*.
-- [ ] **XSD-Teile** (`?xsd=1…12`) — für die exakte Input-Struktur von
+      Beratern zugewiesen, `Synchronisation`-Credentials vorhanden — *Blocker*
+      (Sync-User ist beantragt).
+- [ ] **XSD-Teile** (`?xsd=1…12`) — für die exakte Input-/Output-Struktur von
       `CreateOrUpdateTimeRecord` (Pflichtfelder, Dauer-Kodierung,
-      Arbeitspaket-OID, Datum, Beschreibung) und `GetTimeRecordAttributes`.
-- [ ] **Arbeitspaket-Liste:** welche Op liefert die buchbaren APs des Users?
-- [ ] **E-Mail→BCS-Username/OID:** über welche Op/welchen WS? (für
-      `ImpersonateAs`-Header + `impersonationOids`-Config).
+      Arbeitspaket-OID, Datum, Beschreibung) und `GetTimesheet`
+      (Eingabe-Parameter + AP-Felder im Response).
+- [x] **Arbeitspaket-Liste:** `GetTimesheet`.
+- [x] **E-Mail→User:** `ImpersonateAs` = `user.email` (kein Lookup).
 - [ ] `GetTimeTrackingSettings`-Antwort (Granularität) → bestätigt Anforderung 6.
 
 ---
