@@ -22,6 +22,7 @@ from app.web.common import (
     _ctx,
     _owned_entry_or_404,
     _owned_project_or_404,
+    _parse_duration_minutes,
     _parse_time,
     _require_login,
     _resolve_duration,
@@ -38,7 +39,7 @@ async def create_entry(
     request: Request,
     entry_date: str = Form(...),
     project_id: int = Form(...),
-    duration_minutes: int | None = Form(None),
+    duration_minutes: str = Form(""),
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
@@ -51,7 +52,7 @@ async def create_entry(
     start = _parse_time(start_time)
     end = _parse_time(end_time)
     try:
-        duration = _resolve_duration(start, end, duration_minutes)
+        duration = _resolve_duration(start, end, _parse_duration_minutes(duration_minutes))
     except ValueError as e:
         sep = "&" if "?" in back else "?"
         return RedirectResponse(
@@ -122,7 +123,7 @@ async def edit_entry_submit(
     entry_id: int,
     entry_date: str = Form(...),
     project_id: int = Form(...),
-    duration_minutes: int | None = Form(None),
+    duration_minutes: str = Form(""),
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
@@ -137,7 +138,7 @@ async def edit_entry_submit(
     start = _parse_time(start_time)
     end = _parse_time(end_time)
     try:
-        duration = _resolve_duration(start, end, duration_minutes)
+        duration = _resolve_duration(start, end, _parse_duration_minutes(duration_minutes))
     except ValueError as e:
         return RedirectResponse(
             url=f"/entries/{entry_id}/edit?error={e}&next={next_url}".replace(" ", "+"),

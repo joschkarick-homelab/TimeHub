@@ -143,6 +143,42 @@ def test_create_entry_preserves_filter_via_next(client):
     assert r.headers["location"] == nxt
 
 
+def test_create_entry_with_blank_duration_uses_start_end(client):
+    """An empty "Dauer (Min)" number field submits "" — it must not 422 (raw
+    JSON). Start+end should drive the duration instead (the iOS PWA bug)."""
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    r = client.post(
+        "/entries",
+        data={"entry_date": "2026-06-22", "project_id": str(pid),
+              "start_time": "14:00", "end_time": "15:00",
+              "duration_minutes": "", "description": "Analyse", "next": "/"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302, r.text
+    assert r.headers["location"] == "/"
+    rows = client.get("/api/v1/time-entries", headers=h).json()
+    created = next(e for e in rows if e["entry_date"] == "2026-06-22")
+    assert created["duration_minutes"] == 60
+
+
+def test_create_entry_blank_duration_and_no_times_shows_friendly_error(client):
+    """Neither duration nor start+end: redirect back with a readable error,
+    not a raw 422 JSON page."""
+    _login_session(client)
+    h = {"Authorization": f"Bearer {_api_token(client)}"}
+    pid = _ensure_project(client, h)
+    r = client.post(
+        "/entries",
+        data={"entry_date": "2026-06-22", "project_id": str(pid),
+              "duration_minutes": "", "next": "/"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302, r.text
+    assert "error=" in r.headers["location"]
+
+
 def test_mark_synced_preserves_filter_via_next(client):
     _login_session(client)
     h = {"Authorization": f"Bearer {_api_token(client)}"}
