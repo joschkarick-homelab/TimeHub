@@ -132,6 +132,12 @@ Beschreibung, Bearbeiter/User).
 laut BCS-Doku legt er neue Buchungen an, fragt/ändert/löscht bestehende, bucht
 Anwesenheiten/Pausen und setzt Buchungsabschlüsse. Genau unser Aufwands-Push.
 
+**Bestätigte Entscheidungen:**
+- **E-BCS-2: SOAP-Client mit `zeep`** (statt hand-gerolltem XML wie bei SF) —
+  robuster bei document/literal + WS-Security.
+- **E-BCS-3: `subject`/`task` werden durch ein Arbeitspaket-Feld ersetzt**
+  (`default_work_package` am Projekt + `work_package` am Eintrag).
+
 Die WSDL liegt versioniert unter [`docs/bcs/TimerecordingWebService.wsdl`](bcs/TimerecordingWebService.wsdl).
 
 ### 4.1 Endpunkt / WSDL (verifiziert aus WSDL)
