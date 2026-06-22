@@ -17,6 +17,7 @@ from app.db import get_db
 from app.models import User
 from app.security import hash_password
 from app.services import app_settings as app_settings_svc
+from app.services import bcs as bcs_svc
 from app.services import salesforce as sf_svc
 from app.web.common import (
     _ctx,
@@ -38,6 +39,7 @@ def users_page(
     user = _require_admin(request, db)
     users = list(db.execute(select(User).order_by(User.id)).scalars())
     sf_creds = sf_svc.get_credentials(db)
+    bcs_creds = bcs_svc.get_credentials(db)
     return templates.TemplateResponse(
         "users.html",
         _ctx(
@@ -50,6 +52,9 @@ def users_page(
             sf_api_version=sf_creds["api_version"],
             sf_password_set=bool(sf_creds["password"]),
             sf_token_set=bool(sf_creds["security_token"]),
+            bcs_username=bcs_creds["username"],
+            bcs_wsdl_url=bcs_creds["wsdl_url"],
+            bcs_password_set=bool(bcs_creds["password"]),
             error=error,
             flash=flash,
         ),
@@ -112,6 +117,56 @@ def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
         )
     return RedirectResponse(
         url=f"/users?flash=Salesforce-Login+ok+%28{client.instance_url}%29",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/settings/bcs", response_class=HTMLResponse)
+def settings_bcs(
+    request: Request,
+    bcs_username: str = Form(""),
+    bcs_password: str = Form(""),
+    bcs_wsdl_url: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    _require_admin(request, db)
+    bcs_svc.save_credentials(
+        db, username=bcs_username, password=bcs_password, wsdl_url=bcs_wsdl_url,
+    )
+    return RedirectResponse(
+        url="/users?flash=BCS-Zugangsdaten+gespeichert",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/settings/bcs/test", response_class=HTMLResponse)
+def settings_bcs_test(
+    request: Request,
+    bcs_impersonate: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Smoke-test the stored BCS credentials with a GetTimeTrackingSettings call.
+    Optionally impersonate a consultant e-mail to verify the impersonation
+    setup end to end."""
+    from urllib.parse import quote_plus
+    actor = _require_admin(request, db)
+    client = bcs_svc.client_from_settings(db)
+    if client is None:
+        return RedirectResponse(
+            url="/users?error=Bitte+Username,+Passwort+und+WSDL-URL+hinterlegen",
+            status_code=status.HTTP_302_FOUND,
+        )
+    impersonate = (bcs_impersonate.strip() or actor.email) or None
+    try:
+        client.test_connection(impersonate=impersonate)
+    except bcs_svc.BcsError as e:
+        return RedirectResponse(
+            url=f"/users?error=BCS-Verbindung+fehlgeschlagen:+{quote_plus(str(e))[:200]}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    who = quote_plus(impersonate or "")
+    return RedirectResponse(
+        url=f"/users?flash=BCS-Verbindung+ok+%28ImpersonateAs:+{who}%29",
         status_code=status.HTTP_302_FOUND,
     )
 

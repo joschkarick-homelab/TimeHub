@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">BCS-Sync — Vorschau</h1>
+  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+</div>
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error }}
+  </div>
+{% endif %}
+{% if bcs_error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    <strong>BCS-Fehler:</strong> {{ bcs_error }}
+  </div>
+{% endif %}
+
+<p class="text-sm text-slate-600 mb-4">
+  BCS bucht <strong>eine Buchung pro Tag und Arbeitspaket</strong>. Mehrere
+  Einträge auf dasselbe Arbeitspaket am selben Tag werden hier zu einer Buchung
+  zusammengefasst (Dauer summiert, Beschreibungen zusammengeführt).
+  <strong>Nichts wird geschrieben</strong> — reine Vorschau.
+</p>
+
+{% if skipped %}
+  <section class="bg-white border border-amber-200 rounded-lg overflow-hidden mb-4">
+    <div class="px-4 pt-4 pb-2">
+      <h2 class="font-semibold text-amber-800">Blockiert / übersprungen ({{ skipped|length }})</h2>
+      <p class="text-xs text-slate-500 mt-1">
+        Diese Einträge können (noch) nicht gebucht werden. Grund prüfen und am
+        Projekt bzw. Eintrag beheben.
+      </p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead class="bg-slate-50 text-slate-600 text-left">
+          <tr>
+            <th class="px-4 py-2">Datum</th>
+            <th class="px-4 py-2">Arbeitspaket</th>
+            <th class="px-4 py-2 text-right">Dauer</th>
+            <th class="px-4 py-2">Grund</th>
+            <th class="px-4 py-2 text-right">Beheben</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in skipped %}
+            {% set minutes = s.entries | sum(attribute='duration_minutes') %}
+            <tr class="border-t border-slate-100 align-top">
+              <td class="px-4 py-2 whitespace-nowrap">{{ s.entries[0].entry_date | de_date }}</td>
+              <td class="px-4 py-2">{{ s.work_package_label or '—' }}</td>
+              <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap">{{ '%.2f'|format(minutes / 60) }} h</td>
+              <td class="px-4 py-2 text-amber-800">{{ s.reason }}</td>
+              <td class="px-4 py-2 text-right whitespace-nowrap space-x-2">
+                {% for e in s.entries %}
+                  <a href="/entries/{{ e.id }}/edit?next=/sync" class="text-xs text-indigo-600 hover:underline">→ #{{ e.id }}</a>
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+{% if groups %}
+  <section class="bg-white border border-slate-200 rounded-lg overflow-hidden mb-4">
+    <div class="px-4 pt-4 pb-2">
+      <h2 class="font-semibold">Wird gebucht ({{ groups|length }} Buchung{{ 'en' if groups|length != 1 else '' }} · {{ pushable_count }} Eintr.)</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[720px]">
+        <thead class="bg-slate-50 text-slate-600 text-left">
+          <tr>
+            <th class="px-4 py-2">Datum</th>
+            <th class="px-4 py-2">Arbeitspaket</th>
+            <th class="px-4 py-2 text-right">Einträge</th>
+            <th class="px-4 py-2 text-right">Summe</th>
+            <th class="px-4 py-2">Beschreibung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for g in groups %}
+            <tr class="border-t border-slate-100 align-top">
+              <td class="px-4 py-2 whitespace-nowrap">{{ g.date | de_date }}</td>
+              <td class="px-4 py-2">{{ g.work_package_label }}</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ g.entries|length }}</td>
+              <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap font-medium">{{ '%.2f'|format(g.total_minutes / 60) }} h</td>
+              <td class="px-4 py-2 text-slate-600">{{ g.comment or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <form method="post" action="/sync/bcs/execute"
+        class="mt-6 bg-sky-50 border border-sky-300 rounded-lg p-4"
+        data-loading-message="BCS wird beschrieben …"
+        onsubmit="return confirm('Wirklich {{ groups|length }} Buchungen nach BCS schreiben?');">
+    {% for g in groups %}{% for e in g.entries %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}{% endfor %}
+    <p class="text-sm text-sky-900 mb-3">
+      Mit dem Klick werden <strong>{{ groups|length }} BCS-Buchungen</strong>
+      angelegt bzw. aktualisiert. Bei Erfolg gehen die betroffenen Einträge auf
+      <strong>grün</strong>.
+    </p>
+    <button class="h-10 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded font-medium">
+      ↗ Nach BCS buchen ({{ groups|length }})
+    </button>
+  </form>
+{% elif not skipped and not bcs_error %}
+  <p class="text-sm text-slate-500">Nichts zu zeigen.</p>
+{% endif %}
+
+{% endblock %}

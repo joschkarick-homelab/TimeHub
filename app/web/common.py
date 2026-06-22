@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import ImportFormat, Project, SavedView, TimeEntry, User
 from app.services import app_settings as app_settings_svc
+from app.services import bcs as bcs_svc
 from app.services import salesforce as sf_svc
 
 log = logging.getLogger(__name__)
@@ -409,22 +410,33 @@ def _visible_formats(db: Session, user: User) -> list[ImportFormat]:
 
 
 def _sync_dynamic_options(db: Session, user: User | None) -> dict:
-    """Runtime-Auswahllisten für SyncFields mit options_source. Aktuell:
-    aktive Salesforce-Projektbesetzungen des aktuellen Users (E-Mail-Match).
-    Fehler / fehlende Creds → leere Map (UI fällt auf freies Eingabefeld zurück)."""
+    """Runtime-Auswahllisten für SyncFields mit options_source:
+      * ``sf_assignments``    — aktive Salesforce-Projektbesetzungen (E-Mail-Match)
+      * ``bcs_work_packages`` — aktuell buchbare BCS-Arbeitspakete (GetTimesheet)
+    Fehler / fehlende Creds → der jeweilige Eintrag fehlt (UI fällt auf ein
+    freies Eingabefeld zurück)."""
     options: dict[str, list[dict]] = {}
-    if user is None:
+    if user is None or not user.email:
         return options
-    client = sf_svc.client_from_settings(db)
-    if client is None or not user.email:
-        return options
-    try:
-        items = sf_svc.list_assignments_for_user(client, user.email)
-    except sf_svc.SalesforceError as e:
-        log.info("SF assignment lookup skipped: %s", e)
-        return options
-    if items:
-        options["sf_assignments"] = items
+
+    sf_client = sf_svc.client_from_settings(db)
+    if sf_client is not None:
+        try:
+            items = sf_svc.list_assignments_for_user(sf_client, user.email)
+            if items:
+                options["sf_assignments"] = items
+        except sf_svc.SalesforceError as e:
+            log.info("SF assignment lookup skipped: %s", e)
+
+    bcs_client = bcs_svc.client_from_settings(db)
+    if bcs_client is not None:
+        try:
+            items = bcs_client.list_work_packages(user.email, date.today().isoformat())
+            if items:
+                options["bcs_work_packages"] = items
+        except bcs_svc.BcsError as e:
+            log.info("BCS work package lookup skipped: %s", e)
+
     return options
 
 

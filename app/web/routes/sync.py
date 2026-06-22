@@ -13,9 +13,10 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
 from app.models import Project, TimeEntry
+from app.services import bcs as bcs_svc
+from app.services import bcs_push, sf_push
 from app.services import entry_sync as es_svc
 from app.services import salesforce as sf_svc
-from app.services import sf_push
 from app.services import sync_fields as sf
 from app.web.common import (
     _ctx,
@@ -65,6 +66,7 @@ def sync_center(
             cards=[(t, es_svc.TARGET_LABELS[t]) for t in es_svc.DISPLAY_TARGETS],
             projects_by_id=proj_lookup,
             sf_configured=sf_svc.credentials_configured(db),
+            bcs_configured=bcs_svc.credentials_configured(db),
             sync_dynamic_options=_sync_dynamic_options(db, user),
             formats=formats,
             flash=flash,
@@ -359,6 +361,139 @@ def sync_salesforce_execute(
             projects_by_id=proj_lookup,
             error=None,
         ),
+    )
+
+
+# ---------- BCS (Timerecording web service) ----------
+
+
+_BCS_NOT_CONFIGURED = (
+    "BCS-Zugangsdaten sind nicht hinterlegt. "
+    "Admin: unter Nutzer → BCS-Integration eintragen."
+)
+
+
+def _bcs_entries_for(db: Session, user, entry_ids: list[int]) -> tuple[list, dict]:
+    """Load the user's own selected entries + a project lookup (shared by
+    preview and execute)."""
+    stmt = (
+        select(TimeEntry)
+        .where(TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id)
+        .order_by(TimeEntry.entry_date, TimeEntry.id)
+        .options(selectinload(TimeEntry.entry_syncs))
+    )
+    entries = list(db.execute(stmt).scalars())
+    proj_lookup = {
+        p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
+    }
+    return entries, proj_lookup
+
+
+@router.post("/sync/bcs/preview", response_class=HTMLResponse)
+def sync_bcs_preview(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Resolve the selected entries against BCS (read-only) and render a
+    readable preview of the bookings that would be written — one row per
+    (date × work package), with the aggregated duration. No write happens."""
+    user = _require_login(request, db)
+    if not entry_ids:
+        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+    entries, proj_lookup = _bcs_entries_for(db, user, entry_ids)
+    if not entries:
+        return RedirectResponse(url="/?error=Keine+gültigen+Einträge+gefunden",
+                                status_code=status.HTTP_302_FOUND)
+
+    client = bcs_svc.client_from_settings(db)
+    if client is None:
+        return templates.TemplateResponse(
+            "sync_bcs_preview.html",
+            _ctx(request, user, error=_BCS_NOT_CONFIGURED,
+                 groups=[], skipped=[], bcs_error=None, projects_by_id=proj_lookup),
+        )
+
+    resolved, bcs_error = bcs_push.resolve_pushes(client, entries, proj_lookup, user)
+    groups = [r for r in resolved if r["status"] == "pushable"]
+    skipped = [r for r in resolved if r["status"] == "blocked"]
+    pushable_count = sum(len(g["entries"]) for g in groups)
+
+    return templates.TemplateResponse(
+        "sync_bcs_preview.html",
+        _ctx(request, user, groups=groups, skipped=skipped, bcs_error=bcs_error,
+             projects_by_id=proj_lookup, pushable_count=pushable_count, error=None),
+    )
+
+
+@router.post("/sync/bcs/execute", response_class=HTMLResponse)
+def sync_bcs_execute(
+    request: Request,
+    entry_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+):
+    """Write the selected entries to BCS as one booking per (date × work
+    package) via ``CreateOrUpdateTimeRecord``. On success every entry in the
+    group goes green (EntrySync → synced, sharing the BCS record OID). A failed
+    group doesn't abort the rest."""
+    user = _require_login(request, db)
+    if not entry_ids:
+        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+                                status_code=status.HTTP_302_FOUND)
+
+    client = bcs_svc.client_from_settings(db)
+    if client is None:
+        return templates.TemplateResponse(
+            "sync_bcs_execute.html",
+            _ctx(request, user, results=[], bcs_error=None, synced=0, failed=0,
+                 error=_BCS_NOT_CONFIGURED),
+        )
+
+    entries, proj_lookup = _bcs_entries_for(db, user, entry_ids)
+    resolved, bcs_error = bcs_push.resolve_pushes(client, entries, proj_lookup, user)
+    results: list[dict] = []
+
+    for r in resolved:
+        group_entries = r["entries"]
+        if r["status"] == "blocked":
+            for e in group_entries:
+                es_svc.set_target_status(db, e, "bcs", "failed", error=r["reason"])
+                e.sync_status = "failed"
+                db.add(e)
+            db.commit()
+            results.append({**r, "status": "failed", "error": r["reason"]})
+            continue
+        try:
+            oid = client.create_or_update_time_record(r["args"], impersonate=user.email)
+        except bcs_svc.BcsError as e:
+            for entry in group_entries:
+                es_svc.set_target_status(db, entry, "bcs", "failed", error=str(e))
+                entry.sync_status = "failed"
+                db.add(entry)
+            db.commit()
+            results.append({**r, "status": "failed", "error": str(e)})
+            continue
+
+        # Persist the shared BCS record OID on every entry of the group.
+        for entry in group_entries:
+            meta = dict(entry.sync_metadata_override or {})
+            bcs_meta = dict(meta.get("bcs") or {})
+            bcs_meta["time_record_oid"] = oid
+            meta["bcs"] = bcs_meta
+            entry.sync_metadata_override = meta
+            entry.sync_status = "synced"
+            es_svc.set_target_status(db, entry, "bcs", "synced", external_ref=oid)
+            db.add(entry)
+        db.commit()
+        results.append({**r, "status": "synced", "oid": oid})
+
+    synced = sum(len(r["entries"]) for r in results if r["status"] == "synced")
+    failed = sum(len(r["entries"]) for r in results if r["status"] == "failed")
+    return templates.TemplateResponse(
+        "sync_bcs_execute.html",
+        _ctx(request, user, results=results, bcs_error=bcs_error, synced=synced,
+             failed=failed, projects_by_id=proj_lookup, error=None),
     )
 
 

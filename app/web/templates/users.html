@@ -110,6 +110,55 @@
 </section>
 
 <section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 th-section-title th-section-teal th-outfit">BCS-Integration</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Zentraler System-User <code>Synchronisation</code> für den BCS-Timerecording-
+    Webservice. Anmeldung per WS-Security UsernameToken; jede Buchung läuft per
+    <code>ImpersonateAs</code> im Scope des jeweiligen Beraters (E-Mail).
+    Das Passwort wird nur überschrieben, wenn ein Wert eingetragen wird — ein
+    leeres Feld lässt den bestehenden Wert unverändert.
+  </p>
+  <form method="post" action="/settings/bcs" class="grid sm:grid-cols-2 gap-3">
+    <label class="text-sm">
+      <span class="block font-medium mb-1">Username</span>
+      <input name="bcs_username" value="{{ bcs_username }}"
+             placeholder="Synchronisation"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">
+        Passwort
+        {% if bcs_password_set %}<span class="text-emerald-700 text-[10px] ml-1">gesetzt</span>{% endif %}
+      </span>
+      <input type="password" name="bcs_password" autocomplete="new-password"
+             placeholder="{{ '••••••••' if bcs_password_set else 'noch nicht hinterlegt' }}"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm sm:col-span-2">
+      <span class="block font-medium mb-1">WSDL-URL</span>
+      <input name="bcs_wsdl_url" value="{{ bcs_wsdl_url }}"
+             placeholder="https://mindsquare.bcs-hosting.de/webservices/TimerecordingWebService?wsdl"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <div class="sm:col-span-2 flex gap-2">
+      <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+        Zugangsdaten speichern
+      </button>
+    </div>
+  </form>
+  <form method="post" action="/settings/bcs/test" class="mt-2 flex flex-wrap items-end gap-2">
+    <label class="text-xs">
+      <span class="block text-slate-500 mb-1">ImpersonateAs (optional, sonst eigene E-Mail)</span>
+      <input name="bcs_impersonate" type="email" placeholder="berater@firma.de"
+             class="h-8 border border-slate-300 rounded px-2 text-xs min-w-[220px]" />
+    </label>
+    <button class="h-8 px-3 border border-slate-300 rounded text-xs hover:bg-slate-50">
+      Verbindung testen
+    </button>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 p-5 mb-6">
   <h2 class="font-semibold mb-3 th-section-title th-section-purple th-outfit">Neuen Nutzer anlegen</h2>
   <form method="post" action="/users" class="grid sm:grid-cols-6 gap-3 items-end">
     <div class="sm:col-span-2">

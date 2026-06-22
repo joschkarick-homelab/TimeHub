@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-xl font-semibold">BCS-Sync — Ergebnis</h1>
+  <a href="/sync" class="text-sm text-slate-600 hover:underline">← zum Sync-Center</a>
+</div>
+
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error }}
+  </div>
+{% endif %}
+{% if bcs_error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    <strong>BCS-Fehler:</strong> {{ bcs_error }}
+  </div>
+{% endif %}
+
+{% if results %}
+  <div class="flex gap-4 text-sm mb-4">
+    <span class="text-emerald-700">✓ {{ synced }} gebucht</span>
+    {% if failed %}<span class="text-rose-700">✗ {{ failed }} fehlgeschlagen</span>{% endif %}
+  </div>
+
+  <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[720px]">
+        <thead class="bg-slate-50 text-slate-600 text-left">
+          <tr>
+            <th class="px-4 py-2">Status</th>
+            <th class="px-4 py-2">Datum</th>
+            <th class="px-4 py-2">Arbeitspaket</th>
+            <th class="px-4 py-2 text-right">Summe</th>
+            <th class="px-4 py-2">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+            {% set minutes = r.entries | sum(attribute='duration_minutes') %}
+            <tr class="border-t border-slate-100 align-top">
+              <td class="px-4 py-2 whitespace-nowrap">
+                {% if r.status == 'synced' %}
+                  <span class="text-emerald-700">● gebucht</span>
+                {% else %}
+                  <span class="text-rose-700">● Fehler</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap">{{ r.entries[0].entry_date | de_date }}</td>
+              <td class="px-4 py-2">{{ r.work_package_label or '—' }}</td>
+              <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap">{{ '%.2f'|format(minutes / 60) }} h</td>
+              <td class="px-4 py-2 text-slate-600">
+                {% if r.status == 'synced' %}
+                  <span class="text-xs text-slate-400">BCS-OID {{ r.oid }}</span>
+                {% else %}
+                  <span class="text-rose-700">{{ r.error }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% else %}
+  <p class="text-sm text-slate-500">Keine Einträge verarbeitet.</p>
+{% endif %}
+
+{% endblock %}

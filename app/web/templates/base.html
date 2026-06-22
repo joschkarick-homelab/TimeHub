@@ -443,6 +443,9 @@
           else if (action.indexOf("/import") !== -1 && f.method.toLowerCase() === "post") msg = "Import läuft …";
           else if (action.indexOf("/sync/salesforce/preview")      !== -1) msg = "Salesforce wird abgefragt …";
           else if (action.indexOf("/settings/salesforce/test")     !== -1) msg = "Salesforce-Login wird geprüft …";
+          else if (action.indexOf("/sync/bcs/preview")             !== -1) msg = "BCS wird abgefragt …";
+          else if (action.indexOf("/sync/bcs/execute")             !== -1) msg = "BCS wird beschrieben …";
+          else if (action.indexOf("/settings/bcs/test")            !== -1) msg = "BCS-Verbindung wird geprüft …";
         }
         if (f.dataset.download === "true") {
           var token = String(Date.now()) + Math.random().toString(36).slice(2);

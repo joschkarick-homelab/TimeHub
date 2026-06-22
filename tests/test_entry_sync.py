@@ -83,12 +83,12 @@ def test_disabled_and_project_scoped_rules():
 
 
 def test_entry_sync_statuses_reports_missing_per_target():
-    # salesforce needs assignment_id at project level; bcs needs entry subject/task
+    # salesforce needs assignment_id at project level; bcs needs entry work package
     p = _proj(targets=["salesforce", "bcs"])
     statuses = sf.entry_sync_statuses(_ent(), p, ["salesforce", "bcs"])
     assert statuses["salesforce"]["ready"] is False
     assert statuses["bcs"]["ready"] is False
-    assert "BCS Subject" in statuses["bcs"]["missing"]
+    assert "BCS Arbeitspaket" in statuses["bcs"]["missing"]
 
 
 # ---------- status-matrix cell logic ----------
@@ -158,11 +158,11 @@ def test_wizard_buckets_groups_ready_blocked_done():
     assert b["jira"]["done"] == 1
     assert b["jira"]["blocked"] == 1
     assert len(b["jira"]["failed"]) == 1 and "kaputt" in b["jira"]["failed"][0]["reason"]
-    # bcs: entry 1 is blocked by missing entry-level subject/task
+    # bcs: entry 1 is blocked by the missing entry-level work package
     assert b["bcs"]["ready"] == []
     assert b["bcs"]["blocked"] == 1
     assert len(b["bcs"]["entry_gaps"]) == 1
-    assert {f.key for f in b["bcs"]["entry_gaps"][0]["fields"]} == {"subject", "task"}
+    assert {f.key for f in b["bcs"]["entry_gaps"][0]["fields"]} == {"work_package"}
 
 
 def test_wizard_buckets_project_gap_dedups_across_entries():
