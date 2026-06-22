@@ -189,6 +189,7 @@ def _filter_query(
     dt: date | None,
     project_id: int | None,
     customer: str | None = None,
+    target: str | None = None,
 ) -> str:
     """Rebuild the dashboard filter as a relative URL, so CRUD actions can
     bounce back to the exact same filtered view instead of resetting to '/'.
@@ -206,6 +207,8 @@ def _filter_query(
         params["project_id"] = project_id
     if customer:
         params["customer"] = customer
+    if target:
+        params["target"] = target
     return "/?" + urlencode(params) if params else "/"
 
 

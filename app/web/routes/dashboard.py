@@ -45,11 +45,14 @@ def index(
     date_to: str | None = None,
     project_id: str | None = None,
     customer: str | None = None,
+    target: str | None = None,
     view: str | None = None,
     error: str | None = None,
     flash: str | None = None,
 ):
     user = _require_login(request, db)
+    # Only the materialized sync targets are valid filter values.
+    target = target if target in es_svc.DISPLAY_TARGETS else ""
 
     saved_views, active_view = load_saved_views(db, user, "dashboard", view)
     if active_view is not None:
@@ -66,8 +69,8 @@ def index(
                 project_id_int = None
         customer = (customer or "").strip()
         # Default to the current week (list tightly bounded to "now"), unless a
-        # project/customer filter is in play — then show the full history.
-        default = "all" if (project_id_int is not None or customer) else "this_week"
+        # project/customer/target filter is in play — then show the full history.
+        default = "all" if (project_id_int is not None or customer or target) else "this_week"
         range_token, df, dt = resolve_range_param(date_range, date_from, date_to, default=default)
 
     stmt = (
@@ -89,6 +92,12 @@ def index(
                     Project.user_id == user.id, Project.customer == customer
                 )
             )
+        )
+    if target:
+        # Keep only entries that have a sync row for the chosen target, so e.g.
+        # a Jira export never picks up Salesforce-only entries.
+        stmt = stmt.where(
+            TimeEntry.id.in_(select(EntrySync.entry_id).where(EntrySync.target == target))
         )
 
     entries = list(db.execute(stmt.limit(DASHBOARD_ENTRY_CAP + 1)).scalars())
@@ -184,9 +193,11 @@ def index(
             project_id=project_id_int or "",
             customer=customer or "",
             customers=customers,
+            target=target or "",
+            target_options=[(t, es_svc.TARGET_LABELS[t]) for t in es_svc.DISPLAY_TARGETS],
             saved_views=saved_views,
             active_view=active_view,
-            filter_query=_filter_query(df, dt, project_id_int, customer or None),
+            filter_query=_filter_query(df, dt, project_id_int, customer or None, target or None),
             formats=formats,
             truncated=truncated,
             entry_cap=DASHBOARD_ENTRY_CAP,
@@ -207,8 +218,13 @@ def entries_export(
     date_to: str | None = None,
     project_id: str | None = None,
     customer: str | None = None,
+    target: str | None = None,
+    # One-shot token echoed back as a cookie so the browser can tell the
+    # download finished and hide its loading overlay (see base.html).
+    dl_token: str | None = None,
 ):
     user = _require_login(request, db)
+    target = target if target in es_svc.DISPLAY_TARGETS else ""
 
     try:
         fmt_id_int = int(format_id) if format_id else 0
@@ -242,6 +258,10 @@ def entries_export(
         stmt = stmt.where(TimeEntry.project_id == project_id_int)
     if customer:
         stmt = stmt.where(Project.customer == customer)
+    if target:
+        stmt = stmt.where(
+            TimeEntry.id.in_(select(EntrySync.entry_id).where(EntrySync.target == target))
+        )
     rows = list(db.execute(stmt).all())
 
     try:
@@ -257,11 +277,21 @@ def entries_export(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     today = date.today().isoformat()
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in fmt.name)
+    # ASCII-only: a non-ASCII char (e.g. the ü in "Export für Jira") in the
+    # Content-Disposition filename produces a header that can't be latin-1
+    # encoded. isalnum() alone would keep Unicode letters, so gate on isascii().
+    safe_name = "".join(
+        c if (c.isascii() and c.isalnum()) or c in "-_" else "_" for c in fmt.name
+    )
     filename = f"timehub-{safe_name}-{today}.csv"
-    return Response(
+    resp = Response(
         content=body.encode(encoding),
         media_type=f"text/csv; charset={encoding}",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+    if dl_token:
+        # Readable by JS (not HttpOnly) and short-lived: the client polls for it
+        # and clears it once the overlay is hidden.
+        resp.set_cookie("th_dl", dl_token, max_age=30, path="/", samesite="lax")
+    return resp
 

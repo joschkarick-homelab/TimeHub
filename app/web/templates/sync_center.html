@@ -177,8 +177,11 @@
     {% if formats %}
       <p class="text-xs text-slate-500 mb-3">
         Ganze Timesheet-Exporte für externe Systeme (Toggl-/Clockify-Format, Custom-Excel-Sheets …).
+        Mit dem <span class="font-medium">Ziel</span>-Filter z. B. nur die Jira-Tickets exportieren —
+        direkt im Jira-Plugin hochladbar, ohne Nacharbeit.
       </p>
-      <form method="get" action="/entries/export" class="flex flex-wrap items-end gap-2">
+      <form method="get" action="/entries/export" class="flex flex-wrap items-end gap-2"
+            data-download="true">
         <label class="text-xs">
           <span class="block text-slate-500 mb-1">Format</span>
           <select name="format_id" required
@@ -187,6 +190,16 @@
               <option value="{{ f.id }}">
                 {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
               </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="text-xs">
+          <span class="block text-slate-500 mb-1">Ziel</span>
+          <select name="target"
+                  class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
+            <option value="">— alle —</option>
+            {% for tok, label in cards %}
+              <option value="{{ tok }}">{{ label }}</option>
             {% endfor %}
           </select>
         </label>

@@ -402,6 +402,21 @@
       function hide()    { overlay.style.display = "none"; label.textContent = "Bitte warten …"; }
       window.showLoading = show;
       window.hideLoading = hide;
+      // A file download doesn't navigate the page, so `pageshow` never fires to
+      // hide the overlay. The download form hands the server a one-shot token;
+      // the server echoes it back as a `th_dl` cookie on the response, and we
+      // hide the overlay as soon as that cookie appears (with a safety timeout).
+      function watchDownload(token) {
+        var started = Date.now();
+        var iv = setInterval(function () {
+          var done = document.cookie.indexOf("th_dl=" + token) !== -1;
+          if (done || Date.now() - started > 30000) {
+            clearInterval(iv);
+            document.cookie = "th_dl=; path=/; Max-Age=0";
+            hide();
+          }
+        }, 250);
+      }
       document.addEventListener("submit", function (e) {
         var f = e.target;
         if (!(f instanceof HTMLFormElement)) return;
@@ -414,6 +429,15 @@
           else if (action.indexOf("/import") !== -1 && f.method.toLowerCase() === "post") msg = "Import läuft …";
           else if (action.indexOf("/sync/salesforce/preview")      !== -1) msg = "Salesforce wird abgefragt …";
           else if (action.indexOf("/settings/salesforce/test")     !== -1) msg = "Salesforce-Login wird geprüft …";
+        }
+        if (f.dataset.download === "true") {
+          var token = String(Date.now()) + Math.random().toString(36).slice(2);
+          var inp = document.createElement("input");
+          inp.type = "hidden"; inp.name = "dl_token"; inp.value = token;
+          f.appendChild(inp);
+          show(msg || "Export wird erstellt …");
+          watchDownload(token);
+          return;
         }
         show(msg);
       }, true);
