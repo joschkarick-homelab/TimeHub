@@ -141,7 +141,8 @@ Anwesenheiten/Pausen und setzt Buchungsabschlüsse. Genau unser Aufwands-Push.
   (statt Self-Auth pro Berater) — funktioniert mit MS-OAuth, eine Credential in
   TimeHub, Auth-User lizenzfrei, Buchung läuft im Scope des Beraters.
 
-Die WSDL liegt versioniert unter [`docs/bcs/TimerecordingWebService.wsdl`](bcs/TimerecordingWebService.wsdl).
+WSDL + alle XSD-Teile liegen versioniert unter
+[`docs/bcs-schema/`](bcs-schema/) (von `main` übernommen).
 
 ### 4.1 Endpunkt / WSDL (verifiziert aus WSDL)
 
@@ -259,8 +260,9 @@ der Gruppe als `external_ref` gespeichert (gemeinsame Idempotenz).
 1. **Dependency:** `zeep` in `requirements.txt` (SOAP + WS-Security). Hand-
    gerolltes XML wie bei SF wäre bei document/literal + WSSE zu fehleranfällig.
 2. **`app/services/bcs.py`** (neu, Pendant zu `salesforce.py`): zeep-Client aus
-   Settings, `CreateOrUpdateTimeRecord`, `get_time_records`, Arbeitspaket-Liste,
-   E-Mail→User-OID, Credential-Store (`bcs.username`/`bcs.password`/`bcs.wsdl_url`).
+   Settings (UsernameToken + `ImpersonateAs`-Header via `_soapheaders`),
+   `create_or_update_time_record()`, `list_work_packages()` (über `GetTimesheet`),
+   Credential-Store (`bcs.username`/`bcs.password`/`bcs.wsdl_url`).
 3. **`app/services/bcs_push.py`** (neu, Pendant zu `sf_push.py`): read-only
    Resolver, der Einträge pro (User, Datum, AP) **gruppiert** und je Gruppe ein
    Payload + Blockier-Gründe liefert (Abschluss-Datum, fehlendes AP, …).
@@ -274,19 +276,44 @@ der Gruppe als `external_ref` gespeichert (gemeinsame Idempotenz).
 8. **Alembic:** keine Schema-Migration nötig — alles in den vorhandenen
    JSON-Spalten (`sync_metadata` / `sync_metadata_override`) und `EntrySync`.
 
-### 4.8 Offen / benötigt (vor Implementierung)
+### 4.8 Feld-Mapping (final, aus XSD)
 
-- [x] Lizenz aktiviert (06/2026); WSDL vorhanden & Endpunkt bestätigt.
+**`CreateOrUpdateTimeRecord` (Request → BCS):**
+
+| BCS-Feld | Typ | TimeHub-Quelle |
+| --- | --- | --- |
+| `id` | externalID (String + `systemName`-Attr.) | **Idempotenz-Schlüssel**: stabiler Gruppen-Key `user+date+wp`, `systemName="TimeHub"`. Re-Push → BCS aktualisiert denselben Datensatz. |
+| `target` → `task` → `bcsOid` | `taskIdentifier` | `work_package`-Feldwert = BCS-Task-OID (aus `GetTimesheet`). |
+| `date` | `xs:date` | `entry.entry_date`. |
+| `expense` | `xs:int` | **aggregierte Dauer der Gruppe** (Konvention: Minuten; per Erstbuchung verifizieren — vgl. `numberOfMinutesInADay` 0–1440). |
+| `comment` | `xs:string` (nillable) | zusammengeführte Beschreibungen der Gruppe. |
+| `employee` | `personIdentifier` (`login`\|`bcsOid`) | `login = user.email` (zusätzlich zu `ImpersonateAs`; ob nötig → per Test). |
+| `startTime`, `billability`, `taskType`, `remainingExpense`, `otherValues`/`otherAttributes` | div., alle `minOccurs=0` | vorerst weglassen. |
+
+**`CreateOrUpdateTimeRecordResponse`:** `oid` = BCS-Datensatz-OID →
+`EntrySync.external_ref` (auf allen Einträgen der Gruppe). Außerdem
+`actualTimeEffort`/`plannedTimeEffort`/`remainingTimeEffort` (Anzeige/Validierung).
+Faults: `UnableToCreateOrUpdateTimeRecord`, `ViolatedConstraint`, `AccessDenied`
+(je `{code, message}`).
+
+**`GetTimesheet` (Arbeitspaket-Dropdown):** Request `filter.employee.login =
+user.email`, `filter.date = <Datum>`, `filter.typesOfTimesheetEntries = tasks`.
+Response `timesheetEntries.task[]` → je Eintrag `@bcsOid` (= Dropdown-`value`),
+`@name` (= `label`); `pspPath`/`project` als zusätzlicher `search`-Text. Damit
+ist das `bcs_work_packages`-Mapping vollständig.
+
+### 4.9 Offen / benötigt (vor Implementierung)
+
+- [x] Lizenz aktiviert (06/2026); WSDL + XSD vorhanden, Endpunkt bestätigt.
+- [x] Feld-Mapping final (§4.8).
 - [ ] **Admin-Setup** (§4.3): `impersonationOids` konfiguriert, WS-Lizenz den
       Beratern zugewiesen, `Synchronisation`-Credentials vorhanden — *Blocker*
       (Sync-User ist beantragt).
-- [ ] **XSD-Teile** (`?xsd=1…12`) — für die exakte Input-/Output-Struktur von
-      `CreateOrUpdateTimeRecord` (Pflichtfelder, Dauer-Kodierung,
-      Arbeitspaket-OID, Datum, Beschreibung) und `GetTimesheet`
-      (Eingabe-Parameter + AP-Felder im Response).
-- [x] **Arbeitspaket-Liste:** `GetTimesheet`.
-- [x] **E-Mail→User:** `ImpersonateAs` = `user.email` (kein Lookup).
-- [ ] `GetTimeTrackingSettings`-Antwort (Granularität) → bestätigt Anforderung 6.
+- [ ] **Per Erstbuchung verifizieren (Test-Zeit, kein Bau-Blocker):**
+      Einheit von `expense` (Minuten?), ob `employee` neben `ImpersonateAs`
+      nötig ist, und ob `id` (externalID) das Upsert wirklich triggert.
+- [ ] `GetTimeTrackingSettings`-Antwort (Granularität) → bestätigt Anforderung 6
+      endgültig (Design ist über Aggregation aber bereits abgesichert).
 
 ---
 
