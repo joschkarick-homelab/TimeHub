@@ -34,10 +34,6 @@ DIMENSIONS: dict[str, Callable[[Row], tuple[str, str]]] = {
     "month": lambda r: _month_key(r[0].entry_date),
     "project": lambda r: (r[1].code, r[1].display_label),
     "customer": lambda r: ((r[1].customer or "—"), (r[1].customer or "— ohne Kunde —")),
-    "user": lambda r: (
-        (r[2].full_name or r[2].email),
-        (r[2].full_name or r[2].email),
-    ),
 }
 
 DIMENSION_LABELS = {
@@ -46,7 +42,6 @@ DIMENSION_LABELS = {
     "month": "Monat",
     "project": "Projekt",
     "customer": "Kunde",
-    "user": "Mitarbeiter",
 }
 
 

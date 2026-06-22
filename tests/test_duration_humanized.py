@@ -104,6 +104,7 @@ def test_import_duration_human_target(client):
 
 def test_export_duration_human_field():
     from datetime import date
+
     from app.services.reports import _format_value
 
     class _Entry:

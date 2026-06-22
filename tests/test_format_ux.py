@@ -118,7 +118,7 @@ def test_edit_refine_stays_on_edit_and_applies_ai(client, monkeypatch):
         "sample_data": "Date,Dur\n2026-05-27,01:30:00\n",
     }, headers=h).json()["id"]
 
-    import app.web.router as router
+    import app.web.routes.formats as router
     from app.schemas.import_format import ImportFormatSuggestion
 
     def fake_suggest(text, *, instruction=None, previous=None, hints=None):

@@ -16,11 +16,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from typing import Iterable
+from collections.abc import Iterable
 from xml.sax.saxutils import escape
 
 from sqlalchemy.orm import Session
 
+from app.security import decrypt_secret, encrypt_secret
 from app.services import app_settings as app_settings_svc
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,11 @@ def _http(method: str, url: str, *, data: bytes | None = None,
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read() or b""
+    except (urllib.error.URLError, TimeoutError) as e:
+        # DNS failures, refused connections and read timeouts must surface as a
+        # SalesforceError so the sync loop can stop cleanly instead of leaking a
+        # raw exception (which would abort mid-push and lose committed progress).
+        raise SalesforceError(f"Salesforce nicht erreichbar: {e}") from e
 
 
 def _login_envelope(username: str, password: str) -> bytes:
@@ -153,8 +159,8 @@ class SalesforceClient:
 def get_credentials(db: Session) -> dict:
     return {
         "username": app_settings_svc.get_setting(db, SF_USERNAME_KEY, ""),
-        "password": app_settings_svc.get_setting(db, SF_PASSWORD_KEY, ""),
-        "security_token": app_settings_svc.get_setting(db, SF_TOKEN_KEY, ""),
+        "password": decrypt_secret(app_settings_svc.get_setting(db, SF_PASSWORD_KEY, "")),
+        "security_token": decrypt_secret(app_settings_svc.get_setting(db, SF_TOKEN_KEY, "")),
         "login_url": app_settings_svc.get_setting(db, SF_LOGIN_URL_KEY, _DEFAULT_LOGIN_URL),
         "api_version": app_settings_svc.get_setting(db, SF_API_VERSION_KEY, _DEFAULT_API_VERSION),
     }
@@ -177,11 +183,11 @@ def save_credentials(db: Session, *, username: str | None = None,
     if username is not None:
         app_settings_svc.set_setting(db, SF_USERNAME_KEY, username.strip())
     if password is not None and password.strip():
-        app_settings_svc.set_setting(db, SF_PASSWORD_KEY, password)
+        app_settings_svc.set_setting(db, SF_PASSWORD_KEY, encrypt_secret(password))
     if clear_security_token:
         app_settings_svc.set_setting(db, SF_TOKEN_KEY, "")
     elif security_token is not None and security_token.strip():
-        app_settings_svc.set_setting(db, SF_TOKEN_KEY, security_token.strip())
+        app_settings_svc.set_setting(db, SF_TOKEN_KEY, encrypt_secret(security_token.strip()))
     if login_url is not None:
         app_settings_svc.set_setting(db, SF_LOGIN_URL_KEY,
                                      login_url.strip() or _DEFAULT_LOGIN_URL)
@@ -254,31 +260,106 @@ def describe_sobject(client: SalesforceClient, object_name: str) -> dict:
     return json.loads(body)
 
 
-def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict]:
-    """Alle aktiven (nicht geschlossenen) Projektbesetzungen des Users mit der
-    gegebenen E-Mail — interner Mitarbeiter ODER externer Contact. Liefert
-    Dropdown-fertige `{value, label}`-Einträge.
+def _assignment_label(project_name: str, customer: str, number: str,
+                      pb_number: str) -> str:
+    """Dropdown-Label für eine Projektbesetzung. Bevorzugt den Projektnamen,
+    ergänzt um Kunde und Projektnummer in Klammern. Fällt nur dann auf die
+    PB-Nummer zurück, wenn sonst gar nichts da ist (sonst bliebe der Eintrag
+    leer)."""
+    head = project_name or number or customer or pb_number or "?"
+    suffix = [p for p in (customer, number) if p and p != head]
+    return f"{head} ({' · '.join(suffix)})" if suffix else head
 
-    Wenn die E-Mail-Adresse unplausibel ist (z. B. ein Hochkomma enthält),
-    wird ohne Query eine leere Liste zurückgegeben — die Eingabe steckt direkt
-    im SOQL, also wird sie defensiv geprüft."""
+
+def _query_assignment_records(client: SalesforceClient, email: str) -> list[dict]:
+    """Führt die Projektbesetzungs-SOQL für den User aus und normalisiert die
+    Records. Geteilt vom Projektbesetzungs-Dropdown
+    (`list_assignments_for_user`) und dem Projekt-Import
+    (`assignments_for_import`), damit die Filter-Kriterien an genau einer Stelle
+    leben.
+
+    Eingeschränkt auf Projektbesetzungen, die der User jetzt wirklich bebuchen
+    kann (Status/Datum am verknüpften Projekt, Schreibweise laut SF-Schema):
+      * aktiv (Projekt nicht abgeschlossen)
+                          → `Projekt__r.Projektstatus__c != 'abgeschlossen'`,
+      * Status offen      → `Geschlossen__c = false`,
+      * zurzeit laufend   → gestartet (`Projekt__r.Projektstart__c <= heute`,
+        leeres Startfeld erlaubt) und das Projektende liegt in der Zukunft
+        (`Projekt__r.Projektende__c >= heute`; ohne Enddatum kein Treffer).
+
+    Wenn die E-Mail-Adresse unplausibel ist (z. B. ein Hochkomma enthält), wird
+    ohne Query eine leere Liste zurückgegeben — die Eingabe steckt direkt im
+    SOQL, also wird sie defensiv geprüft."""
     e = (email or "").strip()
     if not e or len(e) > 254 or any(c in e for c in ("'", "\\", "\n", "\r")):
         return []
     soql = (
-        "SELECT Id, Name, Projektbezeichnung__c "
+        "SELECT Id, Name, Projektbezeichnung__c, Projektnummer__c, AccountName__c "
         "FROM Projektbesetzung__c "
         f"WHERE (Mitarbeiter__r.Email = '{e}' OR Externe_Projektbesetzung__r.Email = '{e}') "
+        "AND Projekt__r.Projektstatus__c != 'abgeschlossen' "
         "AND Geschlossen__c = false "
+        "AND (Projekt__r.Projektstart__c = null OR Projekt__r.Projektstart__c <= TODAY) "
+        "AND Projekt__r.Projektende__c >= TODAY "
         "ORDER BY Projektbezeichnung__c NULLS LAST, Name"
     )
     res = client.query(soql)
     out: list[dict] = []
     for r in res.get("records") or []:
-        name = r.get("Name") or "?"
-        bez = (r.get("Projektbezeichnung__c") or "").strip()
-        label = f"{bez} ({name})" if bez else name
-        out.append({"value": r["Id"], "label": label})
+        out.append({
+            "id": r["Id"],
+            "pb_number": (r.get("Name") or "").strip(),
+            "project_name": (r.get("Projektbezeichnung__c") or "").strip(),
+            "customer": (r.get("AccountName__c") or "").strip(),
+            "number": (r.get("Projektnummer__c") or "").strip(),
+        })
+    return out
+
+
+def list_assignments_for_user(client: SalesforceClient, email: str) -> list[dict]:
+    """Aktuell auswählbare Projektbesetzungen des Users mit der gegebenen
+    E-Mail — interner Mitarbeiter ODER externer Contact. Liefert
+    Dropdown-fertige `{value, label, search}`-Einträge.
+
+    Filter-Kriterien siehe `_query_assignment_records`.
+
+    `search` bündelt Kunde (AccountName), Projektbezeichnung und Projektnummer
+    (P0000…) als Klartext für die Fuzzy-Suche im Frontend — interne SF-Ids und
+    die PB-Nummer sind bewusst NICHT enthalten."""
+    out: list[dict] = []
+    for r in _query_assignment_records(client, email):
+        customer, bez, number = r["customer"], r["project_name"], r["number"]
+        search = " ".join(p for p in (customer, bez, number) if p).lower()
+        out.append({
+            "value": r["id"],
+            "label": _assignment_label(bez, customer, number, r["pb_number"]),
+            "search": search,
+        })
+    return out
+
+
+def assignments_for_import(client: SalesforceClient, email: str) -> list[dict]:
+    """Strukturierte Projektbesetzungen für den Projekt-Import — gleiche
+    Filter-Kriterien wie das Projektbesetzungs-Dropdown
+    (`list_assignments_for_user`), aber mit getrennten Feldern, aus denen sich
+    ein lokales Projekt anlegen lässt::
+
+        {assignment_id, name, customer, number, label}
+
+    `name` ist die Projektbezeichnung (Fallback: Projektnummer bzw. PB-Nummer);
+    `label` ist die menschenlesbare Dropdown-Schreibweise für die Anzeige."""
+    out: list[dict] = []
+    for r in _query_assignment_records(client, email):
+        bez, customer, number, pb = (
+            r["project_name"], r["customer"], r["number"], r["pb_number"],
+        )
+        out.append({
+            "assignment_id": r["id"],
+            "name": bez or number or pb,
+            "customer": customer,
+            "number": number,
+            "label": _assignment_label(bez, customer, number, pb),
+        })
     return out
 
 
@@ -324,12 +405,32 @@ def _coerce_bool(value) -> bool:
     return s in {"true", "1", "yes", "y", "ja", "j", "x", "wahr"}
 
 
+_MAX_DAY_MINUTES = 23 * 60 + 45  # picklist tops out at 23:45
+
+
+def snapped_total_minutes(minutes: int) -> int:
+    """Snap a duration to the nearest 15-minute slot, capped at 23:45 — the
+    shape Salesforce's Von/Bis picklist accepts."""
+    total = max(0, minutes)
+    return min(round(total / 15) * 15, _MAX_DAY_MINUTES)
+
+
+def duration_snap_warning(minutes: int) -> str | None:
+    """A note when snapping/capping changes the actually-tracked duration, so a
+    push to Salesforce isn't a silent data loss for the user."""
+    actual = max(0, minutes)
+    snapped = snapped_total_minutes(minutes)
+    if snapped == actual:
+        return None
+    if actual > _MAX_DAY_MINUTES:
+        return f"Dauer {actual} min auf 23:45 gedeckelt"
+    return f"Dauer von {actual} auf {snapped} min (15-Min-Raster) gerundet"
+
+
 def _snap_quarter(hour: int, minute: int) -> tuple[int, str]:
     """Snap (h, m) to the nearest 15-minute slot; return (hour:int, minute:str)
     where minute is the picklist value '00'/'15'/'30'/'45'."""
-    total = max(0, hour * 60 + minute)
-    snapped = round(total / 15) * 15
-    snapped = min(snapped, 23 * 60 + 45)
+    snapped = snapped_total_minutes(hour * 60 + minute)
     return snapped // 60, f"{snapped % 60:02d}"
 
 

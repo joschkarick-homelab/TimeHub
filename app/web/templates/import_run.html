@@ -82,12 +82,118 @@
   {% endif %}
 {% endif %}
 
+{% if preview %}
+  <section class="bg-white border border-slate-200 mb-6 overflow-hidden">
+    <div class="p-4 border-b border-slate-200 flex items-center gap-3">
+      <span class="text-2xl">👁</span>
+      <div>
+        <div class="font-semibold">
+          Vorschau — {{ preview.created }} Einträge würden importiert{% if preview.failed %},
+          {{ preview.failed }} übersprungen{% endif %}
+        </div>
+        <div class="text-xs text-slate-500">
+          Es wurde noch nichts gespeichert. Prüfe die Einträge und bestätige unten.
+        </div>
+      </div>
+    </div>
+
+    {% if preview.created_projects %}
+      <div class="px-4 py-2 text-xs text-slate-700 border-b border-slate-200">
+        <span class="font-medium">Neu angelegt würden:</span>
+        {% for p in preview.created_projects %}
+          <code class="bg-white border border-slate-300 rounded px-1 mr-1">{{ p }}</code>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if preview.preview %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs min-w-[640px]">
+          <thead class="bg-slate-50 text-left text-slate-600">
+            <tr>
+              <th class="px-4 py-2 w-12">Zeile</th>
+              <th class="px-4 py-2">Datum</th>
+              <th class="px-4 py-2">Projekt</th>
+              <th class="px-4 py-2">Dauer</th>
+              <th class="px-4 py-2">Beschreibung</th>
+              <th class="px-4 py-2">Ziel</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview.preview %}
+              <tr class="border-t border-slate-100 align-top">
+                <td class="px-4 py-2 font-mono text-slate-500">{{ row.row }}</td>
+                <td class="px-4 py-2 whitespace-nowrap">{{ row.entry_date }}</td>
+                <td class="px-4 py-2">
+                  <span class="font-medium">{{ row.project_code }}</span>
+                  {% if row.project_name and row.project_name != row.project_code %}
+                    <span class="text-slate-500">— {{ row.project_name }}</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-2 tabular-nums whitespace-nowrap">{{ '%.2f'|format(row.duration_hours) }} h</td>
+                <td class="px-4 py-2 text-slate-600">{{ row.description }}</td>
+                <td class="px-4 py-2">{{ row.sync_target }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="px-4 py-3 text-sm text-rose-700">
+        Keine Einträge importierbar — bitte Mapping und Datei prüfen.
+      </p>
+    {% endif %}
+
+    {% if preview.errors %}
+      <div class="px-4 py-2 border-t border-slate-200">
+        <details class="text-xs">
+          <summary class="cursor-pointer text-amber-800 font-medium">
+            {{ preview.errors|length }} Zeile(n) würden übersprungen
+          </summary>
+          <table class="w-full text-xs mt-2">
+            <thead class="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th class="px-3 py-1.5 w-12">Zeile</th>
+                <th class="px-3 py-1.5">Fehler</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for err in preview.errors %}
+                <tr class="border-t border-slate-100">
+                  <td class="px-3 py-1.5 font-mono">{{ err.row }}</td>
+                  <td class="px-3 py-1.5 text-rose-700">{{ err.error }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </div>
+    {% endif %}
+
+    <div class="p-4 flex items-center gap-3 border-t border-slate-200">
+      <form method="post" action="/import" data-loading-message="Import läuft …">
+        <input type="hidden" name="format_id" value="{{ preview_format_id }}" />
+        <input type="hidden" name="raw_b64" value="{{ preview_b64 }}" />
+        {% if preview_apply_target_rules %}
+          <input type="hidden" name="apply_target_rules" value="true" />
+        {% endif %}
+        <button {% if not preview.created %}disabled{% endif %}
+                class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+          ✓ Jetzt importieren{% if preview.created %} ({{ preview.created }}){% endif %}
+        </button>
+      </form>
+      <a href="/import" class="text-sm text-slate-600 hover:underline">Abbrechen</a>
+    </div>
+  </section>
+{% endif %}
+
 <section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">
-    {% if result %}Weiteren Import starten{% else %}Import{% endif %}
+    {% if result %}Weiteren Import starten{% elif preview %}Andere Datei wählen{% else %}Import{% endif %}
   </h2>
   {% if formats %}
-    <form method="post" action="/import" enctype="multipart/form-data" class="space-y-4">
+    <form method="post" action="/import/preview" enctype="multipart/form-data" class="space-y-4"
+          data-loading-message="Vorschau wird erstellt …">
       <div>
         <label class="block text-sm font-medium mb-1">Importformat</label>
         <select name="format_id" required class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
@@ -113,8 +219,11 @@
         </span>
       </label>
       <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
-        Importieren
+        Vorschau anzeigen
       </button>
+      <p class="text-xs text-slate-500">
+        Es wird zunächst nur eine Vorschau erstellt — gespeichert wird erst nach Bestätigung.
+      </p>
     </form>
   {% else %}
     <p class="text-slate-600">

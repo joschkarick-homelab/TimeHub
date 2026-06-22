@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+  <h1 class="text-xl font-bold th-outfit">Import aus Salesforce-Projekten</h1>
+  <a href="/projects" class="text-sm text-slate-600 hover:underline">← zurück zu Projekte</a>
+</div>
+
+{% if error %}
+  <div class="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error | replace('+', ' ') }}</div>
+{% endif %}
+
+<p class="text-sm text-slate-500 mb-4">
+  Es werden deine aktuell laufenden Salesforce-Projektbesetzungen angezeigt, die
+  noch an keinem Projekt hinterlegt sind. Markiere die, für die ein Projekt
+  angelegt werden soll.
+</p>
+
+{% if sf_error %}
+  <section class="bg-white border border-slate-200 p-5">
+    <div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+      {{ sf_error }}
+    </div>
+    <a href="/projects" class="inline-block mt-4 text-sm text-indigo-600 hover:underline">Zurück</a>
+  </section>
+{% elif not assignments %}
+  <section class="bg-white border border-slate-200 p-5">
+    <p class="text-slate-500">
+      Keine offenen Salesforce-Projektbesetzungen gefunden, die noch nicht als
+      Projekt angelegt sind. 🎉
+    </p>
+    <a href="/projects" class="inline-block mt-4 text-sm text-indigo-600 hover:underline">Zurück zu Projekte</a>
+  </section>
+{% else %}
+  <section class="bg-white border border-slate-200 overflow-hidden">
+    <form method="post" action="/projects/import-salesforce" id="sf-import-form">
+      <div class="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-200 flex-wrap">
+        <span class="text-sm text-slate-600">
+          <span id="sel-count">{{ assignments|length }}</span> von {{ assignments|length }} ausgewählt
+        </span>
+        <div class="flex gap-2">
+          <button type="button" id="sel-all"
+                  class="h-8 px-3 border border-slate-300 text-slate-600 text-xs font-medium">Alle auswählen</button>
+          <button type="button" id="sel-none"
+                  class="h-8 px-3 border border-slate-300 text-slate-600 text-xs font-medium">Auswahl aufheben</button>
+        </div>
+      </div>
+
+      <ul class="divide-y divide-slate-100">
+        {% for a in assignments %}
+          <li class="flex items-start gap-3 px-5 py-3">
+            <input type="checkbox" name="assignment_ids" value="{{ a.assignment_id }}" checked
+                   class="sf-imp-check mt-1 h-4 w-4" title="Projekt anlegen" />
+            <div class="min-w-0">
+              <div class="font-medium truncate">{{ a.name }}</div>
+              <div class="flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5 text-xs text-slate-500">
+                {% if a.customer %}<span>{{ a.customer }}</span>{% endif %}
+                {% if a.number %}<span class="font-mono">{{ a.number }}</span>{% endif %}
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <div class="flex items-center gap-3 px-5 py-4 border-t border-slate-200">
+        <button id="sf-import-submit"
+                class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
+          Ausgewählte Projekte anlegen
+        </button>
+        <a href="/projects" class="text-sm text-slate-600 hover:underline">Abbrechen</a>
+      </div>
+    </form>
+  </section>
+
+  <script>
+    (function () {
+      var form = document.getElementById("sf-import-form");
+      if (!form) return;
+      var countEl = document.getElementById("sel-count");
+      var submit  = document.getElementById("sf-import-submit");
+      function checks() {
+        return Array.prototype.slice.call(form.querySelectorAll(".sf-imp-check"));
+      }
+      function refresh() {
+        var n = checks().filter(function (c) { return c.checked; }).length;
+        if (countEl) countEl.textContent = n;
+        if (submit) submit.disabled = n === 0;
+      }
+      function setAll(state) { checks().forEach(function (c) { c.checked = state; }); refresh(); }
+      document.getElementById("sel-all").addEventListener("click", function () { setAll(true); });
+      document.getElementById("sel-none").addEventListener("click", function () { setAll(false); });
+      checks().forEach(function (c) { c.addEventListener("change", refresh); });
+      refresh();
+    })();
+  </script>
+{% endif %}
+{% endblock %}

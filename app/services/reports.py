@@ -8,7 +8,7 @@ from app.models import CsvTemplate, Project, TimeEntry, User
 
 
 def _row_dict(entry: TimeEntry, project: Project, user: User) -> dict:
-    hours = round(entry.duration_minutes / 60, 4)
+    hours = round(entry.duration_minutes / 60, 2)
     target = entry.sync_target_override or project.default_sync_target
     return {
         "id": entry.id,
@@ -31,6 +31,30 @@ def _row_dict(entry: TimeEntry, project: Project, user: User) -> dict:
 
 
 Row = tuple[TimeEntry, Project, User]
+
+# Fallback time-of-day for an entry without a start time, used when a date
+# format carries a time component (see ``_format_value``).
+_EXPORT_DEFAULT_TIME = time(9, 0)
+
+_EN_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_EN_MONTH_FULL = ("January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December")
+
+
+def _strftime_en(dt: datetime, fmt: str) -> str:
+    """strftime with locale-independent English month names.
+
+    Some target systems (e.g. the Jira worklog importer) expect English month
+    names like ``May``/``Mar``. Python's ``%b``/``%B`` follow the process
+    locale, which is unreliable inside a container, so we substitute the month
+    tokens ourselves and let strftime handle the rest. ``%%`` is preserved.
+    """
+    out = fmt.replace("%%", "\x00")
+    out = out.replace("%b", _EN_MONTH_ABBR[dt.month - 1])
+    out = out.replace("%B", _EN_MONTH_FULL[dt.month - 1])
+    out = out.replace("\x00", "%%")
+    return dt.strftime(out)
 
 
 def to_json(rows: Iterable[Row]) -> str:
@@ -108,7 +132,12 @@ def _format_value(field: str, entry: TimeEntry, project: Project, user: User,
                   date_fmt: str, time_fmt: str) -> str:
     """Render a TimeHub target field as a string for CSV export."""
     if field == "entry_date":
-        return entry.entry_date.strftime(date_fmt)
+        # Combine the date with the entry's start time (or a sane default) so a
+        # date_format carrying a time component — e.g. Jira's
+        # "%d-%b-%Y %H:%M:%S" — renders a real time instead of 00:00:00. A
+        # midnight timestamp is prone to a timezone day-shift on import.
+        dt = datetime.combine(entry.entry_date, entry.start_time or _EXPORT_DEFAULT_TIME)
+        return _strftime_en(dt, date_fmt)
     if field == "start_time":
         return entry.start_time.strftime(time_fmt) if entry.start_time else ""
     if field == "end_time":

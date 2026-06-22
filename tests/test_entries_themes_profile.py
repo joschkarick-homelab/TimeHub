@@ -1,8 +1,6 @@
 """TimeEntry CRUD, theme switcher, profile (Salesforce IDs), and the
 dropdown-deduplication fix for projects where code == name."""
 
-import io
-from datetime import date
 
 
 def _login_session(client) -> None:
@@ -103,11 +101,6 @@ def test_entry_edit_rejects_other_users_entry(client):
     pid = _make_project(client, "EOWN")
     eid = _make_entry(client, pid)
 
-    other_token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "other@example.com", "password": "secret123"},
-    ).json()["access_token"]
-
     # log in as other via session
     r = client.post(
         "/login", data={"email": "other@example.com", "password": "secret123"},
@@ -121,19 +114,23 @@ def test_entry_edit_rejects_other_users_entry(client):
 
 # ---------- Dropdown dedup ----------
 
-def test_project_display_label_collapses_code_eq_name():
-    """Project.display_label should not say "X – X" when code and name match
-    (the auto-created-from-import case)."""
+def test_project_display_label_omits_code():
+    """Project.display_label shows the name (with optional customer) and
+    deliberately omits the internal project code; it falls back to the code
+    only when no name is set."""
     from app.models import Project
 
     p1 = Project(name="Test", code="Test")
     assert p1.display_label == "Test"
 
     p2 = Project(name="Acme Onboarding", code="ACME-1")
-    assert p2.display_label == "ACME-1 – Acme Onboarding"
+    assert p2.display_label == "Acme Onboarding"
 
-    p3 = Project(name="", code="ONLY-CODE")
-    assert p3.display_label == "ONLY-CODE"
+    p3 = Project(name="Acme Onboarding", code="ACME-1", customer="Acme")
+    assert p3.display_label == "Acme Onboarding (Acme)"
+
+    p4 = Project(name="", code="ONLY-CODE")
+    assert p4.display_label == "ONLY-CODE"
 
 
 def test_dashboard_dropdown_uses_display_label(client):
@@ -152,19 +149,19 @@ def test_dashboard_dropdown_uses_display_label(client):
 def test_theme_switcher_sets_cookie_and_renders_data_attr(client):
     _login_session(client)
     r = client.get("/")
-    # default is indigo
-    assert 'data-theme="indigo"' in r.text
+    # default is dark
+    assert 'data-theme="dark"' in r.text
 
     r = client.post(
-        "/settings/theme", data={"theme": "dark"}, follow_redirects=False,
+        "/settings/theme", data={"theme": "light"}, follow_redirects=False,
         headers={"referer": "/"},
     )
     assert r.status_code == 302
     cookie = r.headers["set-cookie"]
-    assert "theme=dark" in cookie
+    assert "theme=light" in cookie
 
-    r = client.get("/", cookies={"theme": "dark"})
-    assert 'data-theme="dark"' in r.text
+    r = client.get("/", cookies={"theme": "light"})
+    assert 'data-theme="light"' in r.text
 
 
 def test_theme_switcher_falls_back_on_bogus_value(client):
@@ -175,7 +172,7 @@ def test_theme_switcher_falls_back_on_bogus_value(client):
     )
     assert r.status_code == 302
     cookie = r.headers["set-cookie"]
-    assert "theme=indigo" in cookie  # forced back to a known theme
+    assert "theme=dark" in cookie  # forced back to the default theme
 
 
 # ---------- Profile ----------

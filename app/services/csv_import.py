@@ -20,6 +20,21 @@ from app.services.transforms import (
 )
 
 
+def _decode_csv_bytes(raw: bytes, encoding: str) -> str:
+    """Decode an uploaded CSV defensively. Mis-declared encodings are common —
+    German Excel exports are usually cp1252/latin-1 even when "utf-8" is picked.
+    Try the chosen encoding, fall back to cp1252, and only as a last resort
+    replace undecodable bytes so the whole import doesn't blow up on one cell."""
+    try:
+        return raw.decode(encoding)
+    except (UnicodeDecodeError, LookupError):
+        pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        return raw.decode(encoding if encoding else "utf-8", errors="replace")
+
+
 def _parse_duration_field(value: str, *, as_hours: bool) -> int | None:
     """Turn an explicit duration cell into whole minutes. Clock formats like
     "01:30:00" / "01:30" are read as HH:MM(:SS); otherwise the value is numeric —
@@ -75,7 +90,16 @@ def import_csv(
     transforms: list[dict] | None = None,
     target_rules: list[dict] | None = None,
     apply_target_rules: bool = False,
+    dry_run: bool = False,
 ) -> dict:
+    """Parse and import a CSV via a column map.
+
+    When ``dry_run`` is True everything is parsed, validated and resolved
+    exactly as for a real import (incl. would-be project creation), but the
+    transaction is rolled back at the end so no rows are persisted. The
+    returned ``preview`` list then describes the entries that *would* be
+    created — used to power the import preview screen.
+    """
     bad_targets = set(column_map.keys()) - SUPPORTED_TARGETS
     if bad_targets:
         raise ValueError(f"Unsupported target fields: {sorted(bad_targets)}")
@@ -84,7 +108,7 @@ def import_csv(
     # if it's not — so we upgrade plain "utf-8" to handle exports from tools
     # that always emit one (Excel, Toggl on Windows, ...).
     effective_encoding = "utf-8-sig" if encoding.lower() in {"utf-8", "utf8"} else encoding
-    text = raw_bytes.decode(effective_encoding)
+    text = _decode_csv_bytes(raw_bytes, effective_encoding)
     reader = csv.DictReader(io.StringIO(text), delimiter=separator)
     # Even with utf-8-sig some files still contain a literal BOM mid-stream or
     # have leading whitespace on headers; normalize defensively.
@@ -97,6 +121,7 @@ def import_csv(
 
     created_ids: list[int] = []
     errors: list[dict] = []
+    preview: list[dict] = []
     created_projects: list[str] = []
     project_cache: dict[str, Project] = {}
     # Map of normalized code -> existing Project (scoped to the importing user,
@@ -188,6 +213,9 @@ def import_csv(
                 duration = (end_time.hour * 60 + end_time.minute) - (
                     start_time.hour * 60 + start_time.minute
                 )
+                # End before start ⇒ shift ended on the next day (night shift).
+                if duration < 0:
+                    duration += 24 * 60
 
             if duration is None or duration <= 0:
                 raise ValueError("could not derive a positive duration")
@@ -229,14 +257,30 @@ def import_csv(
             db.flush()
             reconcile_entry_syncs(db, entry, project, rules)
             created_ids.append(entry.id)
+            preview.append({
+                "row": row_no,
+                "entry_date": entry_date.isoformat(),
+                "project_code": project.code,
+                "project_name": project.name,
+                "duration_minutes": duration,
+                "duration_hours": round(duration / 60, 2),
+                "description": entry.description,
+                "tags": tags,
+                "sync_target": sync_target_override or project.default_sync_target,
+            })
         except Exception as e:  # noqa: BLE001
             errors.append({"row": row_no, "error": str(e), "data": raw_row})
 
-    db.commit()
+    if dry_run:
+        # Discard everything we staged (entries, syncs, auto-created projects).
+        db.rollback()
+    else:
+        db.commit()
     return {
         "created": len(created_ids),
         "failed": len(errors),
-        "ids": created_ids,
+        "ids": [] if dry_run else created_ids,
         "errors": errors,
         "created_projects": created_projects,
+        "preview": preview,
     }

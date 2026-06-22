@@ -35,7 +35,9 @@ class TimeEntry(Base):
     # Per-entry overrides for sync metadata (e.g. specific Jira issue key).
     sync_metadata_override: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
-    sync_status: Mapped[str] = mapped_column(String(16), nullable=False, default=SyncStatus.PENDING)
+    sync_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SyncStatus.PENDING, index=True
+    )
     source: Mapped[str] = mapped_column(String(16), nullable=False, default=EntrySource.MANUAL)
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 

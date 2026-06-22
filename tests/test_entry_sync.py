@@ -6,7 +6,6 @@ from app.services import entry_sync as es
 from app.services import sync_fields as sf
 from app.services.sync_rules import resolve_targets
 
-
 # ---------- pure resolution logic ----------
 
 def _proj(targets=None, default="intern", code="ABC"):
@@ -413,6 +412,70 @@ def test_wizard_fill_rejects_foreign_project(client):
         follow_redirects=False,
     )
     assert r.status_code == 404
+
+
+def _set_sync_status(entry_id, *, target_status, entry_status):
+    from app.db import SessionLocal
+    from app.models import EntrySync, TimeEntry
+
+    with SessionLocal() as db:
+        es = db.query(EntrySync).filter(EntrySync.entry_id == entry_id).one()
+        es.status = target_status
+        es.last_error = "ungültige Salesforce-Id"
+        e = db.get(TimeEntry, entry_id)
+        e.sync_status = entry_status
+        db.add_all([es, e])
+        db.commit()
+
+
+def test_project_edit_reopens_failed_entries(client):
+    # A failed Salesforce push leaves the entry stuck on `failed`; correcting
+    # the project must re-open it so the auto-sync picks it up again.
+    _web_login(client)
+    pid = _project_id(client, "REOPEN", target="salesforce")
+    eid = client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60},
+        headers=_h(client),
+    ).json()["id"]
+    _set_sync_status(eid, target_status="failed", entry_status="failed")
+    assert _entry_syncs(eid) == {"salesforce": "failed"}
+
+    r = client.post(
+        f"/projects/{pid}/edit",
+        data={"name": "Reopen", "code": "REOPEN", "default_sync_target": "salesforce",
+              "status": "active", "color": "#000000",
+              "meta__salesforce__assignment_id": "a012345678901234"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert _entry_syncs(eid) == {"salesforce": "pending"}
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+
+    with SessionLocal() as db:
+        assert db.get(TimeEntry, eid).sync_status == "pending"
+
+
+def test_project_edit_leaves_synced_entries_intact(client):
+    # Completed rows carry a remote reference and must survive a project edit.
+    _web_login(client)
+    pid = _project_id(client, "KEEPDONE", target="salesforce")
+    eid = client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-05-28", "duration_minutes": 60},
+        headers=_h(client),
+    ).json()["id"]
+    _set_sync_status(eid, target_status="synced", entry_status="synced")
+
+    client.post(
+        f"/projects/{pid}/edit",
+        data={"name": "KeepDone", "code": "KEEPDONE", "default_sync_target": "salesforce",
+              "status": "active", "color": "#000000"},
+        follow_redirects=False,
+    )
+    assert _entry_syncs(eid) == {"salesforce": "synced"}
 
 
 def test_edit_next_redirects_back_to_wizard(client):

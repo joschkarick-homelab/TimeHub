@@ -1,0 +1,115 @@
+{# Verhalten für die Kunden-Autocomplete (_customer_field.html).
+   Einmal pro Seite einbinden; erwartet `customers` im Kontext. #}
+<script>window.TH_CUSTOMERS = {{ (customers or []) | tojson }};</script>
+<script>
+  (function () {
+    var DATA = window.TH_CUSTOMERS || [];
+    var LIMIT = 50;
+
+    function esc(s) {
+      return s.replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    // Rangfolge: Präfix-Treffer zuerst, dann Teilstring, dann Fuzzy
+    // (Zeichen kommen der Reihe nach vor). Innerhalb gleicher Güte alphabetisch.
+    function match(items, query) {
+      var q = (query || "").trim().toLowerCase();
+      if (!q) return items.slice(0, LIMIT);
+      var scored = [];
+      for (var i = 0; i < items.length; i++) {
+        var s = items[i].toLowerCase();
+        var score = null;
+        if (s.indexOf(q) === 0) score = 0;
+        else if (s.indexOf(q) !== -1) score = 1;
+        else {
+          var qi = 0;
+          for (var c = 0; c < s.length && qi < q.length; c++) {
+            if (s[c] === q[qi]) qi++;
+          }
+          if (qi === q.length) score = 2;
+        }
+        if (score !== null) scored.push([score, items[i]]);
+      }
+      scored.sort(function (a, b) {
+        return a[0] - b[0] || a[1].localeCompare(b[1]);
+      });
+      return scored.map(function (x) { return x[1]; }).slice(0, LIMIT);
+    }
+
+    function wire(root) {
+      var input = root.querySelector("input");
+      var list = root.querySelector(".th-customer-ac-list");
+      if (!input || !list) return;
+      var items = [];
+      var active = -1;
+
+      function close() {
+        list.classList.add("hidden");
+        input.setAttribute("aria-expanded", "false");
+        active = -1;
+      }
+
+      function open() {
+        items = match(DATA, input.value);
+        if (!items.length) { close(); return; }
+        list.innerHTML = items.map(function (m, i) {
+          return '<li data-i="' + i + '" class="px-2 py-1.5 cursor-pointer hover:bg-indigo-50">' + esc(m) + "</li>";
+        }).join("");
+        list.classList.remove("hidden");
+        input.setAttribute("aria-expanded", "true");
+        active = -1;
+      }
+
+      function highlight() {
+        for (var i = 0; i < list.children.length; i++) {
+          list.children[i].classList.toggle("bg-indigo-50", i === active);
+        }
+        if (active >= 0 && list.children[active]) {
+          list.children[active].scrollIntoView({ block: "nearest" });
+        }
+      }
+
+      function choose(i) {
+        if (i < 0 || i >= items.length) return;
+        input.value = items[i];
+        close();
+      }
+
+      input.addEventListener("input", open);
+      input.addEventListener("focus", function () { if (DATA.length) open(); });
+      input.addEventListener("keydown", function (e) {
+        var hidden = list.classList.contains("hidden");
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (hidden) { open(); return; }
+          active = Math.min(active + 1, items.length - 1);
+          highlight();
+        } else if (e.key === "ArrowUp") {
+          if (hidden) return;
+          e.preventDefault();
+          active = Math.max(active - 1, 0);
+          highlight();
+        } else if (e.key === "Enter") {
+          if (!hidden && active >= 0) { e.preventDefault(); choose(active); }
+        } else if (e.key === "Escape") {
+          close();
+        }
+      });
+      // mousedown statt click: greift, bevor das Input den Fokus (und damit die
+      // Liste) verliert.
+      list.addEventListener("mousedown", function (e) {
+        var li = e.target.closest("li[data-i]");
+        if (!li) return;
+        e.preventDefault();
+        choose(parseInt(li.getAttribute("data-i"), 10));
+      });
+      document.addEventListener("click", function (e) {
+        if (!root.contains(e.target)) close();
+      });
+    }
+
+    document.querySelectorAll("[data-customer-ac]").forEach(wire);
+  })();
+</script>

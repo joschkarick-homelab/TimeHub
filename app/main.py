@@ -4,14 +4,15 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.api import api_router
 from app.config import get_settings
-from app.services.bootstrap import ensure_initial_admin
+from app.services.bootstrap import ensure_builtin_formats, ensure_initial_admin
+from app.web.router import LoginRequired
 from app.web.router import router as web_router
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -23,6 +24,7 @@ logging.basicConfig(level=settings.log_level.upper())
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ensure_initial_admin()
+    ensure_builtin_formats()
     yield
 
 
@@ -33,14 +35,30 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# A wildcard origin with credentials is unsafe (and spec-invalid). The API
+# authenticates via Bearer/API-key, never via the session cookie cross-origin,
+# so only enable credentialed CORS once an explicit allowlist is configured.
+_cors_origins = settings.cors_origin_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    same_site="lax",
+    https_only=settings.session_cookie_secure,
+)
+
+@app.exception_handler(LoginRequired)
+async def _login_required_handler(request, exc) -> RedirectResponse:
+    # Protected web pages raise LoginRequired when there's no session; send the
+    # visitor to the login screen (same 302 the routes used to return inline).
+    return RedirectResponse(url="/login", status_code=302)
+
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(api_router)

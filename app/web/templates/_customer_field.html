@@ -1,0 +1,14 @@
+{# Wiederverwendbare Kunden-Eingabe mit Autocomplete.
+   Beim Tippen werden vorhandene Kunden gefiltert vorgeschlagen; mit den
+   Pfeiltasten lässt sich durch die Liste navigieren (Enter/Klick übernimmt).
+   Erwartet im Kontext:
+     - customers:      Liste vorhandener Kundennamen (für die Vorschläge)
+     - customer_value: aktueller Wert (optional, z. B. beim Bearbeiten)
+   Das Verhalten kommt aus _customer_field_js.html, das einmal pro Seite
+   eingebunden werden muss. #}
+<div class="relative" data-customer-ac>
+  <input name="customer" autocomplete="off" value="{{ customer_value or '' }}"
+         role="combobox" aria-autocomplete="list" aria-expanded="false"
+         class="w-full h-10 border border-slate-300 rounded px-2" />
+  <ul class="th-customer-ac-list hidden absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-auto bg-white border border-slate-200 rounded shadow-lg text-sm"></ul>
+</div>
