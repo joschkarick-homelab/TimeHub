@@ -1,0 +1,142 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="GetTimeRecords">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="filter">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" ref="tns:clientName"/>
+              <xs:element minOccurs="0" ref="tns:employee"/>
+              <xs:element name="dateInterval">
+                <xs:complexType>
+                  <xs:attribute name="start" type="xs:date" use="required"/>
+                  <xs:attribute name="end" type="xs:date" use="required"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="GetTimeRecordsResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" minOccurs="0" ref="tns:timeRecord"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="GetTimeRecord">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:choice>
+          <xs:element ref="tns:id"/>
+          <xs:element ref="tns:oid"/>
+          <xs:element ref="tns:bcsOid"/>
+        </xs:choice>
+        <xs:element minOccurs="0" name="options">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="otherAttributes">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element maxOccurs="unbounded" name="attribute">
+                      <xs:complexType>
+                        <xs:attribute name="name" type="xs:string" use="required"/>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="GetTimeRecordResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" minOccurs="0" ref="tns:timeRecord"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="timeRecord">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:choice>
+          <xs:element name="event">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element ref="tns:task"/>
+                <xs:element ref="tns:project"/>
+                <xs:element ref="tns:pspPath"/>
+              </xs:sequence>
+              <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+              <xs:attribute name="name" type="xs:string" use="required"/>
+              <xs:attribute name="startTime" type="xs:time"/>
+              <xs:attribute name="endTime" type="xs:time"/>
+            </xs:complexType>
+          </xs:element>
+          <xs:element name="task">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element ref="tns:project"/>
+                <xs:element ref="tns:pspPath"/>
+              </xs:sequence>
+              <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+              <xs:attribute name="name" type="xs:string" use="required"/>
+            </xs:complexType>
+          </xs:element>
+          <xs:element name="ticket">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element ref="tns:task"/>
+                <xs:element ref="tns:project"/>
+                <xs:element ref="tns:pspPath"/>
+              </xs:sequence>
+              <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+              <xs:attribute name="name" type="xs:string" use="required"/>
+            </xs:complexType>
+          </xs:element>
+          <xs:element name="workflow">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element ref="tns:task"/>
+                <xs:element ref="tns:project"/>
+                <xs:element ref="tns:pspPath"/>
+              </xs:sequence>
+              <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+              <xs:attribute name="name" type="xs:string" use="required"/>
+            </xs:complexType>
+          </xs:element>
+          <xs:element name="scrum">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element ref="tns:task"/>
+                <xs:element ref="tns:project"/>
+                <xs:element ref="tns:pspPath"/>
+              </xs:sequence>
+              <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+              <xs:attribute name="name" type="xs:string" use="required"/>
+            </xs:complexType>
+          </xs:element>
+        </xs:choice>
+        <xs:element name="billability" type="tns:attributeWithOptions"/>
+        <xs:element minOccurs="0" name="taskType" type="tns:attributeWithOptions"/>
+        <xs:element minOccurs="0" ref="tns:comment"/>
+        <xs:element minOccurs="0" ref="tns:otherAttributes"/>
+        <xs:element name="employee" type="tns:person"/>
+      </xs:sequence>
+      <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+      <xs:attribute name="date" type="xs:date" use="required"/>
+      <xs:attribute name="startTime" type="xs:time"/>
+      <xs:attribute name="expense" type="xs:int" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
