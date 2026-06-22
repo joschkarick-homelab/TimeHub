@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="GetClosureDate">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" ref="tns:employee"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="GetClosureDateResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="date" nillable="false" type="xs:date"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,135 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="GetAttendancesAndBreaks">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="filter">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" ref="tns:employee"/>
+              <xs:element minOccurs="0" ref="tns:date"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="GetAttendancesAndBreaksResponse" type="tns:attendancesAndBreaks"/>
+
+  <xs:element name="TrackAttendancesAndBreaks">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" ref="tns:employee"/>
+        <xs:element minOccurs="0" ref="tns:date"/>
+        <xs:element minOccurs="0" name="attendances">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" name="attendance" type="tns:createTimeSpanRequest"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element minOccurs="0" name="breaks">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" name="break" type="tns:createTimeSpanRequest"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="TrackAttendancesAndBreaksResponse" type="tns:attendancesAndBreaks"/>
+
+  <xs:element name="ChangeAttendancesAndBreaks">
+    <xs:complexType>
+      <xs:choice>
+        <xs:element name="attendance" type="tns:updateTimeSpanRequest"/>
+        <xs:element name="break" type="tns:updateTimeSpanRequest"/>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="ChangeAttendancesAndBreaksResponse" type="tns:attendancesAndBreaks"/>
+
+  <xs:element name="DeleteAttendancesAndBreaks">
+    <xs:complexType>
+      <xs:choice>
+        <xs:sequence>
+          <xs:element minOccurs="0" ref="tns:employee"/>
+          <xs:element ref="tns:date"/>
+        </xs:sequence>
+        <xs:element name="attendance">
+          <xs:complexType>
+            <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="break">
+          <xs:complexType>
+            <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="DeleteAttendancesAndBreaksResponse" type="tns:attendancesAndBreaks"/>
+
+  <xs:complexType name="timeSpan">
+    <xs:sequence>
+      <xs:element minOccurs="0" ref="tns:timeInterval"/>
+      <xs:element ref="tns:duration"/>
+      <xs:element minOccurs="0" ref="tns:comment"/>
+      <xs:element minOccurs="0" ref="tns:otherAttributes"/>
+    </xs:sequence>
+    <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="createTimeSpanRequest">
+    <xs:sequence>
+      <xs:choice>
+        <xs:element ref="tns:timeInterval"/>
+        <xs:element ref="tns:duration"/>
+      </xs:choice>
+      <xs:element minOccurs="0" ref="tns:comment"/>
+      <xs:element minOccurs="0" name="otherAttributes" type="tns:setOtherAttributes"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="updateTimeSpanRequest">
+    <xs:sequence>
+      <xs:choice minOccurs="0">
+        <xs:element ref="tns:timeInterval"/>
+        <xs:element ref="tns:duration"/>
+      </xs:choice>
+      <xs:element minOccurs="0" ref="tns:comment"/>
+      <xs:element minOccurs="0" name="otherAttributes" type="tns:setOtherAttributes"/>
+    </xs:sequence>
+    <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="attendancesAndBreaks">
+    <xs:sequence>
+      <xs:element ref="tns:date"/>
+      <xs:element name="attendances">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="attendance" type="tns:timeSpan"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="breaks">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="break" type="tns:timeSpan"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element ref="tns:summary"/>
+      <xs:element minOccurs="0" ref="tns:notes"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

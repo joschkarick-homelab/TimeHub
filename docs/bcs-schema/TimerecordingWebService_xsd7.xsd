@@ -1,0 +1,86 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="GetHoursWorkedSummary">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" ref="tns:employee"/>
+        <xs:element minOccurs="0" ref="tns:evaluationPeriod"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="GetHoursWorkedSummaryResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="alternativeEvaluationPeriods">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" ref="tns:evaluationPeriod"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element maxOccurs="unbounded" ref="tns:group"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="group">
+    <xs:complexType>
+      <xs:choice>
+        <xs:sequence>
+          <xs:element maxOccurs="unbounded" ref="tns:group"/>
+        </xs:sequence>
+        <xs:sequence>
+          <xs:element maxOccurs="unbounded" ref="tns:indicator"/>
+        </xs:sequence>
+      </xs:choice>
+      <xs:attribute name="key" type="xs:string"/>
+      <xs:attribute name="title" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="indicator">
+    <xs:complexType>
+      <xs:choice>
+        <xs:element maxOccurs="unbounded" minOccurs="0" name="thereof">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" minOccurs="0" ref="tns:indicator"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="sum">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" minOccurs="0" ref="tns:indicator"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+      <xs:attribute name="key" type="xs:string" use="required"/>
+      <xs:attribute name="label" type="xs:string" use="required"/>
+      <xs:attribute name="value" type="xs:decimal" use="required"/>
+      <xs:attribute name="unit" type="tns:units" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:simpleType name="units">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="minutes"/>
+      <xs:enumeration value="days"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="evaluationPeriod">
+    <xs:complexType>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="label" type="xs:string"/>
+      <xs:attribute name="selected" type="xs:boolean"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="IllegalEvaluationPeriod" type="tns:TimeRecordingWebServiceException"/>
+
+</xs:schema>

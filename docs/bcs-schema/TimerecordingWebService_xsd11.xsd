@@ -1,0 +1,215 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="GetTimesheet" type="tns:TimesheetRequest"/>
+
+  <xs:element name="GetTimesheetResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="timesheetEntries">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" minOccurs="0" name="event" type="tns:timesheetEntry"/>
+              <xs:element maxOccurs="unbounded" minOccurs="0" name="task" type="tns:timesheetEntry"/>
+              <xs:element maxOccurs="unbounded" minOccurs="0" name="ticket" type="tns:timesheetEntry"/>
+              <xs:element maxOccurs="unbounded" minOccurs="0" name="worksflow" type="tns:timesheetEntry"/>
+              <xs:element maxOccurs="unbounded" minOccurs="0" name="scrum" type="tns:timesheetEntry"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="TimesheetRequest">
+    <xs:sequence>
+      <xs:element minOccurs="0" ref="tns:clientName"/>
+      <xs:element minOccurs="0" name="filter">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" ref="tns:employee"/>
+            <xs:element minOccurs="0" ref="tns:date"/>
+            <xs:element minOccurs="0" ref="tns:typesOfTimesheetEntries"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="timesheetEntry">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="timesheetEntryProperties">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element minOccurs="0" ref="tns:task"/>
+            <xs:element minOccurs="0" ref="tns:project"/>
+            <xs:element minOccurs="0" ref="tns:pspPath"/>
+
+            <xs:element minOccurs="0" name="isTaskMarked" type="xs:boolean"/>
+            <xs:element minOccurs="0" name="startDate" type="xs:date"/>
+            <xs:element minOccurs="0" name="endDate" type="xs:date"/>
+            <xs:element minOccurs="0" name="planDuration" type="xs:integer"/>
+            <xs:element minOccurs="0" name="bookedDuration" type="xs:integer"/>
+            <xs:element minOccurs="0" name="remainingDuration" type="xs:integer"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element minOccurs="0" ref="tns:timeRecordValues"/>
+    </xs:sequence>
+    <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:element name="timeRecordValues">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="startTime" type="xs:time"/>
+        <xs:element minOccurs="0" name="endTime" type="xs:time"/>
+        <xs:element minOccurs="0" name="billability">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" name="options" type="tns:allowedOptions"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element minOccurs="0" name="taskType">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" name="options" type="tns:allowedOptions"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element minOccurs="0" ref="tns:otherAttributes"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="typesOfTimesheetEntries">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="tasks">
+          <xs:complexType/>
+        </xs:element>
+        <xs:element minOccurs="0" name="events">
+          <xs:complexType/>
+        </xs:element>
+        <xs:element minOccurs="0" name="tickets">
+          <xs:complexType/>
+        </xs:element>
+        <xs:element minOccurs="0" name="requirements">
+          <xs:complexType/>
+        </xs:element>
+        <xs:element minOccurs="0" name="workflows">
+          <xs:complexType/>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:simpleType name="typesOfTimesheetEntries">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="tasks"/>
+      <xs:enumeration value="events"/>
+      <xs:enumeration value="tickets"/>
+      <xs:enumeration value="requirements"/>
+      <xs:enumeration value="workflows"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <!--
+    <xs:element name="sources">
+    <xs:complexType>
+    <xs:sequence>
+    <xs:element ref="tns:tasks" minOccurs="0" />
+    <xs:element ref="tns:events" minOccurs="0" />
+    <xs:element ref="tns:tickets" minOccurs="0" />
+    <xs:element ref="tns:workflows" minOccurs="0" />
+    <xs:element ref="tns:scrums" minOccurs="0" />
+    </xs:sequence>
+    </xs:complexType>
+    </xs:element>
+
+    <xs:element name="tasks">
+    <xs:complexType>
+    <xs:sequence>
+    <xs:element name="selection" minOccurs="0" maxOccurs="unbounded">
+    <xs:simpleType>
+    <xs:restriction base="xs:string">
+    <xs:enumeration value="all" />
+    <xs:enumeration value="marked" />
+    </xs:restriction>
+    </xs:simpleType>
+    </xs:element>
+    </xs:sequence>
+    </xs:complexType>
+    </xs:element>
+
+    <xs:element name="events">
+    <xs:complexType />
+    </xs:element>
+
+    <xs:element name="tickets">
+    <xs:complexType>
+    <xs:sequence>
+    <xs:element name="selection" minOccurs="0" maxOccurs="unbounded">
+    <xs:simpleType>
+    <xs:restriction base="xs:string">
+    <xs:enumeration value="assignee" />
+    <xs:enumeration value="pspteam" />
+    <xs:enumeration value="self-changed-today" />
+    </xs:restriction>
+    </xs:simpleType>
+    </xs:element>
+    </xs:sequence>
+    </xs:complexType>
+    </xs:element>
+
+    <xs:element name="workflows">
+    <xs:complexType />
+    </xs:element>
+
+    <xs:element name="scrums">
+    <xs:complexType>
+    <xs:sequence>
+    <xs:element name="selection" minOccurs="0" maxOccurs="unbounded">
+    <xs:simpleType>
+    <xs:restriction base="xs:string">
+    <xs:enumeration value="userstories-assignee" />
+    <xs:enumeration value="userstories-sprintteam" />
+    <xs:enumeration value="activities-assignee" />
+    <xs:enumeration value="activities-sprintteam" />
+    </xs:restriction>
+    </xs:simpleType>
+    </xs:element>
+    </xs:sequence>
+    </xs:complexType>
+    </xs:element>
+
+    <xs:element name="standardFields">
+    <xs:complexType>
+    <xs:sequence>
+    <xs:element name="field" minOccurs="0" maxOccurs="unbounded">
+    <xs:simpleType>
+    <xs:restriction base="xs:string">
+    <xs:enumeration value="task" />
+    <xs:enumeration value="project" />
+    <xs:enumeration value="pspPath" />
+    <xs:enumeration value="billability" />
+    <xs:enumeration value="isTaskMarked" />
+    <xs:enumeration value="startDate" />
+    <xs:enumeration value="endDate" />
+    <xs:enumeration value="startTime" />
+    <xs:enumeration value="endTime" />
+    <xs:enumeration value="planDuration" />
+    <xs:enumeration value="bookedDuration" />
+    <xs:enumeration value="remainingDuration" />
+    </xs:restriction>
+    </xs:simpleType>
+    </xs:element>
+    </xs:sequence>
+    </xs:complexType>
+    </xs:element>
+  -->
+
+
+</xs:schema>
