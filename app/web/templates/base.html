@@ -164,6 +164,20 @@
     .th-section-orange::before { background: var(--orange);  }
     .th-section-olive::before  { background: var(--olive);  }
 
+    /* ── Calendar project blocks (theme-aware tint) ─────────────────── */
+    /* Each block carries its project colour in --proj; the background is
+       mixed against the theme background (var(--bg)) so the same stored
+       colour renders dark-tinted in dark mode and light-tinted in light
+       mode. Text stays readable via the theme's --text / --muted tokens. */
+    .cal-block {
+      border-left: 3px solid var(--proj, var(--purple)) !important;
+      background-color: color-mix(in srgb, var(--proj, var(--purple)) 18%, var(--bg));
+    }
+    /* Light backgrounds wash colours out faster, so tint a touch stronger. */
+    html[data-theme="light"] .cal-block {
+      background-color: color-mix(in srgb, var(--proj, var(--purple)) 26%, var(--bg));
+    }
+
     /* ── User dropdown ──────────────────────────────────────────────── */
     #user-menu { display: none; }
     #user-menu.open { display: block; }

@@ -91,7 +91,7 @@
           {% set bh = (e.end - e.start) * px_per_hour / 60 %}
           <div class="cal-block absolute left-1 right-1 rounded-md border border-slate-200 shadow-sm overflow-hidden px-1.5 py-1 cursor-grab select-none"
                data-id="{{ e.id }}" data-date="{{ col.date }}" data-start="{{ e.start }}" data-end="{{ e.end }}"
-               style="top: {{ top }}px; height: {{ [bh, 18]|max }}px; border-left: 3px solid {{ e.color }}; background-color: color-mix(in srgb, {{ e.color }} 18%, #1A1A1A); touch-action: none;">
+               style="top: {{ top }}px; height: {{ [bh, 18]|max }}px; --proj: {{ e.color }}; touch-action: none;">
             <div class="text-[11px] font-medium text-slate-900 leading-tight truncate">{{ e.project_label }}</div>
             <div class="text-[10px] text-slate-500 tabular-nums leading-tight">
               {{ '%02d:%02d'|format(e.start // 60, e.start % 60) }}–{{ '%02d:%02d'|format(e.end // 60, e.end % 60) }}
