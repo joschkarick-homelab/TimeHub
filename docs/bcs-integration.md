@@ -128,24 +128,66 @@ Beschreibung, Bearbeiter/User).
 
 ## 4. Stufe 2 — Webservices-Push (Ausbau)
 
-Erst sinnvoll, wenn die Lizenz geklärt/aktiviert ist. Grobplan:
+**Lizenz vorhanden (Stand 06/2026).** Relevant ist der **`TimerecordingWebService`**:
+laut BCS-Doku legt er neue Buchungen an, fragt/ändert/löscht bestehende, bucht
+Anwesenheiten/Pausen und setzt Buchungsabschlüsse. Genau unser Aufwands-Push.
 
-- **Protokoll:** SOAP (z. B. via `zeep` in Python), WSDL vom BCS-Host ziehen.
-- **Auth:** BCS-Service-User mit Webservice-Recht; Credentials verschlüsselt in
-  der DB ablegen (wie bei Salesforce, Fernet aus `SECRET_KEY`).
+### 4.1 Endpunkt / WSDL (verifiziert aus BCS-Doku)
+
+Die Webservices liegen **als Geschwister-Kontext neben `/bcs`**, NICHT darunter.
+Bei App unter `…/bcs` lautet das Muster:
+
+```
+https://<host>/webservices/TimerecordingWebService          (SOAP-Requests)
+https://<host>/webservices/TimerecordingWebService?wsdl      (WSDL 1.1)
+https://<host>/webservices/TimerecordingWebService?wsdl2     (WSDL 2.0)
+```
+
+→ Für mindsquare also voraussichtlich
+`https://mindsquare.bcs-hosting.de/webservices/TimerecordingWebService?wsdl2`
+(**ohne** `/bcs/`-Präfix — der Pfad mit `/bcs/webservices/…` ergab „page does
+not exist or no permission").
+
+### 4.2 Auth (verifiziert aus BCS-Doku)
+
+- **WS-Security UsernameToken Profile 1.1**, PasswordType **PasswordText**
+  (Klartext) im SOAP-Header. Kein OAuth.
+- **Zwingend HTTPS**, da Passwort im Klartext übertragen wird.
+- **Keine** Spaces/Zeilenumbrüche um Username/Password.
+- Alle Operationen laufen im **Permission-Kontext des Login-Users**; dieser wird
+  als `insUserOid`/`updUserOid` in BCS geführt.
+- **Dedizierter technischer User** empfohlen (Projektron-Empfehlung), nicht ein
+  persönlicher Account.
+
+### 4.3 Benötigte Berechtigungen (Admin)
+
+Drei Ebenen — alle für den technischen Service-User:
+
+1. **Systemrecht „Webservices nutzen"** (über Rolle/Gruppe in der
+   Rechteverwaltung; exakter Label-Wortlaut steht im internen PDF).
+2. **Funktionale Buch-Rechte:** Aufwände auf den Zielprojekten erfassen/ändern/
+   löschen — sonst geht die WSDL, aber Calls scheitern an Fachrechten.
+3. Service-User anlegen + Login-Daten an TimeHub (verschlüsselt).
+
+### 4.4 Grobplan Implementierung
+
+- **Protokoll:** SOAP via `zeep` (Python), WSDL vom BCS-Host ziehen.
+- **Auth:** UsernameToken (s. §4.2); Credentials verschlüsselt in der DB
+  (wie bei Salesforce, Fernet aus `SECRET_KEY`).
 - **Client:** analog zum Salesforce-Push als Sync-Target-Client, der
   `EntrySync(target="bcs")` von `pending` nach `synced`/`failed` bringt
   (`preview → execute`-Muster wiederverwenden).
-- **Mapping:** `subject`/`task` auf die BCS-Webservice-Felder abbilden;
-  `external_ref` = von BCS zurückgegebene Aufwands-ID für Idempotenz/Updates.
+- **Mapping:** `subject`/`task` auf die `TimerecordingWebService`-Felder
+  abbilden; `external_ref` = von BCS zurückgegebene Buchungs-ID für
+  Idempotenz/Updates.
 
-### 4.1 Offen für Stufe 2
+### 4.5 Offen für Stufe 2
 
-- [ ] Lizenz aktiviert? (siehe §2.1) + Angebot/Preis vorliegend.
-- [ ] WSDL der relevanten Aufwands-/Zeiterfassungs-Webservices beschaffen.
-- [ ] Welche konkreten Webservice-Operationen für Anlegen/Ändern/Löschen von
-      Aufwänden? (Standard- vs. frei konfigurierbare Webservices.)
-- [ ] Service-User + Rechte in BCS einrichten.
+- [x] Lizenz aktiviert (06/2026).
+- [ ] Berechtigungen für Service-User gesetzt (siehe §4.3) — *aktuell blockierend*.
+- [ ] Korrekten WSDL-Endpunkt bestätigen (Pfad ohne `/bcs/`, siehe §4.1).
+- [ ] Exakte Request-Struktur des `TimerecordingWebService` (Felder fürs
+      Anlegen einer Buchung) aus der internen Doku übernehmen.
 
 ---
 
@@ -159,3 +201,7 @@ Erst sinnvoll, wenn die Lizenz geklärt/aktiviert ist. Grobplan:
    *Import* in BCS hängt dann am Import-Export-Modul.
 3. Auf Basis der Projektron-Antwort entscheiden: CSV-Import nutzbar? Oder direkt
    Stufe 2 (Webservices) ansteuern?
+
+> **Update 06/2026:** Webservice-Lizenz ist da → Stufe 2 ist direkt machbar,
+> sobald die **Berechtigungen** für einen technischen Service-User stehen
+> (siehe §4.3). Das ist aktuell der einzige Blocker.
