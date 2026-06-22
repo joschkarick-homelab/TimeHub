@@ -314,6 +314,16 @@ ist das `bcs_work_packages`-Mapping vollständig.
       nötig ist, und ob `id` (externalID) das Upsert wirklich triggert.
 - [ ] `GetTimeTrackingSettings`-Antwort (Granularität) → bestätigt Anforderung 6
       endgültig (Design ist über Aggregation aber bereits abgesichert).
+- [ ] **Teilauswahl-Caveat:** Der Upsert keyt auf `id` (User+Datum+AP). Nur
+      *einen Teil* der Tageseinträge eines APs zu pushen und später den Rest
+      **überschreibt** die erste Buchung. Bis zum Live-Test: einen Tag je AP
+      zusammen buchen. (Auch im `bcs_push`-Docstring vermerkt.)
+
+> **Status:** Implementierung steht (Branch `claude/bcs-webservices-integration`):
+> `app/services/bcs.py`, `bcs_push.py`, BCS-Felder, Live-Dropdown, Admin-Maske,
+> `/sync/bcs/preview`+`execute` mit lesbarer Tabellen-Vorschau. 287 Tests grün.
+> Live-Push wartet nur noch auf den `Synchronisation`-User + Impersonation-Setup.
+> Kompaktes API-Wissen als Skill: `.claude/skills/bcs-webservices/SKILL.md`.
 
 ---
 
