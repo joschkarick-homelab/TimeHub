@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import __version__
 from app.api import api_router
 from app.config import get_settings
-from app.services.bootstrap import ensure_initial_admin
+from app.services.bootstrap import ensure_builtin_formats, ensure_initial_admin
 from app.web.router import LoginRequired
 from app.web.router import router as web_router
 
@@ -24,6 +24,7 @@ logging.basicConfig(level=settings.log_level.upper())
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ensure_initial_admin()
+    ensure_builtin_formats()
     yield
 
 

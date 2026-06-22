@@ -145,7 +145,7 @@
     {{ views_bar(saved_views, active_view, "/", "Ansichten:") }}
   </div>
 
-  <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-6 gap-3 items-end">
+  <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-7 gap-3 items-end">
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Zeitraum</label>
       <select name="date_range" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
@@ -184,6 +184,15 @@
         {% endfor %}
       </select>
     </div>
+    <div class="col-span-2 sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Ziel</label>
+      <select name="target" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        <option value="">— alle —</option>
+        {% for tok, label in target_options %}
+          <option value="{{ tok }}" {% if target == tok %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="col-span-2 sm:col-span-1 flex gap-2">
       <button class="flex-1 h-10 bg-slate-800 hover:bg-slate-900 text-white rounded font-medium">
         Filtern
@@ -192,7 +201,7 @@
         Zurücksetzen
       </a>
     </div>
-    <p class="col-span-2 sm:col-span-6 text-xs text-slate-500 -mt-1">
+    <p class="col-span-2 sm:col-span-7 text-xs text-slate-500 -mt-1">
       „Von/Bis" gelten nur bei Zeitraum <em>Benutzerdefiniert</em>; relative Zeiträume
       (z. B. „Dieser Monat") halten eine gespeicherte Ansicht dauerhaft aktuell.
     </p>
@@ -251,11 +260,13 @@
         </form>
       {% endif %}
       {% if days and formats %}
-        <form method="get" action="/entries/export" class="flex items-center gap-2">
+        <form method="get" action="/entries/export" class="flex items-center gap-2"
+              data-download="true">
           <input type="hidden" name="date_from" value="{{ date_from }}" />
           <input type="hidden" name="date_to" value="{{ date_to }}" />
           <input type="hidden" name="project_id" value="{{ project_id }}" />
           <input type="hidden" name="customer" value="{{ customer }}" />
+          <input type="hidden" name="target" value="{{ target }}" />
           <label class="text-xs text-slate-500">Export als</label>
           <select name="format_id" required
                   class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
