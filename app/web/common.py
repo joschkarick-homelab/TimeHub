@@ -353,6 +353,27 @@ def _parse_time(value: str | None):
     return None
 
 
+def _parse_duration_minutes(value: str | int | None) -> int | None:
+    """Parse the optional "Dauer (Min)" form field.
+
+    HTML <input type=number> fields submit an empty string when left blank, and
+    FastAPI cannot coerce "" into ``int | None`` — it raises a 422 before the
+    route runs (the user sees raw JSON instead of the form). Accept the raw
+    string here and treat blank as "no duration given" so start+end can drive
+    it instead."""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError("Dauer muss eine ganze Zahl sein") from None
+
+
 def _resolve_duration(start, end, duration_minutes: int | None) -> int:
     """start+end win when both present (derive duration); otherwise use the
     explicit duration field. Raises ValueError if neither yields a positive
