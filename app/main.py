@@ -25,7 +25,14 @@ logging.basicConfig(level=settings.log_level.upper())
 async def lifespan(_: FastAPI):
     ensure_initial_admin()
     ensure_builtin_formats()
-    yield
+    if settings.mcp_enabled:
+        # Run the MCP session manager alongside the app for the /mcp endpoint.
+        from app import mcp_server
+
+        async with mcp_server.session_lifespan():
+            yield
+    else:
+        yield
 
 
 app = FastAPI(
@@ -63,6 +70,12 @@ async def _login_required_handler(request, exc) -> RedirectResponse:
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(api_router)
 app.include_router(web_router)
+
+if settings.mcp_enabled:
+    # Remote MCP server (Streamable HTTP) at /mcp; authenticates via API key.
+    from app import mcp_server
+
+    app.mount("/mcp", mcp_server.build_asgi_app())
 
 
 @app.get("/favicon.ico", include_in_schema=False)

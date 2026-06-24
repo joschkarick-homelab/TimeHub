@@ -15,23 +15,19 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 FORMATS = {"json", "csv", "markdown", "md"}
 
 
-@router.get("/weekly", response_model=WeeklyHours)
-def weekly_hours(
-    week_offset: int = Query(0, description="0 = current week, -1 = last week, etc."),
-    date_from: date | None = Query(None, description="Override week start (inclusive)"),
-    date_to: date | None = Query(None, description="Override week end (inclusive)"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Aggregated tracked time for a week — total plus per-project and
-    per-effective-target breakdowns. Defaults to the current Mon–Sun week;
-    ``week_offset`` shifts it, or pass an explicit ``date_from``/``date_to``."""
-    if date_from is None or date_to is None:
-        today = date.today()
-        monday = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
-        date_from = date_from or monday
-        date_to = date_to or (monday + timedelta(days=6))
+def week_bounds(week_offset: int = 0) -> tuple[date, date]:
+    """Monday–Sunday bounds for the current week, shifted by ``week_offset``."""
+    today = date.today()
+    monday = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
+    return monday, monday + timedelta(days=6)
 
+
+def compute_weekly(
+    db: Session, current_user: User, date_from: date, date_to: date
+) -> WeeklyHours:
+    """Aggregate tracked time over a date range — total plus per-project and
+    per-effective-target breakdowns. Shared by the HTTP endpoint and the MCP
+    server."""
     rows = list(
         db.execute(
             select(TimeEntry, Project)
@@ -81,6 +77,21 @@ def weekly_hours(
             reverse=True,
         ),
     )
+
+
+@router.get("/weekly", response_model=WeeklyHours)
+def weekly_hours(
+    week_offset: int = Query(0, description="0 = current week, -1 = last week, etc."),
+    date_from: date | None = Query(None, description="Override week start (inclusive)"),
+    date_to: date | None = Query(None, description="Override week end (inclusive)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tracked time for a week — total plus per-project and per-effective-target
+    breakdowns. Defaults to the current Mon–Sun week; ``week_offset`` shifts it,
+    or pass an explicit ``date_from``/``date_to``."""
+    monday, sunday = week_bounds(week_offset)
+    return compute_weekly(db, current_user, date_from or monday, date_to or sunday)
 
 
 def _gather(

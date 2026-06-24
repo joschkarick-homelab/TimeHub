@@ -20,8 +20,10 @@ class ActiveTimer(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
     )
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    # Optional: a timer can be started without a project and have one assigned
+    # later (e.g. via a dropdown) before it is stopped.
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")

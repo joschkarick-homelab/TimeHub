@@ -110,9 +110,12 @@ bzw. `/redoc`. OpenAPI-JSON unter `/openapi.json`.
 | Time Entries    | `GET/POST /time-entries`                              | Liste/anlegen (Filter: from/to/project/user/sync_target/tag) |
 |                 | `POST /time-entries/bulk`                             | Massenerfassung                    |
 |                 | `GET/PATCH/DELETE /time-entries/{id}`                 | Detail                             |
+| Timer           | `POST /timer/start`, `POST /timer/stop`               | laufende Erfassung starten/stoppen (genau ein Timer pro User) |
+|                 | `GET /timer/current`, `DELETE /timer/current`         | aktuellen Timer abfragen/verwerfen |
 | Intake          | `POST /intake/time-entries`                           | externes Tool drückt Einträge rein |
 |                 | `POST /intake/csv` (multipart: file + mapping JSON)   | CSV-Import mit flexiblem Mapping   |
 | Reporting       | `GET /reports/timesheet?format=json\|csv\|markdown`   | Filterbarer Timesheet-Export       |
+|                 | `GET /reports/weekly`                                 | Wochenstunden (gesamt, je Projekt, je Sync-Target) |
 | CSV-Templates   | `GET/POST /csv-templates`, `GET/PATCH/DELETE /csv-templates/{id}` | Wiederverwendbare CSV-Export-Profile |
 | Import-Formate  | `GET/POST /import-formats`, `GET/PATCH/DELETE /import-formats/{id}` | Wiederverwendbare CSV-Input-Profile (Toggl, Clockify, …) |
 |                 | `POST /import-formats/suggest` (multipart: file)      | One-Shot KI-Mapping über Claude    |
@@ -124,6 +127,33 @@ Auth-Schemata, die alle geschützten Routen akzeptieren:
 - **`Authorization: Bearer <jwt>`** – für UI und Skripte
 - **`X-API-Key: thk_…`** – für externe Tool-Intake-Integrationen
 - Session-Cookie als Fallback für die Web-UI
+
+API-Keys legst du dir selbst unter **Mein Profil → API-Keys** an (einmalige
+Anzeige des Schlüssels).
+
+### 4a. MCP-Server (Claude-Integration)
+
+Bei `MCP_ENABLED=true` (Default) läuft unter **`/mcp`** ein
+[Model-Context-Protocol](https://modelcontextprotocol.io)-Server (Streamable
+HTTP). Damit kann ein MCP-Client wie Claude Desktop oder Claude Code direkt
+Zeiten in TimeHub schreiben und lesen. Authentifizierung über denselben
+API-Key (`X-API-Key`).
+
+Verfügbare Tools: `list_projects`, `create_time_entry`, `create_time_entries`
+(Bulk), `start_timer`, `stop_timer`, `get_current_timer`, `cancel_timer`,
+`get_weekly_hours`.
+
+Anbindung in **Claude Code**:
+
+```bash
+claude mcp add --transport http timehub https://DEINE-TIMEHUB-URL/mcp \
+  --header "X-API-Key: thk_…"
+```
+
+Für **Claude Desktop** den Server analog als Remote-HTTP-Connector mit dem
+`X-API-Key`-Header eintragen. (Der claude.ai-Web-Connector verlangt OAuth –
+das ist hier noch nicht implementiert und erst nötig, wenn du den Web-Weg
+brauchst.)
 
 ---
 
