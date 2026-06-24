@@ -1,3 +1,4 @@
+from app.models.active_timer import ActiveTimer
 from app.models.api_key import ApiKey
 from app.models.app_setting import AppSetting
 from app.models.csv_template import CsvTemplate
@@ -10,6 +11,7 @@ from app.models.time_entry import TimeEntry
 from app.models.user import User
 
 __all__ = [
+    "ActiveTimer",
     "ApiKey",
     "AppSetting",
     "CsvTemplate",

@@ -8,6 +8,7 @@ from app.api import (
     projects,
     reports,
     time_entries,
+    timer,
     users,
 )
 
@@ -16,6 +17,7 @@ api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(projects.router)
 api_router.include_router(time_entries.router)
+api_router.include_router(timer.router)
 api_router.include_router(intake.router)
 api_router.include_router(reports.router)
 api_router.include_router(csv_templates.router)
