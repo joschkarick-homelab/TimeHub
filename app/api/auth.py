@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -67,7 +67,7 @@ def revoke_api_key(
     if key is None or key.user_id != user.id:
         raise HTTPException(status_code=404, detail="Not found")
     if key.revoked_at is None:
-        key.revoked_at = datetime.utcnow()
+        key.revoked_at = datetime.now(UTC)
         db.add(key)
         db.commit()
     return None

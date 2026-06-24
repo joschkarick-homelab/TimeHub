@@ -4,6 +4,15 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
+# Secrets we ship as placeholders/defaults — never acceptable in production,
+# because the same key signs both the JWTs and the session cookies. A known
+# key lets anyone forge tokens for any user (including admins).
+_INSECURE_SECRETS = {
+    "",
+    "dev-insecure-change-me",
+    "change-me-please-use-a-long-random-string",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -40,6 +49,18 @@ class Settings(BaseSettings):
     ai_mapping_max_sample_lines: int = 15
 
     @model_validator(mode="after")
+    def _guard_secret_key(self) -> "Settings":
+        if self.app_env.strip().lower() == "production" and self.secret_key.strip() in _INSECURE_SECRETS:
+            raise ValueError(
+                "SECRET_KEY ist nicht gesetzt oder nutzt einen unsicheren Platzhalter. "
+                "In Produktion einen langen Zufallswert über die Umgebungsvariable "
+                "SECRET_KEY setzen, z. B.:\n"
+                '    python -c "import secrets; print(secrets.token_urlsafe(48))"\n'
+                "Für lokale Entwicklung alternativ APP_ENV=dev setzen."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _resolve_database_url(self) -> "Settings":
         if self.database_url:
             return self
@@ -61,6 +82,13 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        """Send the session cookie with the Secure flag in production (TLS is
+        terminated at the reverse proxy). Off elsewhere so http://localhost dev
+        and the test client keep working."""
+        return self.app_env.strip().lower() == "production"
 
 
 @lru_cache

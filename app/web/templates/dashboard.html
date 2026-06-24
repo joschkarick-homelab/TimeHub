@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_saved_views.html" import views_bar %}
 {% block content %}
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
@@ -10,76 +11,117 @@
     {{ flash | replace('+', ' ') }}
   </div>
 {% endif %}
+{% if truncated %}
+  <div class="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+    Es werden nur die ersten {{ entry_cap }} Einträge angezeigt. Bitte den
+    Zeitraum oder ein Projekt einschränken, um alle Einträge zu sehen.
+  </div>
+{% endif %}
 <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-6">
-  <div class="bg-white border border-slate-200 rounded-lg p-4">
+  <div class="bg-white border border-slate-200 p-4 th-card-purple">
     <div class="text-sm text-slate-500">Gefilterte Einträge</div>
-    <div class="text-2xl md:text-3xl font-semibold mt-1">{{ total_hours }} h</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ total_hours }} h</div>
     <div class="text-xs text-slate-500">{{ entry_count }} Einträge</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-4">
+  <div class="bg-white border border-slate-200 p-4 th-card-teal">
     <div class="text-sm text-slate-500">Aktive Projekte</div>
-    <div class="text-2xl md:text-3xl font-semibold mt-1">{{ projects|length }}</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ projects|length }}</div>
   </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-4 col-span-2 md:col-span-1">
-    <div class="text-sm text-slate-500">Angemeldet als</div>
-    <div class="text-lg font-medium mt-1">{{ user.full_name or user.email }}</div>
-    <div class="text-xs text-slate-500">{{ 'Admin' if user.is_admin else 'Consultant' }}</div>
+  <div class="bg-white border border-slate-200 p-4 col-span-2 md:col-span-1 th-card-orange">
+    <div class="text-sm text-slate-500">Salesforce diese Woche</div>
+    <div class="text-2xl md:text-3xl font-semibold mt-1 th-stat-val th-outfit">{{ sf_week_hours }} h</div>
+    <div class="text-xs text-slate-500">erfasst &amp; gesynct</div>
   </div>
 </div>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-3">Neuer Eintrag</h2>
-  {# Uniform field height (h-10). One column on mobile, six on sm+ so all
-     fields and the button line up. #}
-  <form method="post" action="/entries" class="grid grid-cols-1 sm:grid-cols-6 gap-3 sm:items-end">
-    <div class="sm:col-span-1">
-      <label class="block text-xs font-medium mb-1">Datum</label>
-      <input name="entry_date" type="date" required value="{{ today }}"
-             class="w-full h-10 border border-slate-300 rounded px-2" />
+{# Quick-entry trigger bar #}
+<div class="mb-6">
+  <button id="new-entry-btn"
+          class="flex items-center gap-2 w-full bg-white border border-slate-200 px-4 py-3 text-left transition-colors hover:border-purple-500"
+          style="box-shadow: 3px 3px 0 var(--border2);"
+          onclick="document.getElementById('new-entry-modal').classList.remove('hidden')">
+    <span class="inline-flex items-center justify-center w-6 h-6 bg-indigo-600 text-white text-sm font-bold shrink-0">+</span>
+    <span class="text-sm th-outfit font-semibold" style="color: var(--purple);">Neuer Eintrag</span>
+    <span class="text-xs ml-auto" style="color: var(--faint);">Klicken zum Erfassen</span>
+  </button>
+</div>
+
+{# New-entry modal #}
+<div id="new-entry-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background: rgba(0,0,0,.65);">
+  <div class="bg-white border border-slate-200 p-5 w-full max-w-lg relative"
+       style="box-shadow: 5px 5px 0 var(--purple-shadow);">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold th-section-title th-section-purple th-outfit">Neuer Eintrag</h2>
+      <button type="button" id="new-entry-close"
+              class="text-xl leading-none" style="color: var(--muted);">✕</button>
     </div>
-    <div class="sm:col-span-2">
-      <label class="block text-xs font-medium mb-1">Projekt</label>
-      <select name="project_id" id="dash-project" required
-              class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
-        {% for p in projects %}
-          <option value="{{ p.id }}">{{ p.display_label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="grid grid-cols-3 gap-2 sm:contents">
-      <div class="sm:col-span-1">
+    <form method="post" action="/entries" class="grid grid-cols-2 gap-3 items-end">
+      <input type="hidden" name="next" value="{{ filter_query }}" />
+      <div>
+        <label class="block text-xs font-medium mb-1">Datum</label>
+        <input name="entry_date" type="date" required value="{{ today }}"
+               class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Projekt</label>
+        <select name="project_id" id="dash-project" required
+                class="w-full h-10 border border-slate-300 px-2 bg-white">
+          {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.display_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
         <label class="block text-xs font-medium mb-1">Von</label>
-        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 rounded px-2" />
+        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
       </div>
-      <div class="sm:col-span-1">
+      <div>
         <label class="block text-xs font-medium mb-1">Bis</label>
-        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 rounded px-2" />
+        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
       </div>
-      <div class="sm:col-span-1">
+      <div>
         <label class="block text-xs font-medium mb-1">Dauer (Min)</label>
         <input name="duration_minutes" type="number" step="15" min="15" inputmode="numeric"
-               placeholder="60" class="w-full h-10 border border-slate-300 rounded px-2" />
+               placeholder="60" class="w-full h-10 border border-slate-300 px-2" />
       </div>
-    </div>
-    <div class="sm:col-span-4">
-      <label class="block text-xs font-medium mb-1">Beschreibung</label>
-      <input name="description" class="w-full h-10 border border-slate-300 rounded px-2" />
-    </div>
-    <div class="sm:col-span-2">
-      <label class="block text-xs font-medium mb-1 invisible sm:not-sr-only">_</label>
-      <button class="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
-        Speichern
-      </button>
-    </div>
-    <div id="dash-sync-fields" class="hidden sm:col-span-6 grid sm:grid-cols-3 gap-3 border-t border-slate-100 pt-3"></div>
-    <p class="sm:col-span-6 text-xs text-slate-500 -mt-1">
-      Entweder <strong>Von + Bis</strong> ausfüllen (Dauer wird berechnet) oder direkt die
-      <strong>Dauer</strong> in Minuten eintragen.
-    </p>
-  </form>
-</section>
+      <div>
+        <label class="block text-xs font-medium mb-1">Beschreibung</label>
+        <input name="description" class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div id="dash-sync-fields" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t pt-3"
+           style="border-color: var(--border);"></div>
+      <p class="col-span-2 text-xs -mt-1" style="color: var(--faint);">
+        Von + Bis <strong>oder</strong> Dauer in Minuten eingeben.
+      </p>
+      <div class="col-span-2 flex gap-2 pt-1">
+        <button class="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold th-outfit tracking-wide">
+          Speichern
+        </button>
+        <button type="button" id="new-entry-cancel"
+                class="h-10 px-4 border border-slate-300 text-sm" style="color: var(--muted);">
+          Abbrechen
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById("new-entry-modal");
+  var closeBtn = document.getElementById("new-entry-close");
+  var cancelBtn = document.getElementById("new-entry-cancel");
+  function close() { modal.classList.add("hidden"); }
+  closeBtn.addEventListener("click", close);
+  cancelBtn.addEventListener("click", close);
+  modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+})();
+</script>
 
 {% include "_sync_fields_js.html" %}
+{% include "_entry_form_js.html" %}
+{% include "_entry_modal.html" %}
 <script>
   (function () {
     var REGISTRY = {{ sync_field_registry | tojson }};
@@ -95,9 +137,23 @@
   })();
 </script>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-3">Filter</h2>
-  <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-4 th-section-title th-section-teal th-outfit">Filter &amp; Ansichten</h2>
+
+  {# --- Saved views --- #}
+  <div class="mb-4">
+    {{ views_bar(saved_views, active_view, "/", "Ansichten:") }}
+  </div>
+
+  <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-7 gap-3 items-end">
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Zeitraum</label>
+      <select name="date_range" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        {% for token, label in date_ranges.items() %}
+          <option value="{{ token }}" {% if date_range == token %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Von</label>
       <input type="date" name="date_from" value="{{ date_from }}"
@@ -108,7 +164,7 @@
       <input type="date" name="date_to" value="{{ date_to }}"
              class="w-full h-10 border border-slate-300 rounded px-2" />
     </div>
-    <div class="col-span-2 sm:col-span-2">
+    <div class="col-span-2 sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Projekt</label>
       <select name="project_id" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
         <option value="">— alle —</option>
@@ -116,6 +172,24 @@
           <option value="{{ p.id }}" {% if project_id and p.id == project_id %}selected{% endif %}>
             {{ p.display_label }}
           </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-span-2 sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Kunde</label>
+      <select name="customer" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        <option value="">— alle —</option>
+        {% for c in customers %}
+          <option value="{{ c }}" {% if customer == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-span-2 sm:col-span-1">
+      <label class="block text-xs font-medium mb-1">Ziel</label>
+      <select name="target" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
+        <option value="">— alle —</option>
+        {% for tok, label in target_options %}
+          <option value="{{ tok }}" {% if target == tok %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
@@ -127,16 +201,50 @@
         Zurücksetzen
       </a>
     </div>
+    <p class="col-span-2 sm:col-span-7 text-xs text-slate-500 -mt-1">
+      „Von/Bis" gelten nur bei Zeitraum <em>Benutzerdefiniert</em>; relative Zeiträume
+      (z. B. „Dieser Monat") halten eine gespeicherte Ansicht dauerhaft aktuell.
+    </p>
+  </form>
+
+  {# --- Save current filter as a view --- #}
+  <form method="post" action="/views" class="mt-4 pt-4 border-t border-slate-200 flex flex-wrap items-end gap-2"
+        data-no-loading="true">
+    <input type="hidden" name="kind" value="dashboard" />
+    <input type="hidden" name="date_range" value="{{ date_range }}" />
+    <input type="hidden" name="date_from" value="{{ date_from }}" />
+    <input type="hidden" name="date_to" value="{{ date_to }}" />
+    <input type="hidden" name="project_id" value="{{ project_id }}" />
+    <input type="hidden" name="customer" value="{{ customer }}" />
+    <input type="hidden" name="next" value="{{ filter_query }}" />
+    <div>
+      <label class="block text-xs font-medium mb-1">Aktuelle Ansicht speichern</label>
+      <input type="text" name="name" placeholder="z. B. Diese Woche · Kunde X" required
+             value="{% if active_view %}{{ active_view.name }}{% endif %}"
+             class="h-9 border border-slate-300 rounded px-2 text-sm w-64 max-w-full" />
+    </div>
+    <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+      ⭐ Speichern
+    </button>
+    <span class="text-xs text-slate-400">Gleicher Name überschreibt die Ansicht.</span>
   </form>
 </section>
 
-<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+<section id="entries-section" class="bg-white border border-slate-200 overflow-hidden">
   <div class="flex items-center justify-between p-5 pb-3 gap-3 flex-wrap">
-    <h2 class="font-semibold">Einträge (gruppiert nach Tag)</h2>
+    <h2 class="font-semibold th-section-title th-section-olive th-outfit">Einträge (gruppiert nach Tag)</h2>
     <div class="flex items-center gap-3 flex-wrap">
+      {% if days %}
+        <button type="button" id="bulk-toggle"
+                class="h-9 px-3 border border-slate-300 text-slate-600 text-sm font-medium hover:border-purple-500"
+                aria-pressed="false">
+          ☑ Mehrfachauswahl
+        </button>
+      {% endif %}
       {% if sf_configured and sf_selectable_count %}
         <form id="sf-sync-form" method="post" action="/sync/salesforce/preview"
               class="flex items-center gap-2 flex-wrap">
+          <input type="hidden" name="next" value="{{ filter_query }}" />
           <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
             ↗ Auswahl in Salesforce-Vorschau
           </button>
@@ -152,10 +260,13 @@
         </form>
       {% endif %}
       {% if days and formats %}
-        <form method="get" action="/entries/export" class="flex items-center gap-2">
+        <form method="get" action="/entries/export" class="flex items-center gap-2"
+              data-download="true">
           <input type="hidden" name="date_from" value="{{ date_from }}" />
           <input type="hidden" name="date_to" value="{{ date_to }}" />
           <input type="hidden" name="project_id" value="{{ project_id }}" />
+          <input type="hidden" name="customer" value="{{ customer }}" />
+          <input type="hidden" name="target" value="{{ target }}" />
           <label class="text-xs text-slate-500">Export als</label>
           <select name="format_id" required
                   class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
@@ -173,19 +284,62 @@
     </div>
   </div>
 
+  {# Mass-select action bar — only visible once Mehrfachauswahl is toggled on.
+     Checkboxes in the rows below belong to this form via form="bulk-form". #}
   {% if days %}
+    <form id="bulk-form" method="post" action="/entries/bulk-delete"
+          class="hidden items-center gap-3 flex-wrap px-5 pb-3"
+          onsubmit="return confirm('Ausgewählte Einträge wirklich löschen?');">
+      <input type="hidden" name="next" value="{{ filter_query }}" />
+      <span class="text-sm text-slate-600">
+        <span id="bulk-count">0</span> ausgewählt
+      </span>
+      <button type="button" id="bulk-select-all"
+              class="h-8 px-3 border border-slate-300 text-slate-600 text-xs font-medium">
+        Alle auswählen
+      </button>
+      <button type="button" id="bulk-clear"
+              class="h-8 px-3 border border-slate-300 text-slate-600 text-xs font-medium">
+        Auswahl aufheben
+      </button>
+      <button id="bulk-delete-btn" disabled
+              class="h-8 px-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+        🗑 Auswahl löschen
+      </button>
+    </form>
+  {% endif %}
+
+  {% if days %}
+  {# Ampel-Punkt einer Matrix-Zelle: grün=erledigt, gelb=offen/bereit,
+     rot=blockiert/fehlgeschlagen, grau=nicht relevant. Tooltip trägt den Grund. #}
+  {% set DOT_CLASS = {"green": "bg-emerald-500", "yellow": "bg-amber-400", "red": "bg-rose-500"} %}
+  {% set DOT_GLYPH = {"green": "✓", "yellow": "●", "red": "!"} %}
+  {% macro status_dot(cell) %}
+    {% if cell.state == "grey" %}
+      <span class="inline-block w-4 h-4 rounded-full bg-slate-100 border border-slate-200 align-middle"
+            title="{{ cell.tooltip }}"></span>
+    {% else %}
+      <span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold align-middle {{ DOT_CLASS[cell.state] }}"
+            title="{{ cell.tooltip }}" aria-label="{{ cell.tooltip }}">{{ DOT_GLYPH[cell.state] }}</span>
+    {% endif %}
+  {% endmacro %}
   {# Desktop: breite Tabelle (ab md), horizontal scrollbar als Fallback. #}
   <div class="hidden md:block overflow-x-auto">
   <table class="w-full text-sm min-w-[640px]">
     <thead class="bg-slate-50 text-slate-600 text-left">
       <tr>
+        <th class="bulk-col px-2 py-2 w-6"></th>
         {% if sf_configured %}<th class="px-2 py-2 w-6"></th>{% endif %}
         <th class="px-4 py-2">Datum</th>
         <th class="px-4 py-2">Projekt</th>
         <th class="px-4 py-2">Dauer</th>
         <th class="px-4 py-2">Beschreibung</th>
-        <th class="px-4 py-2">Ziel</th>
-        <th class="px-4 py-2">Status</th>
+        {% for t, label in matrix_targets %}
+          <th class="px-2 py-2 text-center">
+            <a href="/sync" class="hover:underline text-indigo-600"
+               title="{{ label }} im Export-Wizard öffnen">{{ label }}</a>
+          </th>
+        {% endfor %}
         <th class="px-4 py-2"></th>
       </tr>
     </thead>
@@ -194,6 +348,10 @@
         {% for e in day.entries %}
           {% set p = projects_by_id.get(e.project_id) %}
           <tr class="border-t border-slate-100">
+            <td class="bulk-col px-2 py-2 align-middle">
+              <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="bulk-form"
+                     class="bulk-check h-4 w-4" title="Eintrag auswählen" />
+            </td>
             {% if sf_configured %}
               <td class="px-2 py-2 align-middle">
                 {% if sf_selectable.get(e.id) %}
@@ -202,55 +360,53 @@
                 {% endif %}
               </td>
             {% endif %}
-            <td class="px-4 py-2">{{ e.entry_date }}</td>
+            {# Datum nur einmal je Tagesgruppe — auf der ersten Zeile. #}
+            <td class="px-4 py-2 whitespace-nowrap {% if loop.first %}font-medium{% endif %}">
+              {% if loop.first %}{{ day.date | de_day_label }}{% endif %}
+            </td>
             <td class="px-4 py-2">
               {% if p %}
                 <span class="inline-block w-2 h-2 rounded-full align-middle"
                       style="background: {{ p.color }}"></span>
                 {{ p.display_label }}
               {% else %}
-                #{{ e.project_id }}
+                <span class="text-slate-400 italic">Unbekanntes Projekt</span>
               {% endif %}
             </td>
-            <td class="px-4 py-2 tabular-nums">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
+            <td class="px-4 py-2 tabular-nums whitespace-nowrap">{{ '%.2f'|format(e.duration_minutes / 60) }} h</td>
             <td class="px-4 py-2 text-slate-600">{{ e.description }}</td>
-            <td class="px-4 py-2">{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</td>
-            <td class="px-4 py-2">
-              {% set st = entry_status.get(e.id) %}
-              {% if st and st.needs_sync and not st.ready %}
-                <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
-                      title="Fehlt: {{ st.missing | join(', ') }}">⚠ {{ st.missing | join(', ') }}</span>
-              {% elif e.sync_status == "manually_synced" %}
-                <span class="text-slate-700 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap"
-                      title="Manuell als bereits erfasst markiert">✓ manuell</span>
-              {% else %}
-                {{ e.sync_status }}
-              {% endif %}
-            </td>
+            {% for cell in entry_matrix.get(e.id, []) %}
+              <td class="px-2 py-2 text-center">{{ status_dot(cell) }}</td>
+            {% endfor %}
             <td class="px-4 py-2 space-x-2 whitespace-nowrap text-right">
               {% if e.sync_status == "manually_synced" %}
                 <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
                       onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
+                  <input type="hidden" name="next" value="{{ filter_query }}" />
                   <button class="text-xs text-slate-600 hover:underline"
                           title="Wieder als offen markieren">↶ wieder öffnen</button>
                 </form>
               {% endif %}
-              <a href="/entries/{{ e.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+              <button type="button"
+                      data-edit-url="/entries/{{ e.id }}/edit?modal=1&next={{ filter_query | urlencode }}"
+                      class="text-xs text-indigo-600 hover:underline">bearbeiten</button>
               <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
                     onsubmit="return confirm('Eintrag wirklich löschen?');">
+                <input type="hidden" name="next" value="{{ filter_query }}" />
                 <button class="text-xs text-rose-600 hover:underline">löschen</button>
               </form>
             </td>
           </tr>
         {% endfor %}
         <tr class="bg-slate-50 border-t border-slate-200 text-slate-700 text-xs">
+          <td class="bulk-col px-2 py-1.5"></td>
           {% if sf_configured %}<td class="px-2 py-1.5"></td>{% endif %}
-          <td class="px-4 py-1.5 font-medium">Σ {{ day.date }}</td>
-          <td class="px-4 py-1.5">{{ day.entries|length }} Einträge</td>
-          <td class="px-4 py-1.5 tabular-nums font-semibold">
+          <td class="px-4 py-1.5 font-medium whitespace-nowrap">Σ</td>
+          <td class="px-4 py-1.5 whitespace-nowrap">{{ day.entries|length }} Einträge</td>
+          <td class="px-4 py-1.5 tabular-nums font-semibold whitespace-nowrap">
             {{ '%.2f'|format(day.total_minutes / 60) }} h
           </td>
-          <td colspan="4"></td>
+          <td colspan="5"></td>
         </tr>
       {% endfor %}
     </tbody>
@@ -261,7 +417,7 @@
   <div class="md:hidden divide-y divide-slate-100">
     {% for day in days %}
       <div class="flex items-center justify-between px-4 py-2 bg-slate-50 border-t border-slate-200 text-xs text-slate-700">
-        <span class="font-medium">{{ day.date }}</span>
+        <span class="font-medium">{{ day.date | de_day_label }}</span>
         <span class="tabular-nums">{{ day.entries|length }} Einträge ·
           <span class="font-semibold">{{ '%.2f'|format(day.total_minutes / 60) }} h</span>
         </span>
@@ -270,6 +426,8 @@
         {% set p = projects_by_id.get(e.project_id) %}
         <div class="p-4">
           <div class="flex items-start gap-3">
+            <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="bulk-form"
+                   class="bulk-check bulk-col-m mt-1 h-4 w-4" title="Eintrag auswählen" />
             {% if sf_configured and sf_selectable.get(e.id) %}
               <input type="checkbox" name="entry_ids" value="{{ e.id }}" form="sf-sync-form"
                      class="mt-1 h-4 w-4" title="Für Salesforce-Sync auswählen" />
@@ -282,7 +440,7 @@
                           style="background: {{ p.color }}"></span>
                     {{ p.display_label }}
                   {% else %}
-                    #{{ e.project_id }}
+                    <span class="text-slate-400 italic">Unbekanntes Projekt</span>
                   {% endif %}
                 </div>
                 <div class="tabular-nums font-semibold whitespace-nowrap">
@@ -292,27 +450,27 @@
               {% if e.description %}
                 <div class="text-sm text-slate-600 mt-0.5 break-words">{{ e.description }}</div>
               {% endif %}
-              <div class="flex items-center gap-2 flex-wrap mt-2 text-xs text-slate-500">
-                <span>{{ e.entry_date }}</span>
-                <span aria-hidden="true">·</span>
-                <span>{{ e.sync_target_override or (p.default_sync_target if p else '-') }}</span>
-                {% set st = entry_status.get(e.id) %}
-                {% if st and st.needs_sync and not st.ready %}
-                  <span class="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
-                        title="Fehlt: {{ st.missing | join(', ') }}">⚠ {{ st.missing | join(', ') }}</span>
-                {% elif e.sync_status == "manually_synced" %}
-                  <span class="text-slate-700 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">✓ manuell</span>
-                {% endif %}
+              <div class="flex items-center gap-3 flex-wrap mt-2 text-xs text-slate-500">
+                {# Datum steht im Tages-Header — hier nur noch die Sync-Status-Punkte. #}
+                {% for cell in entry_matrix.get(e.id, []) %}
+                  <span class="inline-flex items-center gap-1">
+                    {{ status_dot(cell) }}<span>{{ matrix_targets[loop.index0][1] }}</span>
+                  </span>
+                {% endfor %}
               </div>
               <div class="flex items-center gap-4 mt-3">
-                <a href="/entries/{{ e.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
+                <button type="button"
+                        data-edit-url="/entries/{{ e.id }}/edit?modal=1&next={{ filter_query | urlencode }}"
+                        class="text-sm text-indigo-600 hover:underline">bearbeiten</button>
                 <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
                       onsubmit="return confirm('Eintrag wirklich löschen?');">
+                  <input type="hidden" name="next" value="{{ filter_query }}" />
                   <button class="text-sm text-rose-600 hover:underline">löschen</button>
                 </form>
                 {% if e.sync_status == "manually_synced" %}
                   <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
                         onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
+                    <input type="hidden" name="next" value="{{ filter_query }}" />
                     <button class="text-sm text-slate-600 hover:underline">↶ wieder öffnen</button>
                   </form>
                 {% endif %}
@@ -327,4 +485,57 @@
   <p class="px-5 pb-5 text-slate-500">Keine Einträge im gewählten Zeitraum.</p>
   {% endif %}
 </section>
+
+<style>
+  /* Mass-select: checkbox column + action bar stay hidden until toggled on. */
+  .bulk-col, .bulk-col-m { display: none; }
+  #entries-section.bulk-active .bulk-col   { display: table-cell; }
+  #entries-section.bulk-active .bulk-col-m { display: inline-block; }
+  #entries-section.bulk-active #bulk-form  { display: flex; }
+</style>
+<script>
+  (function () {
+    var section = document.getElementById("entries-section");
+    var toggle  = document.getElementById("bulk-toggle");
+    if (!section || !toggle) return;
+    var countEl    = document.getElementById("bulk-count");
+    var delBtn     = document.getElementById("bulk-delete-btn");
+    var selectAll  = document.getElementById("bulk-select-all");
+    var clearBtn   = document.getElementById("bulk-clear");
+
+    function checks() {
+      return Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));
+    }
+    function selectedCount() {
+      var seen = {};
+      checks().forEach(function (c) { if (c.checked) seen[c.value] = true; });
+      return Object.keys(seen).length;
+    }
+    function refresh() {
+      var n = selectedCount();
+      if (countEl) countEl.textContent = n;
+      if (delBtn) delBtn.disabled = n === 0;
+    }
+    function setAll(state) { checks().forEach(function (c) { c.checked = state; }); refresh(); }
+
+    toggle.addEventListener("click", function () {
+      var on = section.classList.toggle("bulk-active");
+      toggle.setAttribute("aria-pressed", on ? "true" : "false");
+      toggle.classList.toggle("border-purple-500", on);
+      toggle.classList.toggle("text-indigo-600", on);
+      if (!on) setAll(false);
+      refresh();
+    });
+    // Desktop and mobile each render a checkbox per entry — keep the pair in sync.
+    checks().forEach(function (c) {
+      c.addEventListener("change", function () {
+        checks().forEach(function (o) { if (o.value === c.value) o.checked = c.checked; });
+        refresh();
+      });
+    });
+    if (selectAll) selectAll.addEventListener("click", function () { setAll(true); });
+    if (clearBtn)  clearBtn.addEventListener("click", function () { setAll(false); });
+    refresh();
+  })();
+</script>
 {% endblock %}

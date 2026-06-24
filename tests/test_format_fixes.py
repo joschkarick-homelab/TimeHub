@@ -185,7 +185,7 @@ def test_global_ai_hints_persist_and_show(client):
 
 def test_ai_hints_combine_global_and_user(client, monkeypatch):
     _login_session(client)
-    import app.web.router as router
+    import app.web.routes.formats as router
     captured = {}
 
     def capture(text, *, instruction=None, previous=None, hints=None):

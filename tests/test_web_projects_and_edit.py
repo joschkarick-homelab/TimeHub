@@ -1,7 +1,6 @@
 """Web UI: projects CRUD, format editing, and import-error visibility."""
 
 import io
-from datetime import date
 
 
 def _login_session(client) -> None:
@@ -38,8 +37,10 @@ def test_projects_page_renders_and_creates(client):
     assert "/projects?flash=" in r.headers["location"]
 
     r = client.get("/projects")
-    assert "WEBCRUD" in r.text
+    # The internal project code is deliberately hidden from the UI; the
+    # human-facing name and customer are what's shown.
     assert "Acme Test" in r.text
+    assert "Acme" in r.text
 
 
 def test_projects_edit_and_delete(client):
@@ -76,6 +77,36 @@ def test_projects_edit_and_delete(client):
     r = client.post(f"/projects/{pid}/delete", follow_redirects=False)
     assert r.status_code == 302
     assert client.get(f"/api/v1/projects/{pid}", headers=h).status_code == 404
+
+
+def test_customer_autocomplete_offers_existing_customers(client):
+    _login_session(client)
+    # Create projects with distinct customers so they become suggestions.
+    for name, cust in [("AutoA", "Globex GmbH"), ("AutoB", "Acme AG")]:
+        client.post(
+            "/projects",
+            data={"name": name, "customer": cust, "default_sync_target": "intern",
+                  "status": "active", "color": "#123456"},
+            follow_redirects=False,
+        )
+
+    # Create form (projects page) wires up the autocomplete and ships the list.
+    r = client.get("/projects")
+    assert r.status_code == 200
+    assert "data-customer-ac" in r.text
+    assert "window.TH_CUSTOMERS" in r.text
+    assert "Globex GmbH" in r.text
+    assert "Acme AG" in r.text
+
+    # Edit form carries the same suggestions.
+    token = _login_api(client)
+    h = {"Authorization": f"Bearer {token}"}
+    pid = next(p["id"] for p in client.get("/api/v1/projects", headers=h).json()
+               if p["name"] == "AutoA")
+    r = client.get(f"/projects/{pid}/edit")
+    assert r.status_code == 200
+    assert "data-customer-ac" in r.text
+    assert "Acme AG" in r.text
 
 
 def test_projects_create_rejects_duplicate_code(client):
@@ -193,3 +224,125 @@ def test_format_edit_persists_changes(client):
         "duration_minutes": "Hours",
         "project_code": "Project",
     }
+
+
+# ── Import aus Salesforce-Projekten ──────────────────────────────────────────
+
+_SF_IMPORT_FAKE = [
+    {"assignment_id": "a01000000000111", "name": "Asklepios Faktura",
+     "customer": "Asklepios", "number": "P00042",
+     "label": "Asklepios Faktura (Asklepios · P00042)"},
+    {"assignment_id": "a01000000000222", "name": "Globex Rollout",
+     "customer": "Globex", "number": "P00043",
+     "label": "Globex Rollout (Globex · P00043)"},
+]
+
+
+class _FakeSFClient:
+    """Stand-in client. The dropdown's live SOQL (via _sync_dynamic_options)
+    hits .query on the projects page, so it must not blow up; the import list
+    itself is stubbed via assignments_for_import below."""
+
+    def query(self, soql):
+        return {"records": []}
+
+
+def _patch_sf_import(monkeypatch):
+    from app.services import salesforce as sfs
+    monkeypatch.setattr(sfs, "credentials_configured", lambda db: True)
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _FakeSFClient())
+    monkeypatch.setattr(
+        sfs, "assignments_for_import",
+        lambda client, email: [dict(a) for a in _SF_IMPORT_FAKE],
+    )
+
+
+def test_sf_import_button_and_guard_when_not_configured(client, monkeypatch):
+    from app.services import salesforce as sfs
+    _login_session(client)
+    monkeypatch.setattr(sfs, "credentials_configured", lambda db: False)
+    # No Salesforce → no button on the projects page …
+    assert "Import aus Salesforce-Projekten" not in client.get("/projects").text
+    # … and the import route bounces back with an error.
+    r = client.get("/projects/import-salesforce", follow_redirects=False)
+    assert r.status_code == 302
+    assert "error=Salesforce" in r.headers["location"]
+
+
+def test_sf_import_lists_creates_and_dedupes(client, monkeypatch):
+    _login_session(client)
+    _patch_sf_import(monkeypatch)
+    token = _login_api(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    # Button is offered once SF is configured.
+    assert "Import aus Salesforce-Projekten" in client.get("/projects").text
+
+    # Import page lists both open assignments with customer + number.
+    r = client.get("/projects/import-salesforce")
+    assert r.status_code == 200
+    assert "Asklepios Faktura" in r.text and "Globex Rollout" in r.text
+    assert "P00042" in r.text
+
+    # Create only the first one.
+    r = client.post(
+        "/projects/import-salesforce",
+        data={"assignment_ids": ["a01000000000111"]},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert "flash=1+Projekt" in r.headers["location"]
+
+    # The new project exists, is linked to Salesforce …
+    projects = client.get("/api/v1/projects", headers=h).json()
+    created = next(p for p in projects if p["code"] == "P00042")
+    assert created["name"] == "Asklepios Faktura"
+    assert created["default_sync_target"] == "salesforce"
+
+    # … and is no longer offered for import, while the other one still is.
+    r = client.get("/projects/import-salesforce")
+    assert "Asklepios Faktura" not in r.text  # already imported → filtered out
+    assert "Globex Rollout" in r.text
+
+
+def test_sf_import_links_assignment_and_varies_colors(client, monkeypatch):
+    from app.services import salesforce as sfs
+    _login_session(client)
+    # Own, unique assignments so the shared session DB from other tests can't
+    # dedupe these away.
+    monkeypatch.setattr(sfs, "credentials_configured", lambda db: True)
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _FakeSFClient())
+    fakes = [
+        {"assignment_id": "a01000000000333", "name": "Color One",
+         "customer": "C1", "number": "P00050", "label": "x"},
+        {"assignment_id": "a01000000000444", "name": "Color Two",
+         "customer": "C2", "number": "P00051", "label": "x"},
+    ]
+    monkeypatch.setattr(sfs, "assignments_for_import",
+                        lambda client, email: [dict(a) for a in fakes])
+    token = _login_api(client)
+    h = {"Authorization": f"Bearer {token}"}
+
+    r = client.post(
+        "/projects/import-salesforce",
+        data={"assignment_ids": ["a01000000000333", "a01000000000444"]},
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert "flash=2+Projekt" in r.headers["location"]
+
+    by_code = {p["code"]: p for p in client.get("/api/v1/projects", headers=h).json()}
+    p1, p2 = by_code["P00050"], by_code["P00051"]
+    # assignment_id is stored under the salesforce target …
+    assert p1["sync_metadata"]["salesforce"]["assignment_id"] == "a01000000000333"
+    assert p2["sync_metadata"]["salesforce"]["assignment_id"] == "a01000000000444"
+    # … and the two imported projects got distinct colours.
+    assert p1["color"] != p2["color"]
+
+
+def test_sf_import_requires_selection(client, monkeypatch):
+    _login_session(client)
+    _patch_sf_import(monkeypatch)
+    r = client.post("/projects/import-salesforce", data={}, follow_redirects=False)
+    assert r.status_code == 302
+    assert "error=Keine" in r.headers["location"]

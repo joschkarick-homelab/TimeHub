@@ -34,16 +34,50 @@
 {% endif %}
 
 {% if skipped %}
-  <section class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
-    <h2 class="font-semibold mb-2">Übersprungene Einträge ({{ skipped|length }})</h2>
-    <ul class="text-sm text-slate-700 space-y-1">
-      {% for s in skipped %}
-        <li class="flex justify-between gap-3">
-          <span><span class="font-mono">#{{ s.entry.id }}</span> · {{ s.entry.entry_date }} · {{ '%.2f'|format(s.entry.duration_minutes / 60) }}h</span>
-          <span class="text-amber-800">{{ s.reason }}</span>
-        </li>
-      {% endfor %}
-    </ul>
+  <section class="bg-white border border-amber-200 rounded-lg overflow-hidden mb-4">
+    <div class="px-4 pt-4 pb-2">
+      <h2 class="font-semibold text-amber-800">Blockierte / übersprungene Einträge ({{ skipped|length }})</h2>
+      <p class="text-xs text-slate-500 mt-1">
+        Diese Einträge können (noch) nicht übertragen werden. Grund prüfen und im
+        Projekt bzw. am Eintrag beheben.
+      </p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead class="bg-slate-50 text-slate-600 text-left">
+          <tr>
+            <th class="px-4 py-2">Datum</th>
+            <th class="px-4 py-2">Projekt</th>
+            <th class="px-4 py-2 text-right">Dauer</th>
+            <th class="px-4 py-2">Grund</th>
+            <th class="px-4 py-2 text-right">Beheben</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in skipped %}
+            {% set p = projects_by_id.get(s.entry.project_id) %}
+            <tr class="border-t border-slate-100">
+              <td class="px-4 py-2 whitespace-nowrap">{{ s.entry.entry_date | de_date }}</td>
+              <td class="px-4 py-2">
+                {% if p %}
+                  <span class="inline-block w-2 h-2 rounded-full align-middle"
+                        style="background: {{ p.color }}"></span>
+                  {{ p.display_label }}
+                {% else %}<span class="text-slate-400 italic">Unbekannt</span>{% endif %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap">{{ '%.2f'|format(s.entry.duration_minutes / 60) }} h</td>
+              <td class="px-4 py-2 text-amber-800">{{ s.reason }}</td>
+              <td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                {% if p %}
+                  <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">→ Projekt</a>
+                {% endif %}
+                <a href="/entries/{{ s.entry.id }}/edit?next=/sync" class="text-xs text-indigo-600 hover:underline">→ Eintrag</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 {% endif %}
 

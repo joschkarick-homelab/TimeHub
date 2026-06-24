@@ -1,7 +1,5 @@
 """Dashboard UI: default-to-today, filtering, and daily subtotals."""
 
-import io
-import re
 from datetime import date
 
 
@@ -23,6 +21,59 @@ def test_dashboard_renders_today_as_default_and_groups_by_day(client):
     assert f'value="{today}"' in r.text
     # The header changed from "Letzte Einträge" to "Einträge (gruppiert nach Tag)".
     assert "gruppiert nach Tag" in r.text
+
+
+def test_de_date_filter_formats_german_with_optional_weekday():
+    from app.web.common import de_date
+
+    d = date(2026, 6, 17)  # a Wednesday
+    assert de_date(d) == "17.06.2026"
+    assert de_date(d, weekday=True) == "Mi, 17.06.2026"
+    # tolerant of None / empty / ISO strings handed in by templates
+    assert de_date(None) == ""
+    assert de_date("") == ""
+    assert de_date("2026-06-17") == "17.06.2026"
+
+
+def test_de_day_label_relative_and_weekday():
+    from app.web.common import de_day_label
+
+    today = date(2026, 6, 18)  # a Thursday
+    assert de_day_label(date(2026, 6, 18), today=today) == "Heute · 18.06.2026"
+    assert de_day_label(date(2026, 6, 17), today=today) == "Gestern · 17.06.2026"
+    # older days fall back to the weekday prefix
+    assert de_day_label(date(2026, 6, 15), today=today) == "Mo · 15.06.2026"
+    assert de_day_label(None, today=today) == ""
+
+
+def test_dashboard_renders_dates_in_german_format(client):
+    """Grouped entries must show the German DD.MM.YYYY date, not ISO."""
+    _login_session(client)
+    api_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "testpass"},
+    ).json()["access_token"]
+    h = {"Authorization": f"Bearer {api_token}"}
+    proj = client.post(
+        "/api/v1/projects",
+        json={"name": "DE", "code": "DEFMT", "default_sync_target": "intern"},
+        headers=h,
+    )
+    pid = proj.json().get("id")
+    if pid is None:
+        pid = next(p["id"] for p in client.get("/api/v1/projects", headers=h).json()
+                   if p["code"] == "DEFMT")
+    client.post(
+        "/api/v1/time-entries",
+        json={"project_id": pid, "entry_date": "2026-06-17",
+              "duration_minutes": 90, "description": "de fmt"},
+        headers=h,
+    )
+    r = client.get("/?date_from=2026-06-17&date_to=2026-06-17")
+    assert r.status_code == 200
+    # German date rendered once per group (prefix is today-relative, so we only
+    # assert on the stable date part, not Heute/Gestern/weekday).
+    assert "17.06.2026" in r.text
 
 
 def test_dashboard_filters_by_date_range(client):

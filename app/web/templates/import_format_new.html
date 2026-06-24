@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">Neues Importformat – Schritt 1: Beispiel hochladen</h1>
+<h1 class="text-xl font-bold th-outfit mb-4">Neues Importformat – Schritt 1: Beispiel hochladen</h1>
 
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">{{ error }}</div>
@@ -14,7 +14,7 @@
   </div>
 {% endif %}
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 max-w-2xl">
+<section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <p class="text-sm text-slate-600 mb-4">
     Lade einen kleinen CSV-Auszug (Header-Zeile + ein paar Beispiel-Zeilen) hoch.
     Claude analysiert das Format und schlägt ein Mapping vor, das du anschließend

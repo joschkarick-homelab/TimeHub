@@ -1,0 +1,67 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="CreateOrUpdateTimeRecord">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="systemName" type="xs:string"/>
+        <xs:element minOccurs="0" ref="tns:id"/>
+        <xs:element minOccurs="0" ref="tns:bcsOid"/>
+        <xs:element minOccurs="0" ref="tns:employee"/>
+        <xs:element minOccurs="0" name="target">
+          <xs:complexType>
+            <xs:choice>
+              <xs:element name="task" type="tns:taskIdentifier"/>
+              <xs:element name="ticket" type="tns:ticketIdentifier"/>
+              <xs:element name="event" type="tns:TimesheetEntryIdentifier"/>
+              <xs:element name="scrum" type="tns:ScrumIdentifier"/>
+              <xs:element name="workflow" type="tns:TimesheetEntryIdentifier"/>
+            </xs:choice>
+          </xs:complexType>
+        </xs:element>
+        <xs:element minOccurs="0" name="date" type="xs:date"/>
+        <xs:element minOccurs="0" name="startTime" nillable="true" type="xs:time"/>
+        <xs:element minOccurs="0" name="expense" type="xs:int"/>
+        <xs:element minOccurs="0" name="billability" type="xs:string"/>
+        <xs:element minOccurs="0" name="taskType" nillable="true" type="xs:string"/>
+        <xs:element minOccurs="0" name="remainingExpense" type="xs:int"/>
+        <xs:element minOccurs="0" name="comment" nillable="true" type="xs:string"/>
+
+        <xs:element minOccurs="0" name="otherValues">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element maxOccurs="unbounded" minOccurs="1" name="value" nillable="true">
+                <xs:complexType>
+                  <xs:simpleContent>
+                    <xs:extension base="xs:string">
+                      <xs:attribute name="name" type="xs:string" use="required"/>
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element minOccurs="0" name="otherAttributes" type="tns:setOtherAttributes"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="CreateOrUpdateTimeRecordResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="plannedTimeEffort" type="xs:positiveInteger"/>
+        <xs:element minOccurs="0" name="actualTimeEffort" type="xs:positiveInteger"/>
+        <xs:element minOccurs="0" name="remainingTimeEffort" type="xs:positiveInteger"/>
+
+        <xs:element minOccurs="0" ref="tns:notes"/>
+        <xs:element minOccurs="0" ref="tns:oid"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="UnableToCreateOrUpdateTimeRecord" type="tns:TimeRecordingWebServiceException"/>
+  <xs:element name="ViolatedConstraint" type="tns:TimeRecordingWebServiceException"/>
+</xs:schema>

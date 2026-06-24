@@ -62,14 +62,22 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          # Restrict the target dir to the owner up front, so the secret file
+          # is never traversable by others during the window between scp and the
+          # chmod below.
           ssh -o StrictHostKeyChecking=accept-new \
               -o UserKnownHostsFile=/dev/null \
               "${DEPLOY_USER}@${DEPLOY_HOST}" \
-              "mkdir -p ${DEPLOY_PATH}"
+              "mkdir -p ${DEPLOY_PATH} && chmod 700 ${DEPLOY_PATH}"
           scp -o StrictHostKeyChecking=accept-new \
               -o UserKnownHostsFile=/dev/null \
               docker-compose.prod.yml stack.env \
               "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+          # Lock down the secret file immediately, in the same step as the copy.
+          ssh -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile=/dev/null \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "chmod 600 ${DEPLOY_PATH}/stack.env"
 
       - name: Pull images & restart stack (via Tailscale SSH)
         env:

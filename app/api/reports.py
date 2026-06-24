@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
@@ -7,11 +7,80 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import CsvTemplate, Project, TimeEntry, User
+from app.schemas.report import WeeklyHours, WeeklyProjectHours, WeeklyTargetHours
 from app.services import reports as report_svc
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 FORMATS = {"json", "csv", "markdown", "md"}
+
+
+@router.get("/weekly", response_model=WeeklyHours)
+def weekly_hours(
+    week_offset: int = Query(0, description="0 = current week, -1 = last week, etc."),
+    date_from: date | None = Query(None, description="Override week start (inclusive)"),
+    date_to: date | None = Query(None, description="Override week end (inclusive)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Aggregated tracked time for a week — total plus per-project and
+    per-effective-target breakdowns. Defaults to the current Mon–Sun week;
+    ``week_offset`` shifts it, or pass an explicit ``date_from``/``date_to``."""
+    if date_from is None or date_to is None:
+        today = date.today()
+        monday = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
+        date_from = date_from or monday
+        date_to = date_to or (monday + timedelta(days=6))
+
+    rows = list(
+        db.execute(
+            select(TimeEntry, Project)
+            .join(Project, Project.id == TimeEntry.project_id)
+            .where(
+                TimeEntry.user_id == current_user.id,
+                TimeEntry.entry_date >= date_from,
+                TimeEntry.entry_date <= date_to,
+            )
+        ).all()
+    )
+
+    total = 0
+    by_project: dict[int, dict] = {}
+    by_target: dict[str, int] = {}
+    for entry, project in rows:
+        mins = entry.duration_minutes or 0
+        total += mins
+        proj = by_project.setdefault(
+            project.id,
+            {"project_id": project.id, "code": project.code, "name": project.name, "minutes": 0},
+        )
+        proj["minutes"] += mins
+        target = entry.sync_target_override or project.default_sync_target
+        by_target[target] = by_target.get(target, 0) + mins
+
+    return WeeklyHours(
+        date_from=date_from,
+        date_to=date_to,
+        total_minutes=total,
+        total_hours=round(total / 60, 2),
+        entry_count=len(rows),
+        by_project=sorted(
+            (
+                WeeklyProjectHours(**p, hours=round(p["minutes"] / 60, 2))
+                for p in by_project.values()
+            ),
+            key=lambda p: p.minutes,
+            reverse=True,
+        ),
+        by_target=sorted(
+            (
+                WeeklyTargetHours(target=t, minutes=m, hours=round(m / 60, 2))
+                for t, m in by_target.items()
+            ),
+            key=lambda t: t.minutes,
+            reverse=True,
+        ),
+    )
 
 
 def _gather(
@@ -21,7 +90,6 @@ def _gather(
     date_from: date | None,
     date_to: date | None,
     project_id: int | None,
-    user_id: int | None,
     sync_target: str | None,
     tag: str | None,
 ):
@@ -31,10 +99,8 @@ def _gather(
         .join(User, User.id == TimeEntry.user_id)
         .order_by(TimeEntry.entry_date, TimeEntry.id)
     )
-    if not current_user.is_admin:
-        stmt = stmt.where(TimeEntry.user_id == current_user.id)
-    elif user_id is not None:
-        stmt = stmt.where(TimeEntry.user_id == user_id)
+    # Time data is always scoped to the requesting user — admins included.
+    stmt = stmt.where(TimeEntry.user_id == current_user.id)
     if date_from is not None:
         stmt = stmt.where(TimeEntry.entry_date >= date_from)
     if date_to is not None:
@@ -62,7 +128,6 @@ def timesheet(
     date_from: date | None = None,
     date_to: date | None = None,
     project_id: int | None = None,
-    user_id: int | None = None,
     sync_target: str | None = None,
     tag: str | None = None,
     csv_template_id: int | None = None,
@@ -75,7 +140,6 @@ def timesheet(
         date_from=date_from,
         date_to=date_to,
         project_id=project_id,
-        user_id=user_id,
         sync_target=sync_target,
         tag=tag,
     )

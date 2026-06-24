@@ -1,0 +1,30 @@
+<script>
+  // Wires the dynamic, target-dependent sync fields of an entry-edit form
+  // (rendered from _entry_form.html). Works for the standalone edit page as
+  // well as a copy injected into the shared edit modal. Reads the registry and
+  // the entry's stored meta from the JSON blocks the fragment carries, and the
+  // effective target from the selected project's data-target (overridden by the
+  // explicit Sync-Ziel select). Depends on window.renderSyncFields.
+  window.wireEntryForm = function (form) {
+    if (!form || !window.renderSyncFields) return;
+    function json(sel, fallback) {
+      var el = form.querySelector(sel);
+      try { return el ? JSON.parse(el.textContent) : fallback; } catch (e) { return fallback; }
+    }
+    var registry = json(".ee-registry", {});
+    var current = json(".ee-current-meta", {});
+    var proj = form.querySelector(".ee-project");
+    var override = form.querySelector(".ee-target");
+    var box = form.querySelector(".ee-sync-fields");
+    if (!proj || !override || !box) return;
+    function effectiveTarget() {
+      if (override.value) return override.value;
+      var opt = proj.options[proj.selectedIndex];
+      return (opt && opt.dataset.target) || "intern";
+    }
+    function update() { window.renderSyncFields(box, registry, effectiveTarget(), current); }
+    proj.addEventListener("change", update);
+    override.addEventListener("change", update);
+    update();
+  };
+</script>

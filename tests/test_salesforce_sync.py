@@ -51,7 +51,8 @@ def test_parse_login_response_success():
 
 def test_parse_login_response_fault():
     import pytest
-    from app.services.salesforce import _parse_login_response, SalesforceError
+
+    from app.services.salesforce import SalesforceError, _parse_login_response
     with pytest.raises(SalesforceError, match="INVALID_LOGIN"):
         _parse_login_response(_LOGIN_FAULT)
 
@@ -98,6 +99,7 @@ def test_snap_quarter_rounds_to_nearest_15():
 def test_build_zeiterfassung_payload_without_start_end():
     from datetime import date as _date
     from types import SimpleNamespace
+
     from app.services.salesforce import build_zeiterfassung_payload
     entry = SimpleNamespace(
         entry_date=_date(2026, 5, 27), start_time=None, end_time=None,
@@ -121,8 +123,10 @@ def test_build_zeiterfassung_payload_with_start_end_uses_duration_not_clock():
     """Auch mit echten Start-/Endzeiten kodiert die Payload die DAUER ins
     Von/Bis-Intervall (00:00 → Dauer), nicht die Uhrzeit. Sonst leitet SF die
     Arbeitszeit als Enduhrzeit (10) statt als Dauer (1,5 Std.) ab."""
-    from datetime import date as _date, time as _time
+    from datetime import date as _date
+    from datetime import time as _time
     from types import SimpleNamespace
+
     from app.services.salesforce import build_zeiterfassung_payload
     entry = SimpleNamespace(
         entry_date=_date(2026, 5, 27),
@@ -174,50 +178,102 @@ def test_preview_explicit_vor_ort_overrides_default(client, monkeypatch):
 
 
 def test_list_assignments_for_user_query_shape(monkeypatch):
-    """list_assignments_for_user matcht intern UND extern auf die E-Mail."""
+    """list_assignments_for_user matcht intern UND extern auf die E-Mail und
+    beschränkt auf aktuell auswählbare PBs: Projekt nicht abgeschlossen,
+    Status offen und laufend (Projektende in der Zukunft)."""
     from app.services import salesforce as sfs
     captured = {}
     def fake_query(self, soql):
         captured["soql"] = soql
         return {"records": [
-            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo"},
-            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None},
+            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo",
+             "Projektnummer__c": "P00042", "AccountName__c": "ACME GmbH"},
+            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None,
+             "Projektnummer__c": None, "AccountName__c": None},
         ]}
     monkeypatch.setattr(sfs.SalesforceClient, "query", fake_query)
     client = sfs.SalesforceClient("u", "p", "")
-    client.session_id = "x"; client.instance_url = "https://x"
+    client.session_id = "x"
+    client.instance_url = "https://x"
     items = sfs.list_assignments_for_user(client, "rick@mindsquare.de")
-    assert "rick@mindsquare.de" in captured["soql"]
-    assert "Mitarbeiter__r.Email" in captured["soql"]
-    assert "Externe_Projektbesetzung__r.Email" in captured["soql"]
-    assert "Geschlossen__c = false" in captured["soql"]
+    soql = captured["soql"]
+    assert "rick@mindsquare.de" in soql
+    assert "Mitarbeiter__r.Email" in soql
+    assert "Externe_Projektbesetzung__r.Email" in soql
+    assert "Geschlossen__c = false" in soql
+    assert "Projekt__r.Projektstatus__c != 'abgeschlossen'" in soql
+    assert "Aktiv__c = 'Ja'" not in soql
+    assert "Projekt__r.Projektstart__c <= TODAY" in soql
+    assert "Projekt__r.Projektende__c >= TODAY" in soql
+    # New SELECT carries the searchable Klartext fields.
+    assert "Projektnummer__c" in soql
+    assert "AccountName__c" in soql
+    # Label shows project name + customer/number; search bundles the Klartext
+    # (Kunde, Projektname, Projektnummer) but NOT the PB-Nummer or SF-Id.
     assert items == [
-        {"value": "a01000000000111", "label": "Foo (PB-111)"},
-        {"value": "a01000000000222", "label": "PB-222"},
+        {"value": "a01000000000111", "label": "Foo (ACME GmbH · P00042)",
+         "search": "acme gmbh foo p00042"},
+        {"value": "a01000000000222", "label": "PB-222", "search": ""},
     ]
 
 
 def test_list_assignments_for_user_rejects_bad_email():
     from app.services import salesforce as sfs
     client = sfs.SalesforceClient("u", "p", "")
-    client.session_id = "x"; client.instance_url = "https://x"
+    client.session_id = "x"
+    client.instance_url = "https://x"
     # No SOQL is sent for obviously broken/injecting emails
     assert sfs.list_assignments_for_user(client, "evil'--") == []
     assert sfs.list_assignments_for_user(client, "") == []
 
 
+def test_assignments_for_import_shape(monkeypatch):
+    """assignments_for_import reuses the staffing SOQL but returns the
+    structured fields the project import builds a Project from."""
+    from app.services import salesforce as sfs
+
+    def fake_query(self, soql):
+        # same staffing filter as the dropdown
+        assert "Projektbesetzung__c" in soql
+        assert "Geschlossen__c = false" in soql
+        return {"records": [
+            {"Id": "a01000000000111", "Name": "PB-111", "Projektbezeichnung__c": "Foo",
+             "Projektnummer__c": "P00042", "AccountName__c": "ACME GmbH"},
+            {"Id": "a01000000000222", "Name": "PB-222", "Projektbezeichnung__c": None,
+             "Projektnummer__c": None, "AccountName__c": None},
+        ]}
+
+    monkeypatch.setattr(sfs.SalesforceClient, "query", fake_query)
+    client = sfs.SalesforceClient("u", "p", "")
+    client.session_id = "x"
+    client.instance_url = "https://x"
+    items = sfs.assignments_for_import(client, "rick@mindsquare.de")
+    assert items == [
+        {"assignment_id": "a01000000000111", "name": "Foo", "customer": "ACME GmbH",
+         "number": "P00042", "label": "Foo (ACME GmbH · P00042)"},
+        # all project fields empty → name falls back to the PB-Nummer
+        {"assignment_id": "a01000000000222", "name": "PB-222", "customer": "",
+         "number": "", "label": "PB-222"},
+    ]
+    # bad email is guarded just like the dropdown path
+    assert sfs.assignments_for_import(client, "evil'--") == []
+
+
 def test_describe_sobject_rejects_garbage_names():
     import pytest
+
     from app.services.salesforce import SalesforceClient, SalesforceError, describe_sobject
     client = SalesforceClient("u", "p", "")
-    client.session_id = "x"; client.instance_url = "https://x"
+    client.session_id = "x"
+    client.instance_url = "https://x"
     with pytest.raises(SalesforceError):
         describe_sobject(client, "Bad Name; DROP")
 
 
 def test_ensure_id_rejects_bad_input():
     import pytest
-    from app.services.salesforce import _ensure_id, SalesforceError
+
+    from app.services.salesforce import SalesforceError, _ensure_id
     assert _ensure_id("a01000000000001") == "a01000000000001"
     with pytest.raises(SalesforceError):
         _ensure_id("short")
@@ -432,9 +488,9 @@ def test_dashboard_shows_sync_button_when_configured(client):
     from app.services import salesforce as sfs
     with SessionLocal() as db:
         sfs.save_credentials(db, username="u", password="p", security_token="t")
-    # current month per the test env clock (see conftest / env)
     _make_project_and_entry(client, "SFDASH", entry_date="2026-06-01")
-    page = client.get("/")
+    # Explicit window so the June entry shows regardless of the default (week).
+    page = client.get("/?date_from=2026-06-01&date_to=2026-06-30")
     assert "Auswahl in Salesforce-Vorschau" in page.text
 
 
@@ -556,7 +612,8 @@ def test_execute_skips_already_synced_entries(client, monkeypatch):
         e = db.get(TimeEntry, eid)
         e.sync_status = "synced"
         e.sync_metadata_override = {"salesforce": {"zeiterfassung_id": "a0Z000000000OLD"}}
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     import app.services.salesforce as sfs
     monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
@@ -637,7 +694,7 @@ def test_mark_entries_as_manually_synced_takes_them_out_of_selection(client):
         sfs.save_credentials(db, username="u", password="p", security_token="t")
     _pid, eid = _make_project_and_entry(client, "SFMARK", entry_date="2026-06-01")
 
-    page = client.get("/")
+    page = client.get("/?date_from=2026-06-01&date_to=2026-06-30")
     assert "Auswahl in Salesforce-Vorschau" in page.text
 
     r = client.post("/entries/mark-synced", data={"entry_ids": str(eid)},
@@ -650,7 +707,7 @@ def test_mark_entries_as_manually_synced_takes_them_out_of_selection(client):
         e = db.get(TimeEntry, eid)
         assert e.sync_status == "manually_synced"
 
-    page2 = client.get("/")
+    page2 = client.get("/?date_from=2026-06-01&date_to=2026-06-30")
     assert "manuell" in page2.text
 
 
@@ -664,7 +721,8 @@ def test_unmark_entry_resets_to_pending(client):
     with SessionLocal() as db:
         e = db.get(TimeEntry, eid)
         e.sync_status = "manually_synced"
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     r = client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
     assert r.status_code == 302
@@ -686,7 +744,8 @@ def test_unmark_does_not_touch_real_synced_entries(client):
         e = db.get(TimeEntry, eid)
         e.sync_status = "synced"
         e.sync_metadata_override = {"salesforce": {"zeiterfassung_id": "a0Z000REAL"}}
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     r = client.post(f"/entries/{eid}/unmark-synced", follow_redirects=False)
     assert r.status_code == 302
@@ -705,7 +764,8 @@ def test_execute_skips_manually_synced_entries(client, monkeypatch):
     with SessionLocal() as db:
         e = db.get(TimeEntry, eid)
         e.sync_status = "manually_synced"
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
 
     import app.services.salesforce as sfs
     monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())

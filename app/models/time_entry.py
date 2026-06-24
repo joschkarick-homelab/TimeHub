@@ -29,10 +29,15 @@ class TimeEntry(Base):
 
     # When set, overrides the project's default_sync_target for this entry.
     sync_target_override: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # When set (non-empty), overrides the resolved target set for this entry,
+    # bypassing project defaults and rules. Empty/None = inherit.
+    sync_targets_override: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     # Per-entry overrides for sync metadata (e.g. specific Jira issue key).
     sync_metadata_override: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
-    sync_status: Mapped[str] = mapped_column(String(16), nullable=False, default=SyncStatus.PENDING)
+    sync_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SyncStatus.PENDING, index=True
+    )
     source: Mapped[str] = mapped_column(String(16), nullable=False, default=EntrySource.MANUAL)
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
@@ -45,3 +50,6 @@ class TimeEntry(Base):
 
     user: Mapped["User"] = relationship(back_populates="time_entries")  # noqa: F821
     project: Mapped["Project"] = relationship(back_populates="time_entries")  # noqa: F821
+    entry_syncs: Mapped[list["EntrySync"]] = relationship(  # noqa: F821
+        back_populates="entry", cascade="all, delete-orphan", passive_deletes=True
+    )

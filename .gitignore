@@ -28,3 +28,4 @@ uploads/
 .vscode/
 .DS_Store
 *.swp
+.venv/

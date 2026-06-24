@@ -1,0 +1,209 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:element name="clientName" type="xs:string"/>
+
+  <xs:complexType name="externalID">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="systemName" type="xs:string" use="optional"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:element name="id" type="tns:externalID"/>
+  <xs:element name="bcsOid" type="xs:string"/>
+  <xs:element name="login" type="xs:string"/>
+
+  <xs:complexType name="objectIdentifier">
+    <xs:choice>
+      <xs:element ref="tns:bcsOid"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="TimesheetEntryIdentifier">
+    <xs:complexContent>
+      <xs:extension base="tns:objectIdentifier"/>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ScrumIdentifier">
+    <xs:complexContent>
+      <xs:extension base="tns:TimesheetEntryIdentifier">
+        <xs:sequence>
+          <xs:element name="task" type="tns:taskIdentifier"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="taskIdentifier">
+    <xs:choice>
+      <xs:element ref="tns:id"/>
+      <xs:element ref="tns:bcsOid"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="ticketIdentifier">
+    <xs:choice>
+      <xs:element ref="tns:id"/>
+      <xs:element ref="tns:bcsOid"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="personIdentifier">
+    <xs:choice>
+      <xs:element ref="tns:login"/>
+      <xs:element ref="tns:bcsOid"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:simpleType name="numberOfMinutesInADay">
+    <xs:restriction base="xs:int">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="1440"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="person">
+    <xs:sequence>
+      <xs:element ref="tns:oid"/>
+      <xs:element ref="tns:loginName"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="oid" type="xs:string"/>
+  <xs:element name="loginName" type="xs:string"/>
+
+  <xs:element name="employee" type="tns:personIdentifier"/>
+  <xs:element name="date" type="xs:date"/>
+  <xs:element name="comment" nillable="true" type="xs:string"/>
+
+  <xs:element name="timeInterval">
+    <xs:complexType>
+      <xs:attribute name="start" type="tns:time24Hour" use="required"/>
+      <xs:attribute name="end" type="tns:time24Hour" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="duration" type="tns:numberOfMinutesInADay"/>
+
+  <xs:element name="pspPath">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="pspElement">
+          <xs:complexType>
+            <xs:complexContent>
+              <xs:extension base="tns:pspElement">
+                <xs:attribute name="type" type="xs:string" use="required"/>
+              </xs:extension>
+            </xs:complexContent>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="notes">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" minOccurs="1" name="note" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="TimeRecordingWebServiceException">
+    <xs:sequence>
+      <xs:element name="code" type="xs:string"/>
+      <xs:element name="message" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="AccessDenied" type="tns:TimeRecordingWebServiceException"/>
+  <xs:element name="UnableToPerform" type="tns:TimeRecordingWebServiceException"/>
+
+  <xs:complexType name="attributeWithOptions">
+    <xs:sequence>
+      <xs:element name="currentValue" nillable="true" type="xs:string"/>
+      <xs:element minOccurs="0" name="options">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element maxOccurs="unbounded" minOccurs="0" name="option">
+              <xs:complexType>
+                <xs:simpleContent>
+                  <xs:extension base="xs:string">
+                    <xs:attribute name="isDefault" type="xs:boolean"/>
+                  </xs:extension>
+                </xs:simpleContent>
+              </xs:complexType>
+            </xs:element>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="otherAttributes">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" name="attribute">
+          <xs:complexType>
+            <xs:complexContent>
+              <xs:extension base="tns:attributeWithOptions">
+                <xs:attribute name="name" type="xs:string" use="required"/>
+              </xs:extension>
+            </xs:complexContent>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="setOtherAttributes">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="1" name="attribute" nillable="true">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="name" type="xs:string" use="required"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="project" type="tns:pspElement"/>
+  <xs:element name="task" type="tns:pspElement"/>
+
+  <xs:complexType name="pspElement">
+    <xs:attribute name="bcsOid" type="xs:string" use="required"/>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:element name="summary">
+    <xs:complexType>
+      <xs:attribute name="attendance" type="tns:numberOfMinutesInADay"/>
+      <xs:attribute name="tracked" type="tns:numberOfMinutesInADay" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="allowedOptions">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" minOccurs="1" name="option">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="isDefault" type="xs:boolean"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:simpleType name="time24Hour">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="^(([0-9]{1})|([0-1]{1}[0-9]{1})|([2]{1}[0-3]{1})):[0-5]{1}[0-9]{1}|24:00$"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

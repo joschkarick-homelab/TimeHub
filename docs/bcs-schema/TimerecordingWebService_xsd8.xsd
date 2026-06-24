@@ -1,0 +1,157 @@
+<?xml version='1.0' encoding='UTF-8'?><!-- Published by XML-WS Runtime (https://github.com/eclipse-ee4j/metro-jax-ws). Runtime's version is XML-WS Runtime 4.0.3 git-revision#a57c222. --><xs:schema xmlns:tns="http://www.projektron.de/ws/timerecording" xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.projektron.de/ws/timerecording">
+
+  <xs:include schemaLocation="https://mindsquare.bcs-hosting.de:443/webservices/TimerecordingWebService?xsd=2"/>
+
+  <xs:element name="GetTimeRecordAttributes">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" ref="tns:clientName"/>
+        <xs:element minOccurs="0" name="language" type="tns:language">
+          <xs:annotation>
+            <xs:documentation>
+              Die Sprache, in welcher die Labels fuer Attribute bzw. deren Optionen geliefert werden sollen.
+              Wenn nicht angegeben, wird die Sprache des Nutzers verwendet.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:simpleType name="language">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="de_DE"/>
+      <xs:enumeration value="de_CH"/>
+      <xs:enumeration value="de_AT"/>
+      <xs:enumeration value="en_US"/>
+      <xs:enumeration value="en_GB"/>
+      <xs:enumeration value="es_ES"/>
+      <xs:enumeration value="fr_FR"/>
+      <xs:enumeration value="it_IT"/>
+      <xs:enumeration value="nl_NL"/>
+      <xs:enumeration value="hu_HU"/>
+      <xs:enumeration value="pl_PL"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="GetTimeRecordAttributesResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="comment">
+          <xs:annotation>
+            <xs:documentation>Beschreibung</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:attribute fixed="description" name="name" type="xs:string"/>
+            <xs:attribute default="false" name="isRequired" type="xs:boolean"/>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element name="billability">
+          <xs:annotation>
+            <xs:documentation>Optionen der Abrechenbarkeit</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" ref="tns:options"/>
+            </xs:sequence>
+            <xs:attribute fixed="chargeability" name="name" type="xs:string">
+              <xs:annotation>
+                <xs:documentation>
+                  Name des Attributs "Abrechenbarkeit" (nicht veraenderbar).
+                  So hat jedes Attribute einen name und die Uniquiness
+                  ueber alle Attribute kann sichergestellt werden.
+                </xs:documentation>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute default="false" name="isRequired" type="xs:boolean"/>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element minOccurs="0" name="taskType">
+          <xs:annotation>
+            <xs:documentation>Taetigkeitsart</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" ref="tns:options"/>
+            </xs:sequence>
+            <xs:attribute fixed="taskType" name="name" type="xs:string"/>
+            <xs:attribute default="false" name="isRequired" type="xs:boolean"/>
+          </xs:complexType>
+        </xs:element>
+
+        <xs:element maxOccurs="unbounded" minOccurs="0" name="attribute">
+          <xs:annotation>
+            <xs:documentation>Attribut</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element minOccurs="0" ref="tns:options"/>
+            </xs:sequence>
+            <xs:attribute name="name" type="xs:string" use="required">
+              <xs:annotation>
+                <xs:documentation>In BCS verwendeter Bezeichner des Attributs bzw. der Option.</xs:documentation>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="datatype" type="tns:datatypes" use="required"/>
+            <xs:attribute name="label" type="xs:string" use="required">
+              <xs:annotation>
+                <xs:documentation>
+                  Label des Attributs in der Sprache des Nutzers (vgl. GetTimeRecordAttributes.language)
+                </xs:documentation>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute default="false" name="isRequired" type="xs:boolean"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:unique name="AttributeNameUniqueness">
+      <xs:selector xpath="./*"/>
+      <xs:field xpath="@name"/>
+    </xs:unique>
+  </xs:element>
+
+  <xs:element name="options">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element maxOccurs="unbounded" minOccurs="0" name="option">
+          <xs:complexType>
+            <xs:attribute name="value" type="xs:string" use="required">
+              <xs:annotation>
+                <xs:documentation>In BCS verwendeter Bezeichner der Option.</xs:documentation>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="label" type="xs:string" use="required">
+              <xs:annotation>
+                <xs:documentation>
+                  Label der Option in der Sprache des Nutzers (vgl. GetTimeRecordAttributes.language)
+                </xs:documentation>
+              </xs:annotation>
+            </xs:attribute>
+            <xs:attribute default="false" name="isDefault" type="xs:boolean"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:unique name="OptionValueUniqueness">
+      <xs:selector xpath="./*"/>
+      <xs:field xpath="@value"/>
+    </xs:unique>
+  </xs:element>
+
+  <xs:simpleType name="datatypes">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="String"/>
+      <xs:enumeration value="Date"/>
+      <xs:enumeration value="Time"/>
+      <xs:enumeration value="DateTime"/>
+      <xs:enumeration value="Int"/>
+      <xs:enumeration value="Float"/>
+      <xs:enumeration value="Bool"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="UnexpectedLanguage" type="tns:TimeRecordingWebServiceException"/>
+</xs:schema>

@@ -1,82 +1,187 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-1">Sync-Center</h1>
-<p class="text-sm text-slate-600 mb-6">
-  Zentrale Anlaufstelle für alle Sync-Aktionen. Hier landen die Stapel-Syncs
-  (typischerweise einmal pro Tag oder Woche). Einzelne Einträge kannst du
-  zusätzlich direkt im Dashboard auswählen.
+<div class="flex items-center justify-between mb-1">
+  <h1 class="text-xl font-bold th-outfit">Export-Wizard</h1>
+  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+</div>
+<p class="text-sm text-slate-600 mb-4">
+  Pro Ziel eine Karte: was ist <span class="text-amber-700">bereit</span>, was ist
+  <span class="text-rose-700">blockiert</span>. Bereite Einträge abnicken, blockierte
+  direkt korrigieren — danach landest du wieder hier.
 </p>
 
-<div class="grid sm:grid-cols-2 gap-4">
+{% if flash %}
+  <div class="mb-4 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+    {{ flash | replace('+', ' ') }}
+  </div>
+{% endif %}
+{% if error %}
+  <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+    {{ error | replace('+', ' ') }}
+  </div>
+{% endif %}
 
-  {# ---------- Salesforce ---------- #}
-  {% set sf = counts.salesforce %}
-  <section class="bg-white border border-slate-200 rounded-lg p-5">
-    <div class="flex items-baseline justify-between mb-2">
-      <h2 class="font-semibold">Salesforce / Certinia PSA</h2>
-      {% if not sf_configured %}
-        <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">nicht konfiguriert</span>
+<div class="grid lg:grid-cols-2 gap-4">
+
+  {% for t, label in cards %}
+    {% set b = buckets[t] %}
+    {% set ready = b.ready %}
+    {% set blocked = b.blocked %}
+    <section class="bg-white border border-slate-200 p-5">
+      <div class="flex items-baseline justify-between mb-3">
+        <h2 class="font-semibold th-section-title th-section-orange th-outfit">{{ label }}</h2>
+        {% if t == "salesforce" and not sf_configured %}
+          <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">nicht konfiguriert</span>
+        {% elif t != "salesforce" %}
+          <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">Direkter Push folgt</span>
+        {% endif %}
+      </div>
+
+      <dl class="text-sm grid grid-cols-3 gap-2 mb-4">
+        <div>
+          <dt class="text-slate-500 text-xs">bereit</dt>
+          <dd class="font-semibold text-amber-700">{{ ready|length }}</dd>
+        </div>
+        <div>
+          <dt class="text-slate-500 text-xs">blockiert</dt>
+          <dd class="font-semibold text-rose-700">{{ blocked }}</dd>
+        </div>
+        <div>
+          <dt class="text-slate-500 text-xs">erledigt</dt>
+          <dd class="font-semibold text-emerald-700">{{ b.done }}</dd>
+        </div>
+      </dl>
+
+      {# ---- Aktion: bereite Einträge abnicken ---- #}
+      {% if ready %}
+        <div class="bg-slate-50 border border-slate-200 p-3 mb-3">
+          <p class="text-sm mb-2">
+            <span class="font-semibold">{{ ready|length }} Einträge</span> ·
+            <span class="tabular-nums">{{ '%.2f'|format(b.ready_minutes / 60) }} h</span> bereit
+          </p>
+          <div class="flex flex-wrap gap-2">
+            {% if t == "salesforce" %}
+              {% if sf_configured %}
+                <form method="post" action="/sync/salesforce/preview">
+                  {% for e in ready %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}
+                  <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
+                    ↗ Vorschau &amp; Sync ({{ ready|length }})
+                  </button>
+                </form>
+              {% else %}
+                <p class="text-xs text-slate-500">
+                  Admin: Zugangsdaten unter
+                  <a href="/users" class="text-indigo-600 hover:underline">Nutzer → Salesforce-Integration</a>.
+                </p>
+              {% endif %}
+            {% else %}
+              <form method="post" action="/sync/{{ t }}/mark-done">
+                {% for e in ready %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}
+                <button class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">
+                  ✓ Als erledigt markieren ({{ ready|length }})
+                </button>
+              </form>
+            {% endif %}
+            {# Escape-hatch: bereits extern erfasst → ohne Push abhaken #}
+            {% if t == "salesforce" and sf_configured %}
+              <form method="post" action="/sync/{{ t }}/mark-done"
+                    onsubmit="return confirm('Ohne Salesforce-Push als bereits erledigt markieren?');">
+                {% for e in ready %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}
+                <button class="h-9 px-3 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded text-sm">
+                  nur abhaken
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      {% elif b.done and not blocked %}
+        <p class="text-sm text-emerald-700 mb-3">Alles erledigt. ✓</p>
+      {% else %}
+        <p class="text-sm text-slate-500 mb-3">Aktuell nichts bereit.</p>
       {% endif %}
-    </div>
-    <dl class="text-sm grid grid-cols-3 gap-2 mb-3">
-      <div><dt class="text-slate-500 text-xs">sync-bereit</dt><dd class="font-semibold">{{ sf.ready_ids|length }}</dd></div>
-      <div><dt class="text-slate-500 text-xs">offen</dt><dd>{{ sf.pending }}</dd></div>
-      <div><dt class="text-slate-500 text-xs">synced</dt><dd>{{ sf.synced }}</dd></div>
-    </dl>
-    {% if not sf_configured %}
-      <p class="text-xs text-slate-500">
-        Admin: Zugangsdaten unter <a href="/users" class="text-indigo-600 hover:underline">Nutzer → Salesforce-Integration</a>.
-      </p>
-    {% elif sf.ready_ids %}
-      <form method="post" action="/sync/salesforce/preview">
-        {% for eid in sf.ready_ids %}<input type="hidden" name="entry_ids" value="{{ eid }}" />{% endfor %}
-        <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
-          ↗ Vorschau für alle ({{ sf.ready_ids|length }})
-        </button>
-      </form>
-    {% else %}
-      <p class="text-xs text-slate-500">Aktuell keine sync-bereiten Einträge.</p>
-    {% endif %}
-  </section>
 
-  {# ---------- Jira (Platzhalter) ---------- #}
-  <section class="bg-white border border-slate-200 rounded-lg p-5 opacity-70">
-    <div class="flex items-baseline justify-between mb-2">
-      <h2 class="font-semibold">Jira</h2>
-      <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">geplant</span>
-    </div>
-    <dl class="text-sm grid grid-cols-3 gap-2 mb-3">
-      <div><dt class="text-slate-500 text-xs">sync-bereit</dt><dd class="font-semibold">{{ counts.jira.ready_ids|length }}</dd></div>
-      <div><dt class="text-slate-500 text-xs">offen</dt><dd>{{ counts.jira.pending }}</dd></div>
-      <div><dt class="text-slate-500 text-xs">synced</dt><dd>{{ counts.jira.synced }}</dd></div>
-    </dl>
-    <p class="text-xs text-slate-500">Push wird in einem späteren Schritt freigeschaltet.</p>
-  </section>
+      {# ---- Blockiert: fehlende Daten direkt hier erfragen ---- #}
+      {% if b.project_gaps or b.entry_gaps or b.failed %}
+        <details class="text-sm" {% if not ready %}open{% endif %}>
+          <summary class="cursor-pointer text-rose-700 font-medium">
+            {{ blocked }} blockiert – Daten ergänzen
+          </summary>
 
-  {# ---------- BCS (Platzhalter) ---------- #}
-  <section class="bg-white border border-slate-200 rounded-lg p-5 opacity-70">
-    <div class="flex items-baseline justify-between mb-2">
-      <h2 class="font-semibold">BCS</h2>
-      <span class="text-[11px] text-slate-500 bg-slate-100 rounded px-2 py-0.5">geplant</span>
-    </div>
-    <dl class="text-sm grid grid-cols-3 gap-2 mb-3">
-      <div><dt class="text-slate-500 text-xs">sync-bereit</dt><dd class="font-semibold">{{ counts.bcs.ready_ids|length }}</dd></div>
-      <div><dt class="text-slate-500 text-xs">offen</dt><dd>{{ counts.bcs.pending }}</dd></div>
-      <div><dt class="text-slate-500 text-xs">synced</dt><dd>{{ counts.bcs.synced }}</dd></div>
-    </dl>
-    <p class="text-xs text-slate-500">Push wird in einem späteren Schritt freigeschaltet.</p>
-  </section>
+          {# Projekt-Daten fehlen (z. B. Salesforce-Projektbesetzung): einmal
+             ausfüllen entsperrt alle betroffenen Einträge. #}
+          {% for gap in b.project_gaps %}
+            <div class="mt-3 border border-slate-200 p-3">
+              <p class="text-xs text-slate-600 mb-2">
+                <span class="font-medium text-slate-700">{{ gap.project.display_label }}</span>
+                — Projekt-Daten fehlen
+                <span class="text-slate-400">({{ gap.entry_count }} Eintrag{{ 'e' if gap.entry_count != 1 else '' }} betroffen)</span>
+              </p>
+              <form method="post" action="/sync/project/{{ gap.project.id }}/fields" class="space-y-3">
+                <input type="hidden" name="target" value="{{ t }}" />
+                <div class="sync-fix grid sm:grid-cols-2 gap-3"></div>
+                <script type="application/json" class="sync-fix-spec">{{ gap.spec | tojson }}</script>
+                <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+                  Speichern
+                </button>
+              </form>
+            </div>
+          {% endfor %}
+
+          {# Eintrags-Daten fehlen (z. B. Jira-Ticket, BCS Subject/Task). #}
+          {% for gap in b.entry_gaps %}
+            {% set e = gap.entry %}
+            <div class="mt-3 border border-slate-200 p-3">
+              <p class="text-xs text-slate-600 mb-2">
+                <span class="text-slate-700">{{ e.entry_date }} · {{ gap.project.display_label }}</span>
+                <span class="tabular-nums text-slate-400">({{ '%.2f'|format(e.duration_minutes / 60) }} h)</span>
+                {% if e.description %}<span class="text-slate-400">— {{ e.description }}</span>{% endif %}
+              </p>
+              <form method="post" action="/sync/entry/{{ e.id }}/fields" class="space-y-3">
+                <input type="hidden" name="target" value="{{ t }}" />
+                <div class="sync-fix grid sm:grid-cols-2 gap-3"></div>
+                <script type="application/json" class="sync-fix-spec">{{ gap.spec | tojson }}</script>
+                <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+                  Speichern
+                </button>
+              </form>
+            </div>
+          {% endfor %}
+
+          {# Fehlgeschlagene Pushs: nicht hier fixbar — Eintrag prüfen. #}
+          {% if b.failed %}
+            <ul class="mt-3 divide-y divide-slate-100 border border-slate-100 rounded">
+              {% for item in b.failed %}
+                {% set e = item.entry %}
+                {% set p = projects_by_id.get(e.project_id) %}
+                <li class="px-3 py-2 flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-slate-700">
+                      {{ e.entry_date }} · {{ p.display_label if p else 'Unbekanntes Projekt' }}
+                    </div>
+                    <div class="text-xs text-rose-600">{{ item.reason }}</div>
+                  </div>
+                  <a href="/entries/{{ e.id }}/edit?next=/sync"
+                     class="shrink-0 text-xs text-indigo-600 hover:underline">prüfen →</a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </details>
+      {% endif %}
+    </section>
+  {% endfor %}
 
   {# ---------- CSV-Export ---------- #}
-  <section class="bg-white border border-slate-200 rounded-lg p-5">
-    <div class="flex items-baseline justify-between mb-2">
-      <h2 class="font-semibold">CSV-Export</h2>
-    </div>
+  <section class="bg-white border border-slate-200 p-5">
+    <h2 class="font-semibold mb-3 th-section-title th-section-olive th-outfit">CSV-Export</h2>
     {% if formats %}
       <p class="text-xs text-slate-500 mb-3">
         Ganze Timesheet-Exporte für externe Systeme (Toggl-/Clockify-Format, Custom-Excel-Sheets …).
+        Mit dem <span class="font-medium">Ziel</span>-Filter z. B. nur die Jira-Tickets exportieren —
+        direkt im Jira-Plugin hochladbar, ohne Nacharbeit.
       </p>
-      <form method="get" action="/entries/export" class="flex flex-wrap items-end gap-2">
+      <form method="get" action="/entries/export" class="flex flex-wrap items-end gap-2"
+            data-download="true">
         <label class="text-xs">
           <span class="block text-slate-500 mb-1">Format</span>
           <select name="format_id" required
@@ -85,6 +190,16 @@
               <option value="{{ f.id }}">
                 {{ f.name }} {% if f.is_global %}(global){% else %}(privat){% endif %}
               </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="text-xs">
+          <span class="block text-slate-500 mb-1">Ziel</span>
+          <select name="target"
+                  class="h-9 border border-slate-300 rounded px-2 bg-white text-sm">
+            <option value="">— alle —</option>
+            {% for tok, label in cards %}
+              <option value="{{ tok }}">{{ label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -101,4 +216,21 @@
   </section>
 
 </div>
+
+{# Inline-Felder der „Daten ergänzen"-Formulare rendern (gleiche Dropdowns wie
+   im Projekt-/Eintrags-Edit, inkl. Live-Projektbesetzungen). #}
+<script>window.SYNC_DYNAMIC_OPTIONS = {{ (sync_dynamic_options or {}) | tojson }};</script>
+{% include "_sync_fields_js.html" %}
+<script>
+  (function () {
+    document.querySelectorAll(".sync-fix").forEach(function (box) {
+      var form = box.closest("form");
+      var specEl = form ? form.querySelector(".sync-fix-spec") : null;
+      if (!specEl) return;
+      var spec;
+      try { spec = JSON.parse(specEl.textContent); } catch (e) { return; }
+      window.renderSyncFields(box, spec.registry, spec.target, spec.current || {});
+    });
+  })();
+</script>
 {% endblock %}

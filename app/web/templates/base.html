@@ -1,169 +1,436 @@
 <!doctype html>
-<html lang="de" data-theme="{{ theme or 'indigo' }}">
+<html lang="de" data-theme="{{ theme or 'dark' }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
   <title>{{ title or "TimeHub" }}</title>
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Theme overrides. The base CSS is the default (indigo). The other
-       themes just remap indigo Tailwind utilities to their own palette
-       and, for dark, swap the slate background tones. Keeps the templates
-       free of theme branching. */
-
-    /* --- mindsquare (warm orange) --- exact hex values are a placeholder ---
-       wait for the user's brand-manual to confirm. */
-    [data-theme="mindsquare"] .bg-indigo-500 { background-color: #ff6e1c !important; }
-    [data-theme="mindsquare"] .bg-indigo-600 { background-color: #f06616 !important; }
-    [data-theme="mindsquare"] .hover\:bg-indigo-700:hover { background-color: #d65612 !important; }
-    [data-theme="mindsquare"] .text-indigo-600 { color: #d65612 !important; }
-    [data-theme="mindsquare"] .hover\:text-indigo-600:hover { color: #d65612 !important; }
-    [data-theme="mindsquare"] .border-indigo-200 { border-color: #ffd6b8 !important; }
-
-    /* --- dark --- */
-    html[data-theme="dark"] body { background-color: #0f172a; color: #e2e8f0; }
-    [data-theme="dark"] .bg-white { background-color: #1e293b !important; }
-    [data-theme="dark"] .bg-slate-50 { background-color: #18202f !important; }
-    [data-theme="dark"] .bg-emerald-50 { background-color: #064e3b !important; color: #d1fae5 !important; }
-    [data-theme="dark"] .bg-amber-50 { background-color: #422006 !important; color: #fde68a !important; }
-    [data-theme="dark"] .bg-rose-50 { background-color: #450a0a !important; color: #fecaca !important; }
-    [data-theme="dark"] .border-slate-100 { border-color: #1e293b !important; }
-    [data-theme="dark"] .border-slate-200 { border-color: #334155 !important; }
-    [data-theme="dark"] .border-slate-300 { border-color: #475569 !important; }
-    [data-theme="dark"] .border-emerald-200 { border-color: #047857 !important; }
-    [data-theme="dark"] .border-amber-200 { border-color: #92400e !important; }
-    [data-theme="dark"] .border-rose-200 { border-color: #991b1b !important; }
-    [data-theme="dark"] .text-slate-400 { color: #94a3b8 !important; }
-    [data-theme="dark"] .text-slate-500 { color: #94a3b8 !important; }
-    [data-theme="dark"] .text-slate-600 { color: #cbd5e1 !important; }
-    [data-theme="dark"] .text-slate-700 { color: #e2e8f0 !important; }
-    [data-theme="dark"] .text-slate-900 { color: #f1f5f9 !important; }
-    [data-theme="dark"] .text-emerald-700 { color: #6ee7b7 !important; }
-    [data-theme="dark"] .text-emerald-900 { color: #d1fae5 !important; }
-    [data-theme="dark"] .text-amber-700, [data-theme="dark"] .text-amber-800, [data-theme="dark"] .text-amber-900 { color: #fde68a !important; }
-    [data-theme="dark"] .text-rose-600, [data-theme="dark"] .text-rose-700 { color: #fda4af !important; }
-    [data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
-      background-color: #0f172a !important; color: #e2e8f0 !important;
+    *, *::before, *::after {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      box-sizing: border-box;
     }
+
+    /* ── Design Tokens ──────────────────────────────────────────────── */
+    :root {
+      --bg:        #1A1A1A;
+      --surface:   #242422;
+      --surface2:  #2C2C2A;
+      --border:    #383836;
+      --border2:   #464644;
+      --text:      #E0E0DE;
+      --muted:     #888886;
+      --faint:     #555553;
+
+      --purple:    #9B8AFB;
+      --orange:    #E8A060;
+      --teal:      #5AC8A0;
+      --olive:     #A8B858;
+
+      --purple-shadow: #6B5FD8;
+      --teal-shadow:   #3AA878;
+      --orange-shadow: #C07830;
+    }
+
+    /* ── Base ───────────────────────────────────────────────────────── */
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Zero border-radius (pixel-style) ──────────────────────────── */
+    *, *::before, *::after { border-radius: 0 !important; }
+    /* restore only true pills/circles */
+    .rounded-full { border-radius: 9999px !important; }
+
+    /* ── Tailwind overrides: colours ────────────────────────────────── */
+    .bg-white                           { background-color: var(--surface)  !important; }
+    .bg-slate-50                        { background-color: var(--surface2) !important; }
+    .bg-slate-100                       { background-color: var(--surface2) !important; }
+    .border-slate-100                   { border-color: var(--border)       !important; }
+    .border-slate-200                   { border-color: var(--border)       !important; }
+    .border-slate-300                   { border-color: var(--border2)      !important; }
+    .text-slate-900                     { color: var(--text)   !important; }
+    .text-slate-700                     { color: var(--text)   !important; }
+    .text-slate-600                     { color: var(--muted)  !important; }
+    .text-slate-500                     { color: var(--muted)  !important; }
+    .text-slate-400                     { color: var(--faint)  !important; }
+    input, select, textarea             { background-color: var(--bg) !important; color: var(--text) !important; border-color: var(--border2) !important; }
+    input:focus, select:focus, textarea:focus { border-color: var(--purple) !important; box-shadow: 2px 2px 0 var(--purple) !important; outline: none !important; }
+
+    /* ── Indigo → purple remap ──────────────────────────────────────── */
+    .bg-indigo-600                      { background-color: var(--purple)        !important; }
+    .bg-indigo-500                      { background-color: var(--purple)        !important; }
+    .bg-indigo-700                      { background-color: var(--purple-shadow) !important; }
+    .hover\:bg-indigo-700:hover         { background-color: var(--purple-shadow) !important; }
+    .text-indigo-600                    { color: var(--purple) !important; }
+    .hover\:text-indigo-600:hover       { color: var(--purple) !important; }
+    .focus\:ring-indigo-500:focus       { --tw-ring-color: var(--purple) !important; }
+    .border-indigo-200                  { border-color: var(--purple) !important; }
+    .bg-indigo-50                       { background-color: rgba(155,138,251,.08) !important; }
+
+    /* ── Pixel shadows on cards ─────────────────────────────────────── */
+    .bg-white { box-shadow: 3px 3px 0 var(--border2) !important; }
+
+    /* Coloured card accents (add these classes to individual stat cards) */
+    .th-card-purple { border-color: var(--purple) !important; box-shadow: 3px 3px 0 var(--purple-shadow) !important; }
+    .th-card-teal   { border-color: var(--teal)   !important; box-shadow: 3px 3px 0 var(--teal-shadow)   !important; }
+    .th-card-orange { border-color: var(--orange)  !important; box-shadow: 3px 3px 0 var(--orange-shadow) !important; }
+    .th-card-olive  { border-color: var(--olive)   !important; box-shadow: 3px 3px 0 #708038             !important; }
+
+    /* Coloured numbers inside accent cards */
+    .th-card-purple .th-stat-val { color: var(--purple) !important; }
+    .th-card-teal   .th-stat-val { color: var(--teal)   !important; }
+    .th-card-orange .th-stat-val { color: var(--orange)  !important; }
+
+    /* ── Button pixel shadows ───────────────────────────────────────── */
+    .bg-indigo-600 {
+      box-shadow: 3px 3px 0 var(--purple-shadow) !important;
+      transition: transform .08s, box-shadow .08s !important;
+    }
+    .bg-indigo-600:hover {
+      transform: translate(-1px, -1px) !important;
+      box-shadow: 4px 4px 0 var(--purple-shadow) !important;
+    }
+    .bg-indigo-600:active {
+      transform: translate(2px, 2px) !important;
+      box-shadow: 1px 1px 0 var(--purple-shadow) !important;
+    }
+
+    .bg-slate-800, .bg-slate-900,
+    .hover\:bg-slate-900:hover          { background-color: var(--teal) !important; color: #1A1A1A !important; }
+    .bg-slate-800 { box-shadow: 3px 3px 0 var(--teal-shadow) !important; }
+
+    .bg-emerald-600, .hover\:bg-emerald-700:hover { background-color: var(--olive) !important; color: #1A1A1A !important; }
+    .bg-sky-600, .hover\:bg-sky-700:hover         { background-color: var(--teal) !important; color: #1A1A1A !important; }
+    .bg-rose-600                                  { background-color: #c42929 !important; box-shadow: 3px 3px 0 #7f1010 !important; }
+    .hover\:bg-rose-700:hover                     { background-color: #a31e1e !important; }
+
+    /* ── Alert / banner colours ─────────────────────────────────────── */
+    .bg-emerald-50  { background-color: #0D2E1E !important; color: #6ee7b7 !important; }
+    .bg-amber-50    { background-color: #2C1A04 !important; color: #fde68a !important; }
+    .bg-rose-50     { background-color: #2C0808 !important; color: #fca5a5 !important; }
+    .border-emerald-200 { border-color: #047857 !important; }
+    .border-amber-200   { border-color: #92400e !important; }
+    .border-rose-200    { border-color: #991b1b !important; }
+    .text-emerald-700, .text-emerald-800, .text-emerald-900 { color: #6ee7b7 !important; }
+    .text-amber-700, .text-amber-800, .text-amber-900       { color: #fde68a !important; }
+    .text-rose-600, .text-rose-700                          { color: #fca5a5 !important; }
+
+    /* ── Table ──────────────────────────────────────────────────────── */
+    thead.bg-slate-50 { background-color: var(--surface2) !important; }
+    .border-t          { border-color: var(--border) !important; }
+
+    /* ── Outfit font utility ────────────────────────────────────────── */
+    .th-outfit { font-family: 'Outfit', system-ui, sans-serif !important; }
+
+    /* ── Nav links ──────────────────────────────────────────────────── */
+    .th-nav-link {
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: .6875rem;
+      font-weight: 700;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding-bottom: 3px;
+      border-bottom: 2px solid transparent;
+      transition: color .12s, border-color .12s;
+      white-space: nowrap;
+    }
+    .th-nav-link:hover     { color: var(--text); }
+    .th-nav-link.th-active { color: var(--text); border-bottom-color: var(--text); }
+
+    /* ── Section title with colour bar ─────────────────────────────── */
+    .th-section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .th-section-title::before {
+      content: '';
+      display: block;
+      width: 3px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+    .th-section-purple::before { background: var(--purple); }
+    .th-section-teal::before   { background: var(--teal);   }
+    .th-section-orange::before { background: var(--orange);  }
+    .th-section-olive::before  { background: var(--olive);  }
+
+    /* ── Calendar project blocks (theme-aware tint) ─────────────────── */
+    /* Each block carries its project colour in --proj; the background is
+       mixed against the theme background (var(--bg)) so the same stored
+       colour renders dark-tinted in dark mode and light-tinted in light
+       mode. Text stays readable via the theme's --text / --muted tokens. */
+    .cal-block {
+      border-left: 3px solid var(--proj, var(--purple)) !important;
+      background-color: color-mix(in srgb, var(--proj, var(--purple)) 18%, var(--bg));
+    }
+    /* Light backgrounds wash colours out faster, so tint a touch stronger. */
+    html[data-theme="light"] .cal-block {
+      background-color: color-mix(in srgb, var(--proj, var(--purple)) 26%, var(--bg));
+    }
+
+    /* ── User dropdown ──────────────────────────────────────────────── */
+    #user-menu { display: none; }
+    #user-menu.open { display: block; }
+
+    /* ── mindsquare theme ───────────────────────────────────────────── */
+    [data-theme="mindsquare"] .bg-indigo-600                { background-color: #f06616 !important; }
+    [data-theme="mindsquare"] .bg-indigo-500                { background-color: #ff6e1c !important; }
+    [data-theme="mindsquare"] .bg-indigo-700                { background-color: #d65612 !important; }
+    [data-theme="mindsquare"] .hover\:bg-indigo-700:hover   { background-color: #d65612 !important; }
+    [data-theme="mindsquare"] .text-indigo-600              { color: #f06616 !important; }
+    [data-theme="mindsquare"] .hover\:text-indigo-600:hover { color: #f06616 !important; }
+    [data-theme="mindsquare"] .border-indigo-200            { border-color: #ffd6b8 !important; }
+
+    /* ── light theme (opt-in) ───────────────────────────────────────── */
+    html[data-theme="light"] {
+      --bg:      #EDEDED;
+      --surface: #F5F5F5;
+      --surface2:#EBEBEB;
+      --border:  #D4D4D2;
+      --border2: #C4C4C2;
+      --text:    #2B2B2B;
+      --muted:   #636363;
+      --faint:   #909090;
+    }
+    html[data-theme="light"] body       { background-color: var(--bg); color: var(--text); }
+    html[data-theme="light"] header     { background-color: #F7F7F5 !important; }
+    html[data-theme="light"] input,
+    html[data-theme="light"] select,
+    html[data-theme="light"] textarea   { background-color: #fff !important; color: var(--text) !important; }
+    html[data-theme="light"] .bg-white  { box-shadow: 3px 3px 0 #C4C4C2 !important; }
+    html[data-theme="light"] .th-card-purple { box-shadow: 3px 3px 0 var(--purple-shadow) !important; }
+    html[data-theme="light"] .th-card-teal   { box-shadow: 3px 3px 0 var(--teal-shadow)   !important; }
+    html[data-theme="light"] .th-card-orange { box-shadow: 3px 3px 0 var(--orange-shadow)  !important; }
+    html[data-theme="light"] .bg-emerald-50  { background-color: #dcfce7 !important; color: #166534 !important; }
+    html[data-theme="light"] .bg-amber-50    { background-color: #fffbeb !important; color: #92400e !important; }
+    html[data-theme="light"] .bg-rose-50     { background-color: #fff1f2 !important; color: #9f1239 !important; }
+    html[data-theme="light"] .text-emerald-700 { color: #15803d !important; }
+    html[data-theme="light"] .text-amber-700   { color: #b45309 !important; }
+    html[data-theme="light"] .text-rose-600    { color: #e11d48 !important; }
+    html[data-theme="light"] .bg-slate-800,
+    html[data-theme="light"] .hover\:bg-slate-900:hover { background-color: var(--teal) !important; color: #1A1A1A !important; }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900">
-  <header class="bg-white border-b border-slate-200">
-    <div class="max-w-5xl mx-auto px-4 py-3">
-      <div class="flex items-center justify-between gap-2">
-        <a href="/" class="flex items-center gap-2 font-semibold text-lg">
-          <img src="/static/icon.svg" alt="" class="w-7 h-7" />
+<body class="text-slate-900 min-h-screen">
+
+  <header class="border-b border-slate-200" style="background-color: var(--surface);">
+    <div class="max-w-5xl mx-auto px-4">
+      <div class="flex items-center h-14 gap-6">
+
+        {# Logo #}
+        <a href="/" class="th-outfit flex items-center gap-2 font-bold text-sm tracking-tight shrink-0"
+           style="color: var(--text); text-decoration: none;">
+          <img src="/static/icon.svg" alt="" class="w-7 h-7" style="image-rendering: pixelated;" />
           TimeHub
         </a>
+
         {% if user %}
+          {# Mobile hamburger #}
           <button type="button" id="nav-toggle" aria-label="Menü"
-                  class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded border border-slate-300">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke-linecap="round"/>
+                  class="md:hidden ml-auto inline-flex items-center justify-center w-9 h-9 border border-slate-300">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 4h14M2 9h14M2 14h14" stroke-linecap="square"/>
             </svg>
           </button>
+
+          {# Desktop nav #}
+          {% set p = request.url.path %}
+          <nav class="hidden md:flex items-center gap-7 flex-1">
+            <a href="/"          class="th-nav-link {% if p == '/' %}th-active{% endif %}">Dashboard</a>
+            <a href="/calendar"  class="th-nav-link {% if p.startswith('/calendar') %}th-active{% endif %}">Kalender</a>
+            <a href="/import"    class="th-nav-link {% if p.startswith('/import') and not p.startswith('/import-formats') %}th-active{% endif %}">Import</a>
+            <a href="/reports"   class="th-nav-link {% if p.startswith('/reports') %}th-active{% endif %}">Reports</a>
+            <a href="/sync"      class="th-nav-link {% if p.startswith('/sync') %}th-active{% endif %}">Sync</a>
+          </nav>
+
+          {# User dropdown #}
+          <div class="hidden md:block relative shrink-0 ml-auto" id="user-menu-wrapper">
+            <button id="user-menu-btn"
+                    class="flex items-center gap-1.5 text-xs font-medium border border-slate-300 px-2.5 py-1.5 transition-colors"
+                    style="color: var(--muted); background: transparent;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+              </svg>
+              <span class="hidden lg:inline max-w-[120px] truncate">{{ user.email.split('@')[0] }}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+
+            <div id="user-menu"
+                 class="absolute right-0 top-full mt-1 w-52 border border-slate-200 shadow-lg z-50 py-1"
+                 style="background-color: var(--surface);">
+              <div class="px-3 py-2 text-xs border-b border-slate-200 truncate" style="color: var(--faint);">
+                {{ user.email }}
+              </div>
+              <a href="/projects"       class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Projekte</a>
+              <a href="/import-formats" class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Formate</a>
+              {% if user.is_admin %}
+                <a href="/users"        class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Nutzer</a>
+              {% endif %}
+              <a href="/profile"        class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Profil</a>
+              <a href="/docs"           class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">API</a>
+              <div class="border-t border-slate-200 mt-1 pt-1">
+                <form action="/settings/theme" method="post" class="px-3 py-1" data-no-loading="true">
+                  <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
+                  <label class="block text-xs mb-1" style="color: var(--faint);">Design</label>
+                  <select name="theme" onchange="this.form.submit()"
+                          class="w-full text-xs border border-slate-300 px-2 py-1"
+                          style="background: var(--bg); color: var(--text);">
+                    {% for t, label in [('dark', 'Dunkel (Standard)'), ('light', 'Hell'), ('mindsquare', 'mindsquare')] %}
+                      <option value="{{ t }}" {% if (theme or 'dark') == t %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+                <form action="/logout" method="post" class="px-3 pb-1" data-no-loading="true">
+                  <button type="submit" class="w-full text-left text-sm py-1.5 transition-colors"
+                          style="color: #fca5a5; background: none; border: none; cursor: pointer;">
+                    Abmelden
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+        {% else %}
+          <nav class="hidden md:flex items-center gap-6 ml-auto">
+            <a href="/login" class="th-nav-link">Login</a>
+            <a href="/docs"  class="th-nav-link">API</a>
+          </nav>
         {% endif %}
-        <nav class="hidden md:flex text-sm items-center gap-4">
-          {% if user %}
-            <a href="/" class="hover:text-indigo-600">Dashboard</a>
-            <a href="/calendar" class="hover:text-indigo-600">Kalender</a>
-            <a href="/reports" class="hover:text-indigo-600">Reports</a>
-            <a href="/sync" class="hover:text-indigo-600">Sync</a>
-            <a href="/projects" class="hover:text-indigo-600">Projekte</a>
-            <a href="/import" class="hover:text-indigo-600">Import</a>
-            <a href="/import-formats" class="hover:text-indigo-600">Formate</a>
-            {% if user.is_admin %}
-              <a href="/users" class="hover:text-indigo-600">Nutzer</a>
-            {% endif %}
-            <a href="/profile" class="hover:text-indigo-600">Profil</a>
-            <a href="/docs" class="hover:text-indigo-600">API</a>
-            <span class="text-slate-500 hidden lg:inline">{{ user.email }}</span>
-            <form action="/settings/theme" method="post" class="inline">
-              <select name="theme" onchange="this.form.submit()"
-                      class="text-xs border border-slate-300 rounded px-1 py-0.5 bg-white">
-                {% for t, label in [('indigo', 'Indigo'), ('mindsquare', 'mindsquare'), ('dark', 'Dark')] %}
-                  <option value="{{ t }}" {% if (theme or 'indigo') == t %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </form>
-            <form action="/logout" method="post">
-              <button class="text-rose-600 hover:underline" type="submit">Logout</button>
-            </form>
-          {% else %}
-            <a href="/login" class="hover:text-indigo-600">Login</a>
-            <a href="/docs" class="hover:text-indigo-600">API</a>
-          {% endif %}
-        </nav>
+
       </div>
 
       {% if user %}
-        {# Mobile menu — toggled by the hamburger, hidden on md+ #}
-        <nav id="nav-mobile" class="hidden md:hidden mt-3 pt-3 border-t border-slate-200 flex-col gap-1 text-sm">
-          <a href="/" class="block py-2 hover:text-indigo-600">Dashboard</a>
-          <a href="/calendar" class="block py-2 hover:text-indigo-600">Kalender</a>
-          <a href="/reports" class="block py-2 hover:text-indigo-600">Reports</a>
-          <a href="/sync" class="block py-2 hover:text-indigo-600">Sync</a>
-          <a href="/projects" class="block py-2 hover:text-indigo-600">Projekte</a>
-          <a href="/import" class="block py-2 hover:text-indigo-600">Import</a>
-          <a href="/import-formats" class="block py-2 hover:text-indigo-600">Formate</a>
+        <nav id="nav-mobile"
+             class="hidden md:hidden border-t border-slate-200 py-3 flex-col gap-0.5 text-sm">
+          <a href="/"               class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Dashboard</a>
+          <a href="/calendar"       class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Kalender</a>
+          <a href="/import"         class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Import</a>
+          <a href="/reports"        class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Reports</a>
+          <a href="/sync"           class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Sync</a>
+          <a href="/projects"       class="block px-1 py-2 hover:underline" style="color: var(--muted);">Projekte</a>
+          <a href="/import-formats" class="block px-1 py-2 hover:underline" style="color: var(--muted);">Formate</a>
           {% if user.is_admin %}
-            <a href="/users" class="block py-2 hover:text-indigo-600">Nutzer</a>
+            <a href="/users"        class="block px-1 py-2 hover:underline" style="color: var(--muted);">Nutzer</a>
           {% endif %}
-          <a href="/profile" class="block py-2 hover:text-indigo-600">Profil</a>
-          <a href="/docs" class="block py-2 hover:text-indigo-600">API</a>
-          <div class="flex items-center justify-between py-2 border-t border-slate-100 mt-1">
-            <form action="/settings/theme" method="post">
+          <a href="/profile"        class="block px-1 py-2 hover:underline" style="color: var(--muted);">Profil</a>
+          <a href="/docs"           class="block px-1 py-2 hover:underline" style="color: var(--muted);">API</a>
+          <div class="flex items-center gap-3 pt-3 mt-1 border-t border-slate-200">
+            <form action="/settings/theme" method="post" data-no-loading="true">
+              <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
               <select name="theme" onchange="this.form.submit()"
-                      class="text-xs border border-slate-300 rounded px-2 py-1 bg-white">
-                {% for t, label in [('indigo', 'Indigo'), ('mindsquare', 'mindsquare'), ('dark', 'Dark')] %}
-                  <option value="{{ t }}" {% if (theme or 'indigo') == t %}selected{% endif %}>{{ label }}</option>
+                      class="text-xs border border-slate-300 px-2 py-1"
+                      style="background: var(--bg); color: var(--text);">
+                {% for t, label in [('dark', 'Dunkel'), ('light', 'Hell'), ('mindsquare', 'mindsquare')] %}
+                  <option value="{{ t }}" {% if (theme or 'dark') == t %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
             </form>
-            <span class="text-slate-500 text-xs truncate ml-2">{{ user.email }}</span>
-            <form action="/logout" method="post" class="ml-2">
-              <button class="text-rose-600 hover:underline" type="submit">Logout</button>
+            <span class="text-xs truncate flex-1" style="color: var(--muted);">{{ user.email }}</span>
+            <form action="/logout" method="post" data-no-loading="true">
+              <button type="submit" class="text-sm hover:underline" style="color: #fca5a5; background: none; border: none; cursor: pointer;">Abmelden</button>
             </form>
           </div>
         </nav>
       {% endif %}
+
     </div>
   </header>
+
   <main class="max-w-5xl mx-auto px-4 py-6">
     {% block content %}{% endblock %}
   </main>
 
-  {# Global loading overlay: shown on form submit and on AJAX previews that
-     might wait on the server (CSV processing, AI). The overlay is removed on
-     pageshow / fetch end. #}
+  {# Loading overlay #}
   <div id="loading-overlay"
-       class="hidden fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[1px] items-center justify-center"
-       style="display:none">
-    <div class="bg-white rounded-lg shadow-xl px-5 py-4 flex items-center gap-3 text-sm">
-      <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg"
-           fill="none" viewBox="0 0 24 24">
+       class="hidden fixed inset-0 z-50 items-center justify-center"
+       style="display:none; background: rgba(0,0,0,.5);">
+    <div class="px-5 py-4 flex items-center gap-3 text-sm border border-slate-200"
+         style="background: var(--surface); box-shadow: 4px 4px 0 var(--border2);">
+      <svg class="animate-spin h-5 w-5" style="color: var(--purple);"
+           xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor"
-              d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path>
       </svg>
-      <span id="loading-overlay-label" class="text-slate-700">Bitte warten …</span>
+      <span id="loading-overlay-label" style="color: var(--text);">Bitte warten …</span>
     </div>
   </div>
 
   <script>
+    // CSRF: stamp the session token onto every same-origin mutating request,
+    // whether it goes out as a classic form POST or via fetch()/XHR.
+    (function () {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      var token = meta ? meta.getAttribute("content") : "";
+      if (!token) return;
+      var UNSAFE = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+
+      document.addEventListener("submit", function (e) {
+        var f = e.target;
+        if (!(f instanceof HTMLFormElement)) return;
+        if ((f.method || "").toUpperCase() !== "POST") return;
+        if (f.querySelector('input[name="csrf_token"]')) return;
+        var inp = document.createElement("input");
+        inp.type = "hidden";
+        inp.name = "csrf_token";
+        inp.value = token;
+        f.appendChild(inp);
+      }, true);
+
+      var _fetch = window.fetch;
+      if (_fetch) {
+        window.fetch = function (input, init) {
+          init = init || {};
+          var method = (init.method ||
+            (input && typeof input !== "string" && input.method) || "GET").toUpperCase();
+          if (UNSAFE[method]) {
+            var headers = new Headers(init.headers ||
+              (input && typeof input !== "string" && input.headers) || {});
+            if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", token);
+            init.headers = headers;
+          }
+          return _fetch.call(this, input, init);
+        };
+      }
+    })();
+  </script>
+  <script>
     (function () {
       var overlay = document.getElementById("loading-overlay");
-      var label = document.getElementById("loading-overlay-label");
+      var label   = document.getElementById("loading-overlay-label");
       if (!overlay) return;
-      function show(msg) {
-        if (msg) label.textContent = msg;
-        overlay.style.display = "flex";
-      }
-      function hide() { overlay.style.display = "none"; label.textContent = "Bitte warten …"; }
+      function show(msg) { if (msg) label.textContent = msg; overlay.style.display = "flex"; }
+      function hide()    { overlay.style.display = "none"; label.textContent = "Bitte warten …"; }
       window.showLoading = show;
       window.hideLoading = hide;
-      // Show on any form submit unless the form opts out with data-no-loading.
+      // A file download doesn't navigate the page, so `pageshow` never fires to
+      // hide the overlay. The download form hands the server a one-shot token;
+      // the server echoes it back as a `th_dl` cookie on the response, and we
+      // hide the overlay as soon as that cookie appears (with a safety timeout).
+      function watchDownload(token) {
+        var started = Date.now();
+        var iv = setInterval(function () {
+          var done = document.cookie.indexOf("th_dl=" + token) !== -1;
+          if (done || Date.now() - started > 30000) {
+            clearInterval(iv);
+            document.cookie = "th_dl=; path=/; Max-Age=0";
+            hide();
+          }
+        }, 250);
+      }
       document.addEventListener("submit", function (e) {
         var f = e.target;
         if (!(f instanceof HTMLFormElement)) return;
@@ -171,21 +438,29 @@
         var msg = f.dataset.loadingMessage;
         if (!msg) {
           var action = (f.action || "").toString();
-          if (action.indexOf("/import-formats/new") !== -1) msg = "KI analysiert die CSV …";
-          else if (action.indexOf("/refine") !== -1) msg = "KI schärft das Mapping nach …";
+          if      (action.indexOf("/import-formats/new")          !== -1) msg = "KI analysiert die CSV …";
+          else if (action.indexOf("/refine")                       !== -1) msg = "KI schärft das Mapping nach …";
           else if (action.indexOf("/import") !== -1 && f.method.toLowerCase() === "post") msg = "Import läuft …";
-          else if (action.indexOf("/sync/salesforce/preview") !== -1) msg = "Salesforce wird abgefragt …";
-          else if (action.indexOf("/settings/salesforce/test") !== -1) msg = "Salesforce-Login wird geprüft …";
+          else if (action.indexOf("/sync/salesforce/preview")      !== -1) msg = "Salesforce wird abgefragt …";
+          else if (action.indexOf("/settings/salesforce/test")     !== -1) msg = "Salesforce-Login wird geprüft …";
+        }
+        if (f.dataset.download === "true") {
+          var token = String(Date.now()) + Math.random().toString(36).slice(2);
+          var inp = document.createElement("input");
+          inp.type = "hidden"; inp.name = "dl_token"; inp.value = token;
+          f.appendChild(inp);
+          show(msg || "Export wird erstellt …");
+          watchDownload(token);
+          return;
         }
         show(msg);
       }, true);
-      // On bfcache restore, hide overlay (browser back/forward).
       window.addEventListener("pageshow", hide);
     })();
   </script>
   <script>
     (function () {
-      var btn = document.getElementById("nav-toggle");
+      var btn  = document.getElementById("nav-toggle");
       var menu = document.getElementById("nav-mobile");
       if (btn && menu) {
         btn.addEventListener("click", function () {
@@ -196,5 +471,23 @@
       }
     })();
   </script>
+  <script>
+    (function () {
+      var btn  = document.getElementById("user-menu-btn");
+      var menu = document.getElementById("user-menu");
+      if (!btn || !menu) return;
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        menu.classList.toggle("open");
+      });
+      // Close only when the click lands outside the menu and its trigger —
+      // interacting with anything inside (e.g. the theme picker) keeps it open.
+      document.addEventListener("click", function (e) {
+        if (btn.contains(e.target) || menu.contains(e.target)) return;
+        menu.classList.remove("open");
+      });
+    })();
+  </script>
+
 </body>
 </html>

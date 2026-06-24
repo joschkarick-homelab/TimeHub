@@ -37,6 +37,9 @@ class SyncField:
     default: str | None = None
     # Hint to the renderer: load runtime options from window.SYNC_DYNAMIC_OPTIONS[options_source].
     options_source: str | None = None
+    # Render as a fuzzy-search combobox instead of a plain <select>. Options
+    # may carry a `search` string (Klartext) the renderer matches against.
+    searchable: bool = False
 
 
 _JIRA_ISSUE = r"[A-Z][A-Z0-9]+-\d+"
@@ -70,10 +73,12 @@ TARGET_FIELDS: dict[str, list[SyncField]] = {
             level="project",
             required=True,
             pattern=r"[a-zA-Z0-9]{15,18}",
-            placeholder="a01...",
-            help="Id der Salesforce-Projektbesetzung; daraus werden Projekt und Mitarbeiter abgeleitet.",
-            # Dropdown mit allen aktiven, dem User zugeordneten PBs (Live-SOQL).
+            placeholder="Suchen: Kunde, Projektname oder Projektnummer (P0000…)",
+            help="Id der Salesforce-Projektbesetzung; daraus werden Projekt und Mitarbeiter abgeleitet. "
+                 "Suchbar nach Kunde, Projektname und Projektnummer.",
+            # Combobox mit den aktuell laufenden, offenen PBs des Users (Live-SOQL).
             options_source="sf_assignments",
+            searchable=True,
         ),
         SyncField(
             key="remote",
@@ -126,6 +131,31 @@ def entry_fields(target: str) -> list[SyncField]:
 def effective_target(entry, project) -> str:
     """Entry override wins over the project default."""
     return entry.sync_target_override or project.default_sync_target
+
+
+def project_targets(project) -> list[str]:
+    """The project's default target set. Falls back to the single
+    `default_sync_target` when the multi-target list is empty (back-compat).
+    Non-sync targets (intern/none) are dropped."""
+    raw = list(getattr(project, "sync_targets", None) or [])
+    if not raw:
+        dt = getattr(project, "default_sync_target", None)
+        raw = [dt] if dt else []
+    return [t for t in raw if t not in NON_SYNC_TARGETS]
+
+
+def effective_targets(entry, project) -> list[str]:
+    """Effective target *set* for an entry, without applying rules.
+
+    A per-entry override (multi or legacy single) wins; otherwise the project
+    default set. For the rule-aware resolution use services.sync_rules."""
+    override = getattr(entry, "sync_targets_override", None)
+    if override:
+        return sorted({t for t in override if t not in NON_SYNC_TARGETS})
+    if getattr(entry, "sync_target_override", None):
+        t = entry.sync_target_override
+        return [] if t in NON_SYNC_TARGETS else [t]
+    return project_targets(project)
 
 
 def _get(md: dict | None, target: str, key: str) -> str | None:
@@ -185,13 +215,12 @@ def apply_fields(
     return md, warnings
 
 
-def entry_sync_status(entry, project) -> dict:
-    """Whether an entry has everything its effective target needs to sync.
+def status_for_target(entry, project, target: str) -> dict:
+    """Whether an entry has everything a *given* target needs to sync.
 
     Considers both project-level and entry-level required fields, plus format
     validity of any value that is present. intern/none never need a push.
     """
-    target = effective_target(entry, project)
     if target in NON_SYNC_TARGETS:
         return {"target": target, "needs_sync": False, "ready": True, "missing": []}
 
@@ -206,6 +235,43 @@ def entry_sync_status(entry, project) -> dict:
         elif val and validate_value(f, val):
             missing.append(f"{f.label} (Format)")
     return {"target": target, "needs_sync": True, "ready": not missing, "missing": missing}
+
+
+def entry_sync_status(entry, project) -> dict:
+    """Sync-readiness for the entry's single effective target (legacy view)."""
+    return status_for_target(entry, project, effective_target(entry, project))
+
+
+def entry_sync_statuses(entry, project, targets) -> dict[str, dict]:
+    """Sync-readiness per target for a multi-target entry, keyed by target."""
+    return {t: status_for_target(entry, project, t) for t in targets}
+
+
+def _field_is_missing(field: SyncField, val: str | None) -> bool:
+    """A field counts as a gap when required-but-empty or present-but-malformed."""
+    if field.required and not val:
+        return True
+    return bool(val and validate_value(field, val))
+
+
+def missing_project_fields(project, target: str) -> list[SyncField]:
+    """Required/invalid project-level fields blocking a sync to `target`."""
+    if target in NON_SYNC_TARGETS:
+        return []
+    return [
+        f for f in project_fields(target)
+        if _field_is_missing(f, project_value(project, target, f.key))
+    ]
+
+
+def missing_entry_fields(entry, project, target: str) -> list[SyncField]:
+    """Required/invalid entry-level fields blocking a sync to `target`."""
+    if target in NON_SYNC_TARGETS:
+        return []
+    return [
+        f for f in entry_fields(target)
+        if _field_is_missing(f, entry_value(entry, project, f, target))
+    ]
 
 
 def project_sync_status(project) -> dict:
@@ -223,26 +289,32 @@ def project_sync_status(project) -> dict:
     return {"target": target, "needs_sync": True, "ready": not missing, "missing": missing}
 
 
+def _field_dict(f: SyncField) -> dict:
+    return {
+        "key": f.key,
+        "label": f.label,
+        "required": f.required,
+        "pattern": f.pattern or "",
+        "placeholder": f.placeholder,
+        "help": f.help,
+        "inherit_from_project": f.inherit_from_project or "",
+        "choices": [{"value": v, "label": lbl} for v, lbl in (f.choices or ())],
+        "default": f.default or "",
+        "options_source": f.options_source or "",
+        "searchable": f.searchable,
+    }
+
+
+def fields_json(fields: list[SyncField]) -> list[dict]:
+    """Serialize an explicit list of fields for the shared renderSyncFields JS."""
+    return [_field_dict(f) for f in fields]
+
+
 def registry_json(level: str) -> dict[str, list[dict]]:
     """Serialize the registry for embedding in templates / client JS."""
     out: dict[str, list[dict]] = {}
     for target, fields in TARGET_FIELDS.items():
-        out[target] = [
-            {
-                "key": f.key,
-                "label": f.label,
-                "required": f.required,
-                "pattern": f.pattern or "",
-                "placeholder": f.placeholder,
-                "help": f.help,
-                "inherit_from_project": f.inherit_from_project or "",
-                "choices": [{"value": v, "label": lbl} for v, lbl in (f.choices or ())],
-                "default": f.default or "",
-                "options_source": f.options_source or "",
-            }
-            for f in fields
-            if f.level == level
-        ]
+        out[target] = [_field_dict(f) for f in fields if f.level == level]
     return out
 
 

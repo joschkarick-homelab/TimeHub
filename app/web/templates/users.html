@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-xl font-semibold mb-4">Nutzerverwaltung</h1>
+<h1 class="text-xl font-bold th-outfit mb-4">Nutzerverwaltung</h1>
 
 {% if flash %}
   <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{{ flash }}</div>
@@ -9,8 +9,8 @@
   <div class="mb-4 text-sm text-rose-600">{{ error }}</div>
 {% endif %}
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-2">Globale KI-Vorgaben</h2>
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 th-section-title th-section-olive th-outfit">Globale KI-Vorgaben</h2>
   <p class="text-xs text-slate-500 mb-3">
     Standard-Anforderungen, die der Import-Assistent für <strong>alle</strong> Nutzer beachtet
     — z. B. „Eine Dauer wie 01:30:00 bedeutet 1 Stunde 30 Minuten 0 Sekunden (= 90 Minuten)".
@@ -25,8 +25,8 @@
   </form>
 </section>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-2">Salesforce-Integration</h2>
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 th-section-title th-section-teal th-outfit">Salesforce-Integration</h2>
   <p class="text-xs text-slate-500 mb-3">
     Zentraler API-User für den Salesforce/Certinia-PSA-Sync (für alle TimeHub-Nutzer).
     SOAP-Login per Username + Passwort; ein <strong>Security-Token ist nur nötig,
@@ -109,8 +109,8 @@
   </details>
 </section>
 
-<section class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
-  <h2 class="font-semibold mb-3">Neuen Nutzer anlegen</h2>
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 th-section-title th-section-purple th-outfit">Neuen Nutzer anlegen</h2>
   <form method="post" action="/users" class="grid sm:grid-cols-6 gap-3 items-end">
     <div class="sm:col-span-2">
       <label class="block text-xs font-medium mb-1">E-Mail</label>
@@ -135,8 +135,8 @@
   </form>
 </section>
 
-<section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
-  <h2 class="font-semibold p-5 pb-3">Vorhandene Nutzer</h2>
+<section class="bg-white border border-slate-200 overflow-hidden">
+  <h2 class="font-semibold px-5 pt-5 pb-3 th-section-title th-section-teal th-outfit">Vorhandene Nutzer</h2>
   <table class="w-full text-sm">
     <thead class="bg-slate-50 text-left text-slate-600">
       <tr>

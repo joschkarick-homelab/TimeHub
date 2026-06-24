@@ -72,7 +72,7 @@ _SAMPLE = "Date,Hours,Description\n2026-05-27,1.5,Ticket ABC-1: did things\n"
 
 def test_new_format_review_shows_ai_transforms(client, monkeypatch):
     _login_session(client)
-    import app.web.router as router
+    import app.web.routes.formats as router
     monkeypatch.setattr(router, "suggest_mapping", lambda text, **kw: _suggestion(
         transforms=[{"target": "sync:jira.issue_key", "op": "regex", "source": "Description",
                      "pattern": r"([A-Z]+-\d+)", "group": 1}],
@@ -94,7 +94,7 @@ def test_refine_passes_instruction_and_previous(client, monkeypatch):
     _login_session(client)
     import json
 
-    import app.web.router as router
+    import app.web.routes.formats as router
     captured = {}
 
     def fake_suggest(text, *, instruction=None, previous=None, hints=None):
@@ -128,7 +128,7 @@ def test_refine_without_instruction_warns_and_keeps_state(client, monkeypatch):
     _login_session(client)
     import json
 
-    import app.web.router as router
+    import app.web.routes.formats as router
     called = {"n": 0}
     monkeypatch.setattr(router, "suggest_mapping",
                         lambda *a, **k: called.__setitem__("n", called["n"] + 1) or _suggestion())
@@ -147,7 +147,7 @@ def test_refine_handles_ai_error_without_losing_state(client, monkeypatch):
     _login_session(client)
     import json
 
-    import app.web.router as router
+    import app.web.routes.formats as router
     from app.services.ai_mapping import AiMappingError
 
     def boom(*a, **k):
