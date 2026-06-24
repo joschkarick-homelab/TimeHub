@@ -43,6 +43,80 @@
   </form>
 </section>
 
+<section class="bg-white border border-slate-200 p-5 max-w-2xl mb-6">
+  <h2 class="font-semibold mb-1 th-section-title th-section-purple th-outfit">API-Keys</h2>
+  <p class="text-xs text-slate-500 mb-4">
+    Für externe Tools wie die Raycast-Extension oder den MCP-Server. Im Header
+    als <code class="px-1 bg-slate-100 rounded">X-API-Key</code> mitsenden.
+    Der Schlüssel wird aus Sicherheitsgründen nur einmal direkt nach dem
+    Erstellen angezeigt.
+  </p>
+
+  {% if new_api_key %}
+  <div class="mb-4 rounded border border-emerald-300 bg-emerald-50 p-3">
+    <p class="text-sm font-medium text-emerald-800 mb-1">
+      Neuer Key „{{ new_api_key_name }}" — jetzt kopieren, er wird nicht erneut angezeigt:
+    </p>
+    <div class="flex gap-2">
+      <input id="new-api-key" readonly value="{{ new_api_key }}"
+             class="flex-1 h-9 font-mono text-xs border border-emerald-300 rounded px-2 bg-white" />
+      <button type="button" onclick="thCopyApiKey()"
+              class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm">
+        Kopieren
+      </button>
+    </div>
+  </div>
+  <script>
+    function thCopyApiKey() {
+      var el = document.getElementById("new-api-key");
+      if (!el) return;
+      el.select();
+      navigator.clipboard && navigator.clipboard.writeText(el.value);
+    }
+  </script>
+  {% endif %}
+
+  <form method="post" action="/profile/api-keys" class="flex gap-2 mb-4">
+    <input name="name" placeholder="Bezeichnung (z. B. Raycast)" maxlength="120"
+           class="flex-1 h-10 border border-slate-300 rounded px-2 text-sm" />
+    <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-sm">
+      Key erstellen
+    </button>
+  </form>
+
+  {% if api_keys %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-slate-500 border-b border-slate-200">
+        <th class="py-1.5 font-medium">Name</th>
+        <th class="py-1.5 font-medium">Präfix</th>
+        <th class="py-1.5 font-medium">Erstellt</th>
+        <th class="py-1.5 font-medium">Zuletzt genutzt</th>
+        <th class="py-1.5"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for k in api_keys %}
+      <tr class="border-b border-slate-100">
+        <td class="py-1.5">{{ k.name }}</td>
+        <td class="py-1.5 font-mono text-xs text-slate-500">{{ k.prefix }}…</td>
+        <td class="py-1.5 text-slate-500">{{ k.created_at.date() }}</td>
+        <td class="py-1.5 text-slate-500">{{ k.last_used_at.date() if k.last_used_at else '–' }}</td>
+        <td class="py-1.5 text-right">
+          <form method="post" action="/profile/api-keys/{{ k.id }}/revoke"
+                onsubmit="return confirm('Key „{{ k.name }}“ widerrufen? Tools mit diesem Key verlieren den Zugriff.');">
+            <button class="text-rose-600 hover:underline text-xs">Widerrufen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-sm text-slate-500">Noch keine API-Keys.</p>
+  {% endif %}
+</section>
+
 <section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <h2 class="font-semibold mb-3 th-section-title th-section-orange th-outfit">Rolle &amp; Status</h2>
   <dl class="text-sm grid grid-cols-2 gap-y-1">
