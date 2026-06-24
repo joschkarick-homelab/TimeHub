@@ -31,11 +31,12 @@ from app.api.timer import (
     start_timer_core,
     stop_timer_core,
     timer_to_out,
+    update_timer_core,
 )
 from app.db import SessionLocal
 from app.models import ApiKey, Project, User
 from app.schemas.time_entry import TimeEntryCreate, TimeEntryOut
-from app.schemas.timer import TimerStart, TimerStop
+from app.schemas.timer import TimerStart, TimerStop, TimerUpdate
 from app.security import decode_token, hash_api_key
 
 # Resolved per request by the auth middleware; tools read it to scope all work
@@ -205,8 +206,12 @@ def get_current_timer() -> dict | None:
 
 
 @_tool
-def start_timer(project_code: str, description: str = "", tags: list[str] | None = None) -> dict:
-    """Start a timer for a project. Fails if one is already running."""
+def start_timer(
+    project_code: str | None = None, description: str = "", tags: list[str] | None = None
+) -> dict:
+    """Start a timer. All fields are optional — a bare timer can be started and
+    its project assigned later (update_timer) or when stopping. Fails if one is
+    already running."""
     with _session_user() as (db, user):
         timer = start_timer_core(
             db, user, TimerStart(project_code=project_code, description=description, tags=tags or [])
@@ -215,11 +220,29 @@ def start_timer(project_code: str, description: str = "", tags: list[str] | None
 
 
 @_tool
-def stop_timer(round_to_minutes: int | None = None) -> dict:
-    """Stop the running timer and create the time entry. `round_to_minutes`
+def update_timer(
+    project_code: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+) -> dict:
+    """Assign or change the running timer's project, description, or tags. Only
+    provided fields change."""
+    with _session_user() as (db, user):
+        timer = update_timer_core(
+            db, user, TimerUpdate(project_code=project_code, description=description, tags=tags)
+        )
+        return timer_to_out(timer).model_dump(mode="json")
+
+
+@_tool
+def stop_timer(round_to_minutes: int | None = None, project_code: str | None = None) -> dict:
+    """Stop the running timer and create the time entry. `project_code` assigns
+    a project if the timer was started without one. `round_to_minutes`
     optionally rounds the duration up to the nearest step (e.g. 15)."""
     with _session_user() as (db, user):
-        entry = stop_timer_core(db, user, TimerStop(round_to_minutes=round_to_minutes))
+        entry = stop_timer_core(
+            db, user, TimerStop(round_to_minutes=round_to_minutes, project_code=project_code)
+        )
         return TimeEntryOut.model_validate(entry).model_dump(mode="json")
 
 

@@ -112,6 +112,23 @@ def test_timer_lifecycle_via_tools(as_user):
     assert mcp.get_current_timer() is None
 
 
+def test_bare_timer_assign_then_stop_via_tools(as_user):
+    started = mcp.start_timer()  # no project
+    assert started["project_id"] is None
+
+    mcp.update_timer(project_code="MCPTOOL", description="set later")
+    assert mcp.get_current_timer()["project_code"] == "MCPTOOL"
+
+    entry = mcp.stop_timer()
+    assert entry["description"] == "set later"
+
+
+def test_stop_assigns_project_inline_via_tools(as_user):
+    mcp.start_timer()
+    entry = mcp.stop_timer(project_code="MCPTOOL")
+    assert entry["project_id"]
+
+
 def test_cancel_timer_via_tools(as_user):
     mcp.start_timer(project_code="MCPTOOL")
     assert mcp.cancel_timer() == "Timer cancelled."

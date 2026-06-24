@@ -110,6 +110,52 @@ def test_start_unknown_project_400(client):
     assert client.post("/api/v1/timer/start", json={"project_code": "NOPE"}, headers=h).status_code == 400
 
 
+def test_start_without_project_then_assign_and_stop(client):
+    h = _api_key(client)
+    _project(client, h, code="LATER")
+
+    # Start a bare timer — no fields required.
+    r = client.post("/api/v1/timer/start", json={}, headers=h)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["project_id"] is None
+    assert body["project_code"] is None
+
+    # Stopping without a project is refused with a helpful message.
+    bad = client.post("/api/v1/timer/stop", headers=h)
+    assert bad.status_code == 400
+    assert "project" in bad.json()["detail"].lower()
+
+    # Assign a project via PATCH, then stop succeeds.
+    patched = client.patch(
+        "/api/v1/timer/current",
+        json={"project_code": "LATER", "description": "filled in"},
+        headers=h,
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["project_code"] == "LATER"
+
+    entry = client.post("/api/v1/timer/stop", headers=h).json()
+    assert entry["description"] == "filled in"
+    assert entry["duration_minutes"] >= 1
+
+
+def test_stop_can_assign_project_inline(client):
+    h = _api_key(client)
+    _project(client, h, code="ATSTOP")
+    assert client.post("/api/v1/timer/start", json={}, headers=h).status_code == 201
+    entry = client.post(
+        "/api/v1/timer/stop", json={"project_code": "ATSTOP"}, headers=h
+    ).json()
+    pid = next(p["id"] for p in client.get("/api/v1/projects", headers=h).json() if p["code"] == "ATSTOP")
+    assert entry["project_id"] == pid
+
+
+def test_patch_without_running_timer_404(client):
+    h = _api_key(client)
+    assert client.patch("/api/v1/timer/current", json={"description": "x"}, headers=h).status_code == 404
+
+
 def test_weekly_hours(client):
     h = _api_key(client)
     pid = _project(client, h, code="WEEK")
