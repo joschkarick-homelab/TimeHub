@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.time_entries import _create_entry
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import ActiveTimer, Project, User
+from app.models import ActiveTimer, Project, TimeEntry, User
 from app.schemas.time_entry import TimeEntryCreate, TimeEntryOut
 from app.schemas.timer import TimerOut, TimerStart, TimerStop
 from app.services.sync_rules import load_rules
@@ -34,7 +34,7 @@ def _elapsed_seconds(timer: ActiveTimer) -> int:
     return max(0, int((_local_now() - started).total_seconds()))
 
 
-def _to_out(timer: ActiveTimer) -> TimerOut:
+def timer_to_out(timer: ActiveTimer) -> TimerOut:
     return TimerOut(
         id=timer.id,
         project_id=timer.project_id,
@@ -47,27 +47,19 @@ def _to_out(timer: ActiveTimer) -> TimerOut:
     )
 
 
-def _get_timer(db: Session, user: User) -> ActiveTimer | None:
+def get_active_timer(db: Session, user: User) -> ActiveTimer | None:
     return db.execute(
         select(ActiveTimer).where(ActiveTimer.user_id == user.id)
     ).scalar_one_or_none()
 
 
-@router.get("/current", response_model=TimerOut | None)
-def current_timer(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    timer = _get_timer(db, current_user)
-    return _to_out(timer) if timer else None
+# ── Core operations (shared by the HTTP API and the MCP server) ──────────────
+# These raise HTTPException so the API layer maps them to status codes for free;
+# the MCP layer catches it and surfaces the detail as a tool error.
 
 
-@router.post("/start", response_model=TimerOut, status_code=201)
-def start_timer(
-    payload: TimerStart,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if _get_timer(db, current_user) is not None:
+def start_timer_core(db: Session, user: User, payload: TimerStart) -> ActiveTimer:
+    if get_active_timer(db, user) is not None:
         raise HTTPException(status_code=409, detail="A timer is already running. Stop it first.")
 
     # Resolve the project, scoped to the requesting user (projects are per-user).
@@ -76,15 +68,15 @@ def start_timer(
     else:
         project = db.execute(
             select(Project).where(
-                Project.user_id == current_user.id, Project.code == payload.project_code.strip()
+                Project.user_id == user.id, Project.code == payload.project_code.strip()
             )
         ).scalar_one_or_none()
-    if project is None or project.user_id != current_user.id:
+    if project is None or project.user_id != user.id:
         raise HTTPException(status_code=400, detail="project not found")
 
     started_at = _as_local_naive(payload.started_at) if payload.started_at else _local_now()
     timer = ActiveTimer(
-        user_id=current_user.id,
+        user_id=user.id,
         project_id=project.id,
         description=payload.description or "",
         tags=payload.tags or [],
@@ -93,19 +85,13 @@ def start_timer(
     db.add(timer)
     db.commit()
     db.refresh(timer)
-    return _to_out(timer)
+    return timer
 
 
-@router.post("/stop", response_model=TimeEntryOut, status_code=201)
-def stop_timer(
-    payload: TimerStop | None = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    timer = _get_timer(db, current_user)
+def stop_timer_core(db: Session, user: User, payload: TimerStop) -> TimeEntry:
+    timer = get_active_timer(db, user)
     if timer is None:
         raise HTTPException(status_code=404, detail="No timer running")
-    payload = payload or TimerStop()
 
     started = _as_local_naive(timer.started_at)
     now = _local_now()
@@ -123,20 +109,53 @@ def stop_timer(
         description=payload.description if payload.description is not None else timer.description,
         tags=payload.tags if payload.tags is not None else list(timer.tags or []),
     )
-    entry = _create_entry(db, current_user, entry_payload, load_rules(db))
+    entry = _create_entry(db, user, entry_payload, load_rules(db))
     db.delete(timer)
     db.commit()
     db.refresh(entry)
     return entry
 
 
-@router.delete("/current", status_code=204)
-def cancel_timer(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    timer = _get_timer(db, current_user)
+def cancel_timer_core(db: Session, user: User) -> None:
+    timer = get_active_timer(db, user)
     if timer is None:
         raise HTTPException(status_code=404, detail="No timer running")
     db.delete(timer)
     db.commit()
+
+
+# ── HTTP endpoints ───────────────────────────────────────────────────────────
+
+
+@router.get("/current", response_model=TimerOut | None)
+def current_timer(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    timer = get_active_timer(db, current_user)
+    return timer_to_out(timer) if timer else None
+
+
+@router.post("/start", response_model=TimerOut, status_code=201)
+def start_timer(
+    payload: TimerStart,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return timer_to_out(start_timer_core(db, current_user, payload))
+
+
+@router.post("/stop", response_model=TimeEntryOut, status_code=201)
+def stop_timer(
+    payload: TimerStop | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return stop_timer_core(db, current_user, payload or TimerStop())
+
+
+@router.delete("/current", status_code=204)
+def cancel_timer(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    cancel_timer_core(db, current_user)
     return Response(status_code=204)

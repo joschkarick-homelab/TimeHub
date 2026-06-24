@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     ai_mapping_model: str = "claude-sonnet-4-6"
     ai_mapping_max_sample_lines: int = 15
 
+    # --- MCP server (lets Claude write time entries; mounted at /mcp) ---
+    mcp_enabled: bool = True
+
     @model_validator(mode="after")
     def _guard_secret_key(self) -> "Settings":
         if self.app_env.strip().lower() == "production" and self.secret_key.strip() in _INSECURE_SECRETS:
