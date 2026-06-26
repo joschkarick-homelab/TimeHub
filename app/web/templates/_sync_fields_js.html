@@ -1,13 +1,10 @@
 <script>
   // Shared renderer for target-dependent sync fields. Builds inputs named
-  // meta__<target>__<key> so the server can pick them up generically. Only the
-  // active target's fields are rendered (and thus submitted).
+  // meta__<target>__<key> so the server can pick them up generically.
   //
-  // Felder mit `choices` (statische Picklist) oder `options_source` (dynamische
-  // Liste aus window.SYNC_DYNAMIC_OPTIONS) werden als <select> gerendert; ein
-  // `searchable`-Feld mit dynamischen Optionen wird zur Fuzzy-Such-Combobox.
-  // Sonst als <input>. Vorbelegung: gespeicherter Wert > field.default > leer.
-  window.renderSyncFields = function (container, registry, target, current) {
+  // `targets` now accepts a string (single target, backward-compat) or an
+  // array of targets. For multiple targets each section gets a small label.
+  window.renderSyncFields = function (container, registry, targets, current) {
     function esc(s) {
       return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
         return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -17,7 +14,6 @@
       var src = window.SYNC_DYNAMIC_OPTIONS || {};
       return src[source];
     }
-    // --- Fuzzy matching: lower score is a better match, -1 means no match. ---
     function subseqScore(token, text) {
       var ti = 0, last = -1, gaps = 0;
       for (var i = 0; i < text.length && ti < token.length; i++) {
@@ -36,16 +32,14 @@
       for (var i = 0; i < tokens.length; i++) {
         var t = tokens[i];
         var idx = text.indexOf(t);
-        if (idx !== -1) { total += idx; continue; }   // substring: best
+        if (idx !== -1) { total += idx; continue; }
         var sub = subseqScore(t, text);
-        if (sub < 0) return -1;                        // token missing entirely
-        total += 1000 + sub;                           // subsequence: worse
+        if (sub < 0) return -1;
+        total += 1000 + sub;
       }
       return total;
     }
     function optHaystack(o) {
-      // What the user can search on: the explicit `search` text (Klartext:
-      // Kunde, Projektname, Projektnummer) plus the visible label as fallback.
       return (o.search != null ? o.search : "") + " " + (o.label || "");
     }
     function initCombobox(wrap, opts, value) {
@@ -53,14 +47,12 @@
       var hidden = wrap.querySelector("[data-combo-value]");
       var list = wrap.querySelector("[data-combo-list]");
       var active = -1;
-      // Preselect: show the stored option's label; keep a raw id if it is no
-      // longer in the (now filtered) list so the value isn't silently lost.
-      var current = null;
+      var cur = null;
       for (var i = 0; i < opts.length; i++) {
-        if (String(opts[i].value) === String(value)) { current = opts[i]; break; }
+        if (String(opts[i].value) === String(value)) { cur = opts[i]; break; }
       }
       hidden.value = value || "";
-      if (current) search.value = current.label || "";
+      if (cur) search.value = cur.label || "";
       else if (value) search.value = value;
 
       function close() { list.classList.add("hidden"); active = -1; }
@@ -68,6 +60,8 @@
         hidden.value = o.value != null ? String(o.value) : "";
         search.value = o.label || "";
         close();
+        // Bubble a synthetic change so deviation-hint listeners fire.
+        hidden.dispatchEvent(new Event("change", { bubbles: true }));
       }
       function render() {
         var q = search.value;
@@ -99,11 +93,7 @@
         if (active >= 0 && items[active]) items[active].scrollIntoView({ block: "nearest" });
       }
       search.addEventListener("focus", render);
-      search.addEventListener("input", function () {
-        // Typing invalidates a previous pick until something is chosen again.
-        hidden.value = "";
-        render();
-      });
+      search.addEventListener("input", function () { hidden.value = ""; render(); });
       search.addEventListener("keydown", function (ev) {
         var n = (list._opts || []).length;
         if (ev.key === "ArrowDown") { ev.preventDefault(); if (n) { active = (active + 1) % n; highlight(); } }
@@ -113,7 +103,6 @@
         } else if (ev.key === "Escape") { close(); }
       });
       list.addEventListener("mousedown", function (ev) {
-        // mousedown (not click) so it fires before the input's blur.
         var li = ev.target.closest("li[data-idx]");
         if (!li || !list._opts) return;
         ev.preventDefault();
@@ -122,67 +111,91 @@
       });
       search.addEventListener("blur", function () { setTimeout(close, 100); });
     }
+
     if (!container) return;
+    // Backward-compat: accept a single target string.
+    if (typeof targets === "string") targets = targets ? [targets] : [];
+    if (!Array.isArray(targets)) targets = [];
+
+    // Only targets that actually have fields in the registry.
+    var activeSections = targets.filter(function (t) {
+      return ((registry || {})[t] || []).length > 0;
+    });
+
     container.innerHTML = "";
-    var fields = (registry || {})[target] || [];
-    if (!fields.length) { container.classList.add("hidden"); return; }
+    if (!activeSections.length) { container.classList.add("hidden"); return; }
     container.classList.remove("hidden");
-    fields.forEach(function (f) {
-      var stored = ((current || {})[target] || {})[f.key] || "";
-      var dyn = f.options_source ? dynOptions(f.options_source) : null;
-      var opts = dyn != null ? dyn : (f.choices || null);
-      var value = stored || (f.default || "");
-      var id = "meta_" + target + "_" + f.key;
-      var name = "meta__" + target + "__" + f.key;
-      var wrap = document.createElement("div");
-      var labelHtml =
-        '<label class="block text-xs font-medium mb-1" for="' + id + '">' +
-          esc(f.label) + (f.required ? ' <span class="text-rose-500">*</span>' : "") +
-        "</label>";
-      var control;
-      var combo = false;
-      if (f.searchable && opts && opts.length) {
-        // Fuzzy-Such-Combobox: sichtbares Suchfeld + verstecktes Wertfeld.
-        combo = true;
-        control =
-          '<div class="relative" data-combo>' +
-            '<input id="' + id + '" type="text" autocomplete="off" data-combo-search role="combobox"' +
-            ' placeholder="' + esc(f.placeholder || "Suchen…") + '"' +
-            ' class="w-full h-10 border border-slate-300 rounded px-2 bg-white" />' +
-            '<input type="hidden" name="' + name + '" data-combo-value />' +
-            '<ul data-combo-list role="listbox"' +
-            ' class="hidden absolute z-20 left-0 right-0 mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded shadow"></ul>' +
-          "</div>";
-      } else if (opts && opts.length) {
-        var optionsHtml = "";
-        if (!f.required) {
-          optionsHtml += '<option value="">— keine Auswahl —</option>';
-        }
-        opts.forEach(function (o) {
-          var v = o.value != null ? String(o.value) : "";
-          var sel = (v === String(value)) ? " selected" : "";
-          optionsHtml += '<option value="' + esc(v) + '"' + sel + '>' + esc(o.label || v) + "</option>";
-        });
-        control = '<select id="' + id + '" name="' + name + '"' +
-                  ' class="w-full h-10 border border-slate-300 rounded px-2 bg-white">' +
-                  optionsHtml + "</select>";
-      } else if (f.options_source) {
-        // Dynamische Quelle angedacht, aber gerade keine Werte (z. B. keine SF-
-        // Creds, kein Match): Fallback auf freies Text-Input mit Hinweis.
-        control = '<input id="' + id + '" name="' + name + '" value="' + esc(value) + '"' +
-                  ' placeholder="' + esc(f.placeholder || "") + '"' +
-                  ' class="w-full h-10 border border-slate-300 rounded px-2" />' +
-                  '<p class="text-[11px] text-slate-400 mt-0.5">' +
-                  '(Auswahlliste momentan nicht verfügbar — Wert manuell eintragen.)</p>';
-      } else {
-        control = '<input id="' + id + '" name="' + name + '" value="' + esc(value) + '"' +
-                  ' placeholder="' + esc(f.placeholder || "") + '"' +
-                  ' class="w-full h-10 border border-slate-300 rounded px-2" />';
+
+    var showHeaders = activeSections.length > 1;
+    var LABELS = { jira: "Jira", salesforce: "Salesforce", bcs: "BCS" };
+
+    activeSections.forEach(function (target) {
+      var fields = (registry || {})[target] || [];
+      var comboInits = [];
+
+      if (showHeaders) {
+        var hdr = document.createElement("div");
+        hdr.className = "col-span-2";
+        hdr.innerHTML =
+          '<p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mt-1 mb-0.5">' +
+          esc(LABELS[target] || target) + "</p>";
+        container.appendChild(hdr);
       }
-      var helpHtml = f.help ? '<p class="text-[11px] text-slate-500 mt-0.5">' + esc(f.help) + "</p>" : "";
-      wrap.innerHTML = labelHtml + control + helpHtml;
-      container.appendChild(wrap);
-      if (combo) initCombobox(wrap, opts, value);
+
+      fields.forEach(function (f) {
+        var stored = ((current || {})[target] || {})[f.key] || "";
+        var dyn = f.options_source ? dynOptions(f.options_source) : null;
+        var opts = dyn != null ? dyn : (f.choices || null);
+        var value = stored || (f.default || "");
+        var id = "meta_" + target + "_" + f.key;
+        var name = "meta__" + target + "__" + f.key;
+        var wrap = document.createElement("div");
+        var labelHtml =
+          '<label class="block text-xs font-medium mb-1" for="' + id + '">' +
+            esc(f.label) + (f.required ? ' <span class="text-rose-500">*</span>' : "") +
+          "</label>";
+        var control;
+        var combo = false;
+        if (f.searchable && opts && opts.length) {
+          combo = true;
+          control =
+            '<div class="relative" data-combo>' +
+              '<input id="' + id + '" type="text" autocomplete="off" data-combo-search role="combobox"' +
+              ' placeholder="' + esc(f.placeholder || "Suchen…") + '"' +
+              ' class="w-full h-10 border border-slate-300 rounded px-2 bg-white" />' +
+              '<input type="hidden" name="' + name + '" data-combo-value />' +
+              '<ul data-combo-list role="listbox"' +
+              ' class="hidden absolute z-20 left-0 right-0 mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded shadow"></ul>' +
+            "</div>";
+        } else if (opts && opts.length) {
+          var optionsHtml = "";
+          if (!f.required) optionsHtml += '<option value="">— keine Auswahl —</option>';
+          opts.forEach(function (o) {
+            var v = o.value != null ? String(o.value) : "";
+            var sel = (v === String(value)) ? " selected" : "";
+            optionsHtml += '<option value="' + esc(v) + '"' + sel + '>' + esc(o.label || v) + "</option>";
+          });
+          control = '<select id="' + id + '" name="' + name + '"' +
+                    ' class="w-full h-10 border border-slate-300 rounded px-2 bg-white">' +
+                    optionsHtml + "</select>";
+        } else if (f.options_source) {
+          control = '<input id="' + id + '" name="' + name + '" value="' + esc(value) + '"' +
+                    ' placeholder="' + esc(f.placeholder || "") + '"' +
+                    ' class="w-full h-10 border border-slate-300 rounded px-2" />' +
+                    '<p class="text-[11px] text-slate-400 mt-0.5">' +
+                    '(Auswahlliste momentan nicht verfügbar — Wert manuell eintragen.)</p>';
+        } else {
+          control = '<input id="' + id + '" name="' + name + '" value="' + esc(value) + '"' +
+                    ' placeholder="' + esc(f.placeholder || "") + '"' +
+                    ' class="w-full h-10 border border-slate-300 rounded px-2" />';
+        }
+        var helpHtml = f.help ? '<p class="text-[11px] text-slate-500 mt-0.5">' + esc(f.help) + "</p>" : "";
+        wrap.innerHTML = labelHtml + control + helpHtml;
+        container.appendChild(wrap);
+        if (combo) comboInits.push({ wrap: wrap, opts: opts, value: value });
+      });
+
+      comboInits.forEach(function (c) { initCombobox(c.wrap, c.opts, c.value); });
     });
   };
 </script>

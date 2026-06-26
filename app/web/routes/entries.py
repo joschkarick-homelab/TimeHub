@@ -68,15 +68,20 @@ async def create_entry(
         duration_minutes=duration,
         description=description,
     )
-    # Target-specific fields follow the project's default target on the quick form.
-    target = project.default_sync_target
-    fields = sf.entry_fields(target)
-    if fields:
-        form = await request.form()
-        values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
-        entry.sync_metadata_override, _ = sf.apply_fields(
-            entry.sync_metadata_override, target, fields, values
-        )
+    form = await request.form()
+    sync_targets_list = list(form.getlist("sync_targets_override"))
+    valid_targets = [t for t in sync_targets_list if t in _KNOWN_SYNC_TARGETS
+                     and t not in ("intern", "none")]
+    if valid_targets:
+        entry.sync_targets_override = valid_targets
+    effective = valid_targets if valid_targets else [project.default_sync_target]
+    for target in effective:
+        fields = sf.entry_fields(target)
+        if fields:
+            values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
+            entry.sync_metadata_override, _ = sf.apply_fields(
+                entry.sync_metadata_override, target, fields, values
+            )
     db.add(entry)
     db.flush()
     es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
@@ -97,8 +102,6 @@ def edit_entry_form(
             select(Project).where(Project.user_id == user.id).order_by(Project.code)
         ).scalars()
     )
-    # `modal=1` yields the bare form fragment for the shared edit modal on the
-    # dashboard/calendar; otherwise the full standalone page (and direct links).
     template = "_entry_form.html" if modal else "entry_edit.html"
     return templates.TemplateResponse(
         template,
@@ -111,6 +114,15 @@ def edit_entry_form(
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("entry"),
             project_targets={p.id: p.default_sync_target for p in projects},
+            project_multi_targets={
+                p.id: [t for t in (p.sync_targets if p.sync_targets else [p.default_sync_target])
+                       if t not in ("intern", "none")]
+                for p in projects
+            },
+            project_sf_assignments={
+                p.id: (p.sync_metadata or {}).get("salesforce", {}).get("assignment_id", "")
+                for p in projects
+            },
             current_meta=entry.sync_metadata_override or {},
             error=error,
         ),
@@ -127,7 +139,6 @@ async def edit_entry_submit(
     start_time: str = Form(""),
     end_time: str = Form(""),
     description: str = Form(""),
-    sync_target_override: str = Form(""),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -151,16 +162,20 @@ async def edit_entry_submit(
     entry.duration_minutes = duration
     entry.description = description
 
-    override = sync_target_override if sync_target_override in _KNOWN_SYNC_TARGETS else ""
-    entry.sync_target_override = override or None
-    target = override or project.default_sync_target
-    fields = sf.entry_fields(target)
-    if fields:
-        form = await request.form()
-        values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
-        entry.sync_metadata_override, _ = sf.apply_fields(
-            entry.sync_metadata_override, target, fields, values
-        )
+    form = await request.form()
+    sync_targets_list = list(form.getlist("sync_targets_override"))
+    valid_targets = [t for t in sync_targets_list if t in _KNOWN_SYNC_TARGETS
+                     and t not in ("intern", "none")]
+    entry.sync_target_override = None
+    entry.sync_targets_override = valid_targets if valid_targets else None
+    effective = valid_targets if valid_targets else [project.default_sync_target]
+    for target in effective:
+        fields = sf.entry_fields(target)
+        if fields:
+            values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
+            entry.sync_metadata_override, _ = sf.apply_fields(
+                entry.sync_metadata_override, target, fields, values
+            )
     db.add(entry)
     db.flush()
     es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))

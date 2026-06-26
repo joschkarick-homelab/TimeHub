@@ -182,6 +182,15 @@ def index(
             sf_configured=sf_configured,
             sync_field_registry=sf.registry_json("entry"),
             project_targets={p.id: p.default_sync_target for p in projects},
+            project_multi_targets={
+                p.id: [t for t in (p.sync_targets if p.sync_targets else [p.default_sync_target])
+                       if t not in ("intern", "none")]
+                for p in projects
+            },
+            project_sf_assignments={
+                p.id: (p.sync_metadata or {}).get("salesforce", {}).get("assignment_id", "")
+                for p in projects
+            },
             total_hours=round(total_minutes / 60, 2),
             entry_count=len(entries),
             sf_week_hours=sf_week_hours,
