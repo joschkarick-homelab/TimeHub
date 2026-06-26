@@ -117,8 +117,9 @@ def create_profile_api_key(
     # Revealed once on the next /profile render (see profile_page).
     request.session["new_api_key"] = full
     request.session["new_api_key_name"] = label
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url="/profile?flash=API-Key+erstellt", status_code=status.HTTP_302_FOUND
+        url=f"{base}/profile?flash=API-Key+erstellt", status_code=status.HTTP_302_FOUND
     )
 
 
@@ -129,17 +130,18 @@ def revoke_profile_api_key(
     db: Session = Depends(get_db),
 ):
     user = _require_login(request, db)
+    base = request.scope.get("root_path", "")
     key = db.get(ApiKey, key_id)
     if key is None or key.user_id != user.id:
         return RedirectResponse(
-            url="/profile?error=API-Key+nicht+gefunden", status_code=status.HTTP_302_FOUND
+            url=f"{base}/profile?error=API-Key+nicht+gefunden", status_code=status.HTTP_302_FOUND
         )
     if key.revoked_at is None:
         key.revoked_at = datetime.now(UTC)
         db.add(key)
         db.commit()
     return RedirectResponse(
-        url="/profile?flash=API-Key+widerrufen", status_code=status.HTTP_302_FOUND
+        url=f"{base}/profile?flash=API-Key+widerrufen", status_code=status.HTTP_302_FOUND
     )
 
 
@@ -155,7 +157,8 @@ def profile_save(
     user.ai_hints = ai_hints.strip() or None
     db.add(user)
     db.commit()
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url="/profile?flash=Profil+gespeichert", status_code=status.HTTP_302_FOUND
+        url=f"{base}/profile?flash=Profil+gespeichert", status_code=status.HTTP_302_FOUND
     )
 

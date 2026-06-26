@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_saved_views.html" import views_bar %}
+{% from "_saved_views.html" import views_bar with context %}
 {% block content %}
 
 {% if flash %}
@@ -64,7 +64,7 @@
 <section class="mb-5">
   <div class="flex flex-wrap gap-2">
     {% for key, cfg in presets.items() %}
-      <a href="/reports?preset={{ key }}{% if date_range %}&date_range={{ date_range }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if project_id %}&project_id={{ project_id }}{% endif %}{% if customer %}&customer={{ customer|urlencode }}{% endif %}"
+      <a href="{{ path('/reports') }}?preset={{ key }}{% if date_range %}&date_range={{ date_range }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if project_id %}&project_id={{ project_id }}{% endif %}{% if customer %}&customer={{ customer|urlencode }}{% endif %}"
          class="px-3 py-1.5 rounded-full text-sm border
                 {% if active_preset == key %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white border-slate-300 hover:border-indigo-400{% endif %}"
          title="{{ cfg.description }}">
@@ -77,7 +77,7 @@
 {# --- Filters + custom grouping --- #}
 <section class="bg-white border border-slate-200 p-5 mb-6">
   <h2 class="font-semibold mb-4 th-section-title th-section-teal th-outfit">Filter</h2>
-  <form method="get" action="/reports" class="space-y-4">
+  <form method="get" action="{{ path('/reports') }}" class="space-y-4">
     <div class="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
       <div>
         <label class="block text-xs font-medium mb-1">Zeitraum</label>
@@ -142,7 +142,7 @@
       <button class="h-10 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded font-medium">
         Anwenden
       </button>
-      <a href="/reports" class="h-10 px-3 inline-flex items-center text-sm text-slate-600 hover:underline">
+      <a href="{{ path('/reports') }}" class="h-10 px-3 inline-flex items-center text-sm text-slate-600 hover:underline">
         Zurücksetzen
       </a>
     </div>
@@ -153,7 +153,7 @@
   </form>
 
   {# --- Save current report as a view --- #}
-  <form method="post" action="/views" class="mt-4 pt-4 border-t border-slate-200 flex flex-wrap items-end gap-2"
+  <form method="post" action="{{ path('/views') }}" class="mt-4 pt-4 border-t border-slate-200 flex flex-wrap items-end gap-2"
         data-no-loading="true">
     <input type="hidden" name="kind" value="reports" />
     <input type="hidden" name="date_range" value="{{ date_range }}" />

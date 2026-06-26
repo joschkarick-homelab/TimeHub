@@ -160,16 +160,17 @@ async def projects_create(
         values = {f.key: form.get(f"meta__{target}__{f.key}", "") for f in fields}
         p.sync_metadata, _ = sf.apply_fields(p.sync_metadata, target, fields, values)
     db.add(p)
+    base = request.scope.get("root_path", "")
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         return RedirectResponse(
-            url="/projects?error=Projekt-Code+bereits+vergeben",
+            url=f"{base}/projects?error=Projekt-Code+bereits+vergeben",
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(
-        url=f"/projects?flash=Projekt+'{p.code}'+angelegt",
+        url=f"{base}/projects?flash=Projekt+'{p.code}'+angelegt",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -183,8 +184,9 @@ def projects_import_sf_form(
     keinem Projekt hinterlegt sind — zum Ankreuzen und Anlegen."""
     user = _require_login(request, db)
     if not sf_svc.available_for_user(db, user):
+        base = request.scope.get("root_path", "")
         return RedirectResponse(
-            url="/projects?error=Salesforce+ist+nicht+konfiguriert",
+            url=f"{base}/projects?error=Salesforce+ist+nicht+konfiguriert",
             status_code=status.HTTP_302_FOUND,
         )
     client = sf_svc.client_for_user(db, user)
@@ -215,22 +217,23 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
     salesforce, mit hinterlegter assignment_id). Re-fetch + Re-Dedup, damit eine
     inzwischen angelegte oder weggefallene PB nicht doppelt/fälschlich landet."""
     user = _require_login(request, db)
+    root = request.scope.get("root_path", "")
     if not sf_svc.available_for_user(db, user):
         return RedirectResponse(
-            url="/projects?error=Salesforce+ist+nicht+konfiguriert",
+            url=f"{root}/projects?error=Salesforce+ist+nicht+konfiguriert",
             status_code=status.HTTP_302_FOUND,
         )
     form = await request.form()
     selected = set(form.getlist("assignment_ids"))
     if not selected:
         return RedirectResponse(
-            url="/projects?error=Keine+Projektbesetzung+ausgewählt",
+            url=f"{root}/projects?error=Keine+Projektbesetzung+ausgewählt",
             status_code=status.HTTP_302_FOUND,
         )
     client = sf_svc.client_for_user(db, user)
     if client is None or not user.email:
         return RedirectResponse(
-            url="/projects?error=Keine+Salesforce-Verbindung",
+            url=f"{root}/projects?error=Keine+Salesforce-Verbindung",
             status_code=status.HTTP_302_FOUND,
         )
     try:
@@ -241,7 +244,7 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
     except sf_svc.SalesforceError as exc:
         log.info("SF project import failed: %s", exc)
         return RedirectResponse(
-            url="/projects?error=Salesforce-Abfrage+fehlgeschlagen",
+            url=f"{root}/projects?error=Salesforce-Abfrage+fehlgeschlagen",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -284,16 +287,16 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
     except IntegrityError:
         db.rollback()
         return RedirectResponse(
-            url="/projects?error=Import+fehlgeschlagen+(Code-Kollision)",
+            url=f"{root}/projects?error=Import+fehlgeschlagen+(Code-Kollision)",
             status_code=status.HTTP_302_FOUND,
         )
     if created == 0:
         return RedirectResponse(
-            url="/projects?flash=Keine+neuen+Projekte+angelegt",
+            url=f"{root}/projects?flash=Keine+neuen+Projekte+angelegt",
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(
-        url=f"/projects?flash={created}+Projekt(e)+aus+Salesforce+angelegt",
+        url=f"{root}/projects?flash={created}+Projekt(e)+aus+Salesforce+angelegt",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -349,16 +352,17 @@ async def projects_update(
     # Re-open entries stuck on a stale failed status so a corrected project
     # (e.g. a fixed Salesforce assignment) is picked up by the sync again.
     es_svc.reset_open_syncs_for_project(db, project)
+    base = request.scope.get("root_path", "")
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         return RedirectResponse(
-            url=f"/projects/{project_id}/edit?error=Projekt-Code+bereits+vergeben",
+            url=f"{base}/projects/{project_id}/edit?error=Projekt-Code+bereits+vergeben",
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(
-        url=f"/projects?flash=Projekt+'{project.code}'+gespeichert",
+        url=f"{base}/projects?flash=Projekt+'{project.code}'+gespeichert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -367,14 +371,15 @@ async def projects_update(
 def projects_delete(request: Request, project_id: int, db: Session = Depends(get_db)):
     user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
+    base = request.scope.get("root_path", "")
     try:
         db.delete(project)
         db.commit()
     except IntegrityError:
         db.rollback()
         return RedirectResponse(
-            url=f"/projects?error=Projekt+'{project.code}'+hat+Zeiteinträge+und+kann+nicht+gelöscht+werden",
+            url=f"{base}/projects?error=Projekt+'{project.code}'+hat+Zeiteinträge+und+kann+nicht+gelöscht+werden",
             status_code=status.HTTP_302_FOUND,
         )
-    return RedirectResponse(url="/projects", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=f"{base}/projects", status_code=status.HTTP_302_FOUND)
 

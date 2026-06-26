@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
@@ -63,6 +64,32 @@ app.add_middleware(
 # Reject writes from read-only / tracking-scoped API keys before they hit a route.
 app.add_middleware(ApiKeyWriteScopeMiddleware)
 
+
+class HtmlNoCacheASGI:
+    """Append Cache-Control: no-cache to text/html responses. Pure ASGI: it
+    inspects only the http.response.start message and passes body frames
+    through untouched (safe for streaming/SSE)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(raw=message["headers"])
+                if headers.get("content-type", "").startswith("text/html"):
+                    headers["Cache-Control"] = "no-cache, must-revalidate"
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(HtmlNoCacheASGI)
+
 @app.exception_handler(LoginRequired)
 async def _login_required_handler(request, exc):
     from fastapi.responses import JSONResponse
@@ -84,6 +111,11 @@ if settings.mcp_enabled:
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> FileResponse:
     return FileResponse(_STATIC_DIR / "icon.svg", media_type="image/svg+xml")
+
+
+@app.get("/health", tags=["system"])
+def health() -> dict:
+    return {"status": "ok"}
 
 
 @app.get("/healthz", tags=["system"])

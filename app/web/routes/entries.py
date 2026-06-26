@@ -146,13 +146,14 @@ async def edit_entry_submit(
     entry = _owned_entry_or_404(db, entry_id, user)
     project = _owned_project_or_404(db, project_id, user)
     next_url = _safe_next(next)
+    base = request.scope.get("root_path", "")
     start = _parse_time(start_time)
     end = _parse_time(end_time)
     try:
         duration = _resolve_duration(start, end, _parse_duration_minutes(duration_minutes))
     except ValueError as e:
         return RedirectResponse(
-            url=f"/entries/{entry_id}/edit?error={e}&next={next_url}".replace(" ", "+"),
+            url=f"{base}/entries/{entry_id}/edit?error={e}&next={next_url}".replace(" ", "+"),
             status_code=status.HTTP_302_FOUND,
         )
     entry.entry_date = date.fromisoformat(entry_date)

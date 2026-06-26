@@ -12,7 +12,7 @@
       <button type="button" id="new-entry-close"
               class="text-xl leading-none" style="color: var(--muted);">✕</button>
     </div>
-    <form method="post" action="/entries" class="grid grid-cols-2 gap-3 items-end">
+    <form method="post" action="{{ path('/entries') }}" class="grid grid-cols-2 gap-3 items-end">
       <input type="hidden" name="next" value="{{ filter_query }}" />
       <div>
         <label class="block text-xs font-medium mb-1">Datum</label>

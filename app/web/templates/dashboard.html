@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_saved_views.html" import views_bar %}
+{% from "_saved_views.html" import views_bar with context %}
 {% block content %}
 {% if error %}
   <div class="mb-4 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-3 py-2">
@@ -196,7 +196,7 @@
     {{ views_bar(saved_views, active_view, "/", "Ansichten:") }}
   </div>
 
-  <form method="get" action="/" class="grid grid-cols-2 sm:grid-cols-7 gap-3 items-end">
+  <form method="get" action="{{ path('/') }}" class="grid grid-cols-2 sm:grid-cols-7 gap-3 items-end">
     <div class="sm:col-span-1">
       <label class="block text-xs font-medium mb-1">Zeitraum</label>
       <select name="date_range" class="w-full h-10 border border-slate-300 rounded px-2 bg-white">
@@ -248,7 +248,7 @@
       <button class="flex-1 h-10 bg-slate-800 hover:bg-slate-900 text-white rounded font-medium">
         Filtern
       </button>
-      <a href="/" class="h-10 px-3 inline-flex items-center text-sm text-slate-600 hover:underline">
+      <a href="{{ path('/') }}" class="h-10 px-3 inline-flex items-center text-sm text-slate-600 hover:underline">
         Zurücksetzen
       </a>
     </div>
@@ -259,7 +259,7 @@
   </form>
 
   {# --- Save current filter as a view --- #}
-  <form method="post" action="/views" class="mt-4 pt-4 border-t border-slate-200 flex flex-wrap items-end gap-2"
+  <form method="post" action="{{ path('/views') }}" class="mt-4 pt-4 border-t border-slate-200 flex flex-wrap items-end gap-2"
         data-no-loading="true">
     <input type="hidden" name="kind" value="dashboard" />
     <input type="hidden" name="date_range" value="{{ date_range }}" />
@@ -293,13 +293,13 @@
         </button>
       {% endif %}
       {% if sf_configured and sf_selectable_count %}
-        <form id="sf-sync-form" method="post" action="/sync/salesforce/preview"
+        <form id="sf-sync-form" method="post" action="{{ path('/sync/salesforce/preview') }}"
               class="flex items-center gap-2 flex-wrap">
           <input type="hidden" name="next" value="{{ filter_query }}" />
           <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
             ↗ Auswahl in Salesforce-Vorschau
           </button>
-          <button type="submit" formaction="/entries/mark-synced" formnovalidate
+          <button type="submit" formaction="{{ path('/entries/mark-synced') }}" formnovalidate
                   class="h-9 px-3 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded text-sm font-medium"
                   onclick="return confirm('Auswahl als bereits manuell erfasst markieren? Diese Einträge werden dann nicht mehr im Sync vorgeschlagen.');"
                   title="Z.B. für alte Monate, die schon direkt in Salesforce erfasst wurden">
@@ -311,7 +311,7 @@
         </form>
       {% endif %}
       {% if days and formats %}
-        <form method="get" action="/entries/export" class="flex items-center gap-2"
+        <form method="get" action="{{ path('/entries/export') }}" class="flex items-center gap-2"
               data-download="true">
           <input type="hidden" name="date_from" value="{{ date_from }}" />
           <input type="hidden" name="date_to" value="{{ date_to }}" />
@@ -338,7 +338,7 @@
   {# Mass-select action bar — only visible once Mehrfachauswahl is toggled on.
      Checkboxes in the rows below belong to this form via form="bulk-form". #}
   {% if days %}
-    <form id="bulk-form" method="post" action="/entries/bulk-delete"
+    <form id="bulk-form" method="post" action="{{ path('/entries/bulk-delete') }}"
           class="hidden items-center gap-3 flex-wrap px-5 pb-3"
           onsubmit="return confirm('Ausgewählte Einträge wirklich löschen?');">
       <input type="hidden" name="next" value="{{ filter_query }}" />
@@ -387,7 +387,7 @@
         <th class="px-4 py-2">Beschreibung</th>
         {% for t, label in matrix_targets %}
           <th class="px-2 py-2 text-center">
-            <a href="/sync" class="hover:underline text-indigo-600"
+            <a href="{{ path('/sync') }}" class="hover:underline text-indigo-600"
                title="{{ label }} im Export-Wizard öffnen">{{ label }}</a>
           </th>
         {% endfor %}
@@ -431,7 +431,7 @@
             {% endfor %}
             <td class="px-4 py-2 space-x-2 whitespace-nowrap text-right">
               {% if e.sync_status == "manually_synced" %}
-                <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
+                <form action="{{ path('/entries/' ~ e.id ~ '/unmark-synced') }}" method="post" class="inline"
                       onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
                   <input type="hidden" name="next" value="{{ filter_query }}" />
                   <button class="text-xs text-slate-600 hover:underline"
@@ -441,7 +441,7 @@
               <button type="button"
                       data-edit-url="/entries/{{ e.id }}/edit?modal=1&next={{ filter_query | urlencode }}"
                       class="text-xs text-indigo-600 hover:underline">bearbeiten</button>
-              <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
+              <form action="{{ path('/entries/' ~ e.id ~ '/delete') }}" method="post" class="inline"
                     onsubmit="return confirm('Eintrag wirklich löschen?');">
                 <input type="hidden" name="next" value="{{ filter_query }}" />
                 <button class="text-xs text-rose-600 hover:underline">löschen</button>
@@ -513,13 +513,13 @@
                 <button type="button"
                         data-edit-url="/entries/{{ e.id }}/edit?modal=1&next={{ filter_query | urlencode }}"
                         class="text-sm text-indigo-600 hover:underline">bearbeiten</button>
-                <form action="/entries/{{ e.id }}/delete" method="post" class="inline"
+                <form action="{{ path('/entries/' ~ e.id ~ '/delete') }}" method="post" class="inline"
                       onsubmit="return confirm('Eintrag wirklich löschen?');">
                   <input type="hidden" name="next" value="{{ filter_query }}" />
                   <button class="text-sm text-rose-600 hover:underline">löschen</button>
                 </form>
                 {% if e.sync_status == "manually_synced" %}
-                  <form action="/entries/{{ e.id }}/unmark-synced" method="post" class="inline"
+                  <form action="{{ path('/entries/' ~ e.id ~ '/unmark-synced') }}" method="post" class="inline"
                         onsubmit="return confirm('Markierung entfernen und wieder als offen anzeigen?');">
                     <input type="hidden" name="next" value="{{ filter_query }}" />
                     <button class="text-sm text-slate-600 hover:underline">↶ wieder öffnen</button>

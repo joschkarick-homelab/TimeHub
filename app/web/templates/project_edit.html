@@ -2,11 +2,11 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-xl font-bold th-outfit">Projekt bearbeiten</h1>
-  <a href="/projects" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
+  <a href="{{ path('/projects') }}" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
 </div>
 
 <section class="bg-white border border-slate-200 p-5 max-w-2xl">
-  <form method="post" action="/projects/{{ project.id }}/edit" class="space-y-4">
+  <form method="post" action="{{ path('/projects/' ~ project.id ~ '/edit') }}" class="space-y-4">
     <div class="grid sm:grid-cols-2 gap-3">
       <label class="text-sm">
         <span class="block font-medium mb-1">Name</span>
@@ -54,7 +54,7 @@
       <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
         Speichern
       </button>
-      <a href="/projects" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
+      <a href="{{ path('/projects') }}" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
     </div>
   </form>
 </section>

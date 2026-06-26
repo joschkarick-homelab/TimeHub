@@ -94,8 +94,9 @@ def settings_m365(
         redirect_uri=m365_redirect_uri,
         timezone=m365_timezone,
     )
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url="/users?flash=Microsoft-365-Einstellungen+gespeichert",
+        url=f"{base}/users?flash=Microsoft-365-Einstellungen+gespeichert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -104,8 +105,9 @@ def settings_m365(
 def settings_ai_hints(request: Request, ai_hints: str = Form(""), db: Session = Depends(get_db)):
     _require_admin(request, db)
     app_settings_svc.set_setting(db, app_settings_svc.AI_HINTS_KEY, ai_hints.strip())
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url="/users?flash=Globale+KI-Vorgaben+gespeichert", status_code=status.HTTP_302_FOUND
+        url=f"{base}/users?flash=Globale+KI-Vorgaben+gespeichert", status_code=status.HTTP_302_FOUND
     )
 
 
@@ -130,8 +132,9 @@ def settings_salesforce(
         login_url=sf_login_url,
         api_version=sf_api_version,
     )
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url="/users?flash=Salesforce-Zugangsdaten+gespeichert",
+        url=f"{base}/users?flash=Salesforce-Zugangsdaten+gespeichert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -155,8 +158,9 @@ def settings_salesforce_oauth(
         login_url=sf_oauth_login_url,
         redirect_uri=sf_oauth_redirect_uri,
     )
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url="/users?flash=Salesforce-OAuth-Einstellungen+gespeichert",
+        url=f"{base}/users?flash=Salesforce-OAuth-Einstellungen+gespeichert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -165,21 +169,22 @@ def settings_salesforce_oauth(
 def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
     """Try a SOAP login against the stored credentials and report the result."""
     _require_admin(request, db)
+    base = request.scope.get("root_path", "")
     client = sf_svc.client_from_settings(db)
     if client is None:
         return RedirectResponse(
-            url="/users?error=Bitte+Username+und+Passwort+hinterlegen",
+            url=f"{base}/users?error=Bitte+Username+und+Passwort+hinterlegen",
             status_code=status.HTTP_302_FOUND,
         )
     try:
         client.login()
     except sf_svc.SalesforceError as e:
         return RedirectResponse(
-            url=f"/users?error=Salesforce-Login+fehlgeschlagen:+{quote_plus(str(e))[:200]}",
+            url=f"{base}/users?error=Salesforce-Login+fehlgeschlagen:+{quote_plus(str(e))[:200]}",
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(
-        url=f"/users?flash=Salesforce-Login+ok+%28{client.instance_url}%29",
+        url=f"{base}/users?flash=Salesforce-Login+ok+%28{client.instance_url}%29",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -224,11 +229,12 @@ def users_create(
     db: Session = Depends(get_db),
 ):
     _require_admin(request, db)
+    base = request.scope.get("root_path", "")
     try:
         hashed = hash_password(password)
     except ValueError as e:
         return RedirectResponse(
-            url="/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
+            url=f"{base}/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
         )
     new = User(
         email=email,
@@ -243,41 +249,43 @@ def users_create(
     except IntegrityError:
         db.rollback()
         return RedirectResponse(
-            url="/users?error=" + "E-Mail+bereits+vergeben", status_code=status.HTTP_302_FOUND
+            url=f"{base}/users?error=" + "E-Mail+bereits+vergeben", status_code=status.HTTP_302_FOUND
         )
-    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=f"{base}/users", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/users/{user_id}/toggle-active", response_class=HTMLResponse)
 def users_toggle_active(request: Request, user_id: int, db: Session = Depends(get_db)):
     actor = _require_admin(request, db)
+    base = request.scope.get("root_path", "")
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Not found")
     if target.id == actor.id:
         return RedirectResponse(
-            url="/users?error=Eigenen+Account+nicht+deaktivieren",
+            url=f"{base}/users?error=Eigenen+Account+nicht+deaktivieren",
             status_code=status.HTTP_302_FOUND,
         )
     target.is_active = not target.is_active
     db.add(target)
     db.commit()
-    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=f"{base}/users", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/users/{user_id}/toggle-admin", response_class=HTMLResponse)
 def users_toggle_admin(request: Request, user_id: int, db: Session = Depends(get_db)):
     actor = _require_admin(request, db)
+    base = request.scope.get("root_path", "")
     target = db.get(User, user_id)
     if target is None:
         raise HTTPException(status_code=404, detail="Not found")
     if target.id == actor.id:
         return RedirectResponse(
-            url="/users?error=Eigene+Adminrechte+nicht+entziehen",
+            url=f"{base}/users?error=Eigene+Adminrechte+nicht+entziehen",
             status_code=status.HTTP_302_FOUND,
         )
     target.is_admin = not target.is_admin
     db.add(target)
     db.commit()
-    return RedirectResponse(url="/users", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(url=f"{base}/users", status_code=status.HTTP_302_FOUND)
 

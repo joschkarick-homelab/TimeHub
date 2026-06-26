@@ -20,7 +20,7 @@
     Claude analysiert das Format und schlägt ein Mapping vor, das du anschließend
     in Ruhe anpassen kannst, bevor es gespeichert wird.
   </p>
-  <form method="post" action="/import-formats/new" enctype="multipart/form-data" class="space-y-3">
+  <form method="post" action="{{ path('/import-formats/new') }}" enctype="multipart/form-data" class="space-y-3">
     <div>
       <label class="block text-sm font-medium mb-1">Name des Formats</label>
       <input name="name" required value="{{ prefill_name or '' }}"

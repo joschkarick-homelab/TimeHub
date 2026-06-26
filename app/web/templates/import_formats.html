@@ -2,7 +2,7 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-xl font-bold th-outfit">CSV-Importformate</h1>
-  <a href="/import-formats/new"
+  <a href="{{ path('/import-formats/new') }}"
      class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded px-3 py-1.5">
     + Neues Format
   </a>
@@ -57,17 +57,17 @@
           </td>
           <td class="px-4 py-2 space-x-2 whitespace-nowrap">
             {% if user.is_admin or f.owner_id == user.id %}
-              <a href="/import-formats/{{ f.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+              <a href="{{ path('/import-formats/' ~ f.id ~ '/edit') }}" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
             {% endif %}
             {% if user.is_admin %}
-              <form action="/import-formats/{{ f.id }}/promote" method="post" class="inline">
+              <form action="{{ path('/import-formats/' ~ f.id ~ '/promote') }}" method="post" class="inline">
                 <button class="text-xs text-indigo-600 hover:underline">
                   {{ 'lokal machen' if f.is_global else 'global machen' }}
                 </button>
               </form>
             {% endif %}
             {% if user.is_admin or f.owner_id == user.id %}
-              <form action="/import-formats/{{ f.id }}/delete" method="post" class="inline"
+              <form action="{{ path('/import-formats/' ~ f.id ~ '/delete') }}" method="post" class="inline"
                     onsubmit="return confirm('Format wirklich löschen?');">
                 <button class="text-xs text-rose-600 hover:underline">löschen</button>
               </form>

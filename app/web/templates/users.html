@@ -15,7 +15,7 @@
     Standard-Anforderungen, die der Import-Assistent für <strong>alle</strong> Nutzer beachtet
     — z. B. „Eine Dauer wie 01:30:00 bedeutet 1 Stunde 30 Minuten 0 Sekunden (= 90 Minuten)".
   </p>
-  <form method="post" action="/settings/ai-hints" class="space-y-2">
+  <form method="post" action="{{ path('/settings/ai-hints') }}" class="space-y-2">
     <textarea name="ai_hints" rows="3"
               class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm"
               placeholder="z. B. Dauer im Format HH:MM:SS; Projektcode steht in Spalte 'Kürzel'">{{ ai_hints_global }}</textarea>
@@ -35,7 +35,7 @@
     Felder lassen den bestehenden Wert unverändert. Um einen bereits
     gespeicherten Token loszuwerden, den Schalter „Token entfernen" nutzen.
   </p>
-  <form method="post" action="/settings/salesforce" class="grid sm:grid-cols-2 gap-3">
+  <form method="post" action="{{ path('/settings/salesforce') }}" class="grid sm:grid-cols-2 gap-3">
     <label class="text-sm sm:col-span-2">
       <span class="block font-medium mb-1">Username</span>
       <input name="sf_username" value="{{ sf_username }}"
@@ -84,7 +84,7 @@
       </button>
     </div>
   </form>
-  <form method="post" action="/settings/salesforce/test" class="mt-2 inline-block">
+  <form method="post" action="{{ path('/settings/salesforce/test') }}" class="mt-2 inline-block">
     <button class="h-8 px-3 border border-slate-300 rounded text-xs hover:bg-slate-50">
       Verbindung testen
     </button>
@@ -101,9 +101,9 @@
     damit effektiv über M365 an und synchronisieren mit ihren eigenen
     SF-Rechten; ohne Verbindung greift weiterhin der zentrale Service-User oben.
     Consumer Key/Secret hier eintragen — Nutzer verbinden danach im
-    <a href="/profile" class="text-indigo-600 hover:underline">Profil</a>.
+    <a href="{{ path('/profile') }}" class="text-indigo-600 hover:underline">Profil</a>.
   </p>
-  <form method="post" action="/settings/salesforce/oauth" class="grid sm:grid-cols-2 gap-3">
+  <form method="post" action="{{ path('/settings/salesforce/oauth') }}" class="grid sm:grid-cols-2 gap-3">
     <label class="text-sm sm:col-span-2">
       <span class="block font-medium mb-1">Consumer Key (Client-ID)</span>
       <input name="sf_oauth_client_id" value="{{ sf_oauth_client_id }}"
@@ -150,7 +150,7 @@
       <code>Kontierungsmonat__c</code>, <code>Zeiterfassung__c</code>. Kein
       Admin-Login in Salesforce nötig, der API-User reicht.
     </p>
-    <form method="post" action="/admin/salesforce/describe" class="flex flex-wrap gap-2">
+    <form method="post" action="{{ path('/admin/salesforce/describe') }}" class="flex flex-wrap gap-2">
       <textarea name="object_names" rows="2"
                 placeholder="Projektbesetzung__c&#10;Kontierungsmonat__c&#10;Zeiterfassung__c"
                 class="flex-1 min-w-[260px] border border-slate-300 rounded px-2 py-1.5 text-xs font-mono"></textarea>
@@ -169,14 +169,14 @@
     <code>Calendars.Read</code>, <code>offline_access</code>, <code>User.Read</code>
     an und trage hier Client-ID, Tenant und ein Client-Secret ein. Jede:r Nutzer:in
     verbindet danach den eigenen Kalender im
-    <a href="/profile" class="text-indigo-600 hover:underline">Profil</a>.
+    <a href="{{ path('/profile') }}" class="text-indigo-600 hover:underline">Profil</a>.
     Das Secret wird nur überschrieben, wenn ein Wert eingetragen wird.
   </p>
   <p class="text-xs text-slate-500 mb-3">
     Als <strong>Redirect-URI</strong> in der App-Registrierung (Typ „Web") muss
     <code>{{ m365_redirect_hint }}</code> (Kalender) eingetragen sein.
   </p>
-  <form method="post" action="/settings/m365" class="grid sm:grid-cols-2 gap-3">
+  <form method="post" action="{{ path('/settings/m365') }}" class="grid sm:grid-cols-2 gap-3">
     <label class="text-sm">
       <span class="block font-medium mb-1">Client-ID (Application ID)</span>
       <input name="m365_client_id" value="{{ m365_client_id }}"
@@ -222,7 +222,7 @@
 
 <section class="bg-white border border-slate-200 p-5 mb-6">
   <h2 class="font-semibold mb-3 th-section-title th-section-purple th-outfit">Neuen Nutzer anlegen</h2>
-  <form method="post" action="/users" class="grid sm:grid-cols-6 gap-3 items-end">
+  <form method="post" action="{{ path('/users') }}" class="grid sm:grid-cols-6 gap-3 items-end">
     <div class="sm:col-span-2">
       <label class="block text-xs font-medium mb-1">E-Mail</label>
       <input name="email" type="email" required class="w-full border border-slate-300 rounded px-2 py-1.5" />
@@ -257,7 +257,7 @@
   </p>
 
   <div class="flex flex-wrap items-center gap-3 mb-4">
-    <a href="/admin/backup"
+    <a href="{{ path('/admin/backup') }}"
        class="h-9 inline-flex items-center px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
       Backup herunterladen (ZIP)
     </a>
@@ -271,7 +271,7 @@
     aktuellen Daten durch den Inhalt des ZIPs überschrieben. Nach erfolgreicher
     Wiederherstellung bitte die Seite neu laden.
   </p>
-  <form method="post" action="/admin/restore" enctype="multipart/form-data"
+  <form method="post" action="{{ path('/admin/restore') }}" enctype="multipart/form-data"
         onsubmit="return confirm('Überschreibt ALLE Daten. Fortfahren?')"
         class="flex flex-wrap items-center gap-3">
     <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
@@ -309,12 +309,12 @@
             {% else %}<span class="text-slate-400">inaktiv</span>{% endif %}
           </td>
           <td class="px-4 py-2 space-x-2">
-            <form action="/users/{{ u.id }}/toggle-active" method="post" class="inline">
+            <form action="{{ path('/users/' ~ u.id ~ '/toggle-active') }}" method="post" class="inline">
               <button class="text-xs text-slate-600 hover:underline">
                 {{ 'deaktivieren' if u.is_active else 'aktivieren' }}
               </button>
             </form>
-            <form action="/users/{{ u.id }}/toggle-admin" method="post" class="inline">
+            <form action="{{ path('/users/' ~ u.id ~ '/toggle-admin') }}" method="post" class="inline">
               <button class="text-xs text-slate-600 hover:underline">
                 {{ 'Admin-Rechte entziehen' if u.is_admin else 'zum Admin machen' }}
               </button>

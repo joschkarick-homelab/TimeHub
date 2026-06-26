@@ -2,7 +2,7 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-xl font-semibold">Salesforce-Sync — Ergebnis</h1>
-  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+  <a href="{{ path('/') }}" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
 </div>
 
 {% if error %}
@@ -83,13 +83,13 @@
                 <td class="px-4 py-2 text-rose-700">{{ r.error }}</td>
                 <td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
                   {% if p %}
-                    <a href="/projects/{{ p.id }}/edit"
+                    <a href="{{ path('/projects/' ~ p.id ~ '/edit') }}"
                        class="text-xs text-indigo-600 hover:underline"
                        title="Projekt-Sync-Daten (z. B. Salesforce-Projektbesetzung) bearbeiten">
                       → Projekt
                     </a>
                   {% endif %}
-                  <a href="/entries/{{ r.entry.id }}/edit?next=/sync"
+                  <a href="{{ path('/entries/' ~ r.entry.id ~ '/edit?next=' ~ path('/sync')) }}"
                      class="text-xs text-indigo-600 hover:underline"
                      title="Eintrag bearbeiten">→ Eintrag</a>
                 </td>
@@ -169,10 +169,10 @@
   </section>
 
   <div class="mt-4 flex gap-3">
-    <a href="/" class="h-9 px-3 inline-flex items-center bg-slate-100 hover:bg-slate-200 rounded text-sm">
+    <a href="{{ path('/') }}" class="h-9 px-3 inline-flex items-center bg-slate-100 hover:bg-slate-200 rounded text-sm">
       ← zum Dashboard
     </a>
-    <a href="/sync" class="h-9 px-3 inline-flex items-center bg-slate-100 hover:bg-slate-200 rounded text-sm">
+    <a href="{{ path('/sync') }}" class="h-9 px-3 inline-flex items-center bg-slate-100 hover:bg-slate-200 rounded text-sm">
       Sync-Center
     </a>
   </div>

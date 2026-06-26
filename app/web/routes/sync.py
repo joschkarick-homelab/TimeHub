@@ -81,8 +81,9 @@ async def sync_fill_project_fields(
     straight from the wizard — unblocks every entry of that project at once."""
     user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
+    base = request.scope.get("root_path", "")
     if target not in es_svc.DISPLAY_TARGETS:
-        return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
+        return RedirectResponse(url=f"{base}/sync?error=Unbekanntes+Ziel",
                                 status_code=status.HTTP_302_FOUND)
     form = await request.form()
     # Only touch fields actually submitted, so unrendered ones aren't cleared.
@@ -96,7 +97,7 @@ async def sync_fill_project_fields(
     # entries stuck on a stale failed status so the sync retries them.
     es_svc.reset_open_syncs_for_project(db, project)
     db.commit()
-    return _sync_redirect_with_warnings(warnings, "Projekt-Daten gespeichert")
+    return _sync_redirect_with_warnings(request, warnings, "Projekt-Daten gespeichert")
 
 
 @router.post("/sync/entry/{entry_id}/fields", response_class=HTMLResponse)
@@ -107,8 +108,9 @@ async def sync_fill_entry_fields(
     inline in the wizard."""
     user = _require_login(request, db)
     entry = _owned_entry_or_404(db, entry_id, user)
+    base = request.scope.get("root_path", "")
     if target not in es_svc.DISPLAY_TARGETS:
-        return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
+        return RedirectResponse(url=f"{base}/sync?error=Unbekanntes+Ziel",
                                 status_code=status.HTTP_302_FOUND)
     form = await request.form()
     submitted = [f for f in sf.entry_fields(target) if f"meta__{target}__{f.key}" in form]
@@ -118,15 +120,18 @@ async def sync_fill_entry_fields(
     )
     db.add(entry)
     db.commit()
-    return _sync_redirect_with_warnings(warnings, "Eintrags-Daten gespeichert")
+    return _sync_redirect_with_warnings(request, warnings, "Eintrags-Daten gespeichert")
 
 
-def _sync_redirect_with_warnings(warnings: list[str], ok_msg: str) -> RedirectResponse:
+def _sync_redirect_with_warnings(
+    request: Request, warnings: list[str], ok_msg: str
+) -> RedirectResponse:
+    base = request.scope.get("root_path", "")
     if warnings:
         msg = "; ".join(warnings)
-        return RedirectResponse(url=f"/sync?error={msg}".replace(" ", "+"),
+        return RedirectResponse(url=f"{base}/sync?error={msg}".replace(" ", "+"),
                                 status_code=status.HTTP_302_FOUND)
-    return RedirectResponse(url=f"/sync?flash={ok_msg}".replace(" ", "+"),
+    return RedirectResponse(url=f"{base}/sync?flash={ok_msg}".replace(" ", "+"),
                             status_code=status.HTTP_302_FOUND)
 
 
@@ -140,11 +145,12 @@ def sync_mark_target_done(
     """Tick off one target for the selected entries (EntrySync → manually_synced).
     Used for targets without a live push, and as the wizard's 'abnicken' action."""
     user = _require_login(request, db)
+    base = request.scope.get("root_path", "")
     if target not in es_svc.DISPLAY_TARGETS:
-        return RedirectResponse(url="/sync?error=Unbekanntes+Ziel",
+        return RedirectResponse(url=f"{base}/sync?error=Unbekanntes+Ziel",
                                 status_code=status.HTTP_302_FOUND)
     if not entry_ids:
-        return RedirectResponse(url="/sync?error=Keine+Einträge+ausgewählt",
+        return RedirectResponse(url=f"{base}/sync?error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
     stmt = (
         select(TimeEntry)
@@ -158,7 +164,7 @@ def sync_mark_target_done(
     db.commit()
     label = es_svc.TARGET_LABELS.get(target, target)
     return RedirectResponse(
-        url=f"/sync?flash={n}+Einträge+für+{label}+als+erledigt+markiert",
+        url=f"{base}/sync?flash={n}+Einträge+für+{label}+als+erledigt+markiert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -177,9 +183,10 @@ def sync_salesforce_preview(
     gehört. Wir gruppieren die Vorschau nach (Projektbesetzung × Kontierungsmonat)
     zur Übersicht; geschrieben würde aber jeder Eintrag einzeln."""
     user = _require_login(request, db)
+    base = request.scope.get("root_path", "")
     if not entry_ids:
         return RedirectResponse(
-            url="/?error=Keine+Einträge+ausgewählt",
+            url=f"{base}/?error=Keine+Einträge+ausgewählt",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -194,7 +201,7 @@ def sync_salesforce_preview(
     entries = list(db.execute(stmt).scalars())
     if not entries:
         return RedirectResponse(
-            url="/?error=Keine+gültigen+Einträge+gefunden",
+            url=f"{base}/?error=Keine+gültigen+Einträge+gefunden",
             status_code=status.HTTP_302_FOUND,
         )
     proj_lookup = {
@@ -266,8 +273,9 @@ def sync_salesforce_execute(
     bereits synchronisierte Einträge werden idempotent übersprungen. Pro-Eintrag-
     Fehler brechen den Rest nicht ab."""
     user = _require_login(request, db)
+    base = request.scope.get("root_path", "")
     if not entry_ids:
-        return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
+        return RedirectResponse(url=f"{base}/?error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
 
     client = sf_svc.client_for_user(db, user)
@@ -372,10 +380,11 @@ def admin_salesforce_describe(
     ab und rendert die wesentlichen Felder. Hilft beim Anpassen an Custom
     Objects (keine Admin-Anmeldung in Salesforce nötig)."""
     user = _require_admin(request, db)
+    base = request.scope.get("root_path", "")
     client = sf_svc.client_from_settings(db)
     if client is None:
         return RedirectResponse(
-            url="/users?error=Bitte+zuerst+Salesforce-Zugangsdaten+hinterlegen",
+            url=f"{base}/users?error=Bitte+zuerst+Salesforce-Zugangsdaten+hinterlegen",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -383,7 +392,7 @@ def admin_salesforce_describe(
     names = [n for n in raw_names if n]
     if not names:
         return RedirectResponse(
-            url="/users?error=Mindestens+einen+sObject-Namen+eintragen",
+            url=f"{base}/users?error=Mindestens+einen+sObject-Namen+eintragen",
             status_code=status.HTTP_302_FOUND,
         )
 

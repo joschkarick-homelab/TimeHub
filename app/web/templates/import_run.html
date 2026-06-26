@@ -171,7 +171,7 @@
     {% endif %}
 
     <div class="p-4 flex items-center gap-3 border-t border-slate-200">
-      <form method="post" action="/import" data-loading-message="Import läuft …">
+      <form method="post" action="{{ path('/import') }}" data-loading-message="Import läuft …">
         <input type="hidden" name="format_id" value="{{ preview_format_id }}" />
         <input type="hidden" name="raw_b64" value="{{ preview_b64 }}" />
         {% if preview_apply_target_rules %}
@@ -182,7 +182,7 @@
           ✓ Jetzt importieren{% if preview.created %} ({{ preview.created }}){% endif %}
         </button>
       </form>
-      <a href="/import" class="text-sm text-slate-600 hover:underline">Abbrechen</a>
+      <a href="{{ path('/import') }}" class="text-sm text-slate-600 hover:underline">Abbrechen</a>
     </div>
   </section>
 {% endif %}
@@ -192,7 +192,7 @@
     {% if result %}Weiteren Import starten{% elif preview %}Andere Datei wählen{% else %}Import{% endif %}
   </h2>
   {% if formats %}
-    <form method="post" action="/import/preview" enctype="multipart/form-data" class="space-y-4"
+    <form method="post" action="{{ path('/import/preview') }}" enctype="multipart/form-data" class="space-y-4"
           data-loading-message="Vorschau wird erstellt …">
       <div>
         <label class="block text-sm font-medium mb-1">Importformat</label>
@@ -228,7 +228,7 @@
   {% else %}
     <p class="text-slate-600">
       Noch keine Importformate verfügbar — leg über
-      <a href="/import-formats/new" class="text-indigo-600 hover:underline">Neues Format</a>
+      <a href="{{ path('/import-formats/new') }}" class="text-indigo-600 hover:underline">Neues Format</a>
       eines an.
     </p>
   {% endif %}

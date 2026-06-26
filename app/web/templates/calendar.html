@@ -12,17 +12,17 @@
 
 <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
   <div class="flex items-center gap-2">
-    <a href="/calendar?start={{ prev_start }}&days={{ days_n }}"
+    <a href="{{ path('/calendar') }}?start={{ prev_start }}&days={{ days_n }}"
        class="h-9 w-9 inline-flex items-center justify-center border border-slate-300 rounded hover:bg-slate-50" aria-label="Zurück">‹</a>
-    <a href="/calendar?days={{ days_n }}"
+    <a href="{{ path('/calendar') }}?days={{ days_n }}"
        class="h-9 px-3 inline-flex items-center border border-slate-300 rounded text-sm hover:bg-slate-50">Heute</a>
-    <a href="/calendar?start={{ next_start }}&days={{ days_n }}"
+    <a href="{{ path('/calendar') }}?start={{ next_start }}&days={{ days_n }}"
        class="h-9 w-9 inline-flex items-center justify-center border border-slate-300 rounded hover:bg-slate-50" aria-label="Vor">›</a>
     <span class="ml-2 text-sm font-medium text-slate-700 tabular-nums">{{ range_label }}</span>
   </div>
   <div class="inline-flex rounded border border-slate-300 overflow-hidden text-sm">
     {% for n in [1, 3, 5, 7] %}
-      <a href="/calendar?start={{ start }}&days={{ n }}"
+      <a href="{{ path('/calendar') }}?start={{ start }}&days={{ n }}"
          class="px-3 h-9 inline-flex items-center {% if n == days_n %}bg-indigo-600 text-white{% else %}bg-white hover:bg-slate-50{% endif %} {% if not loop.first %}border-l border-slate-300{% endif %}">
         {{ n }} {{ 'Tag' if n == 1 else 'Tage' }}
       </a>
@@ -37,7 +37,7 @@
 {% if m365_error %}
   <div class="mb-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
     M365-Kalender konnte nicht geladen werden: {{ m365_error }}
-    <a href="/profile" class="underline">Verbindung prüfen</a>
+    <a href="{{ path('/profile') }}" class="underline">Verbindung prüfen</a>
   </div>
 {% elif m365_connected %}
   <p class="text-xs text-slate-500 mb-2 hidden md:flex items-center gap-3">
@@ -75,7 +75,7 @@
         {% if col.untimed %}
           <div class="mt-1 max-h-16 overflow-y-auto">
             {% for e in col.untimed %}
-              <a href="/entries/{{ e.id }}/edit?next={{ cal_next | urlencode }}"
+              <a href="{{ path('/entries/' ~ e.id ~ '/edit') }}?next={{ cal_next | urlencode }}"
                  data-edit-url="/entries/{{ e.id }}/edit?modal=1&next={{ cal_next | urlencode }}"
                  class="flex items-center gap-1 text-[10px] text-slate-600 hover:text-indigo-600 truncate py-0.5"
                  title="Ohne Uhrzeit – {{ e.project_label }}{% if e.needs_sync and not e.ready %} · fehlt: {{ e.missing | join(', ') }}{% endif %}">
@@ -169,6 +169,8 @@
 {% include "_entry_modal.html" %}
 <script>
 (function () {
+  var BASE_PATH = ((document.querySelector('meta[name="base-path"]') || {}).content || "").replace(/\/$/, "");
+  function appUrl(p) { return BASE_PATH + p; }
   var cfg = JSON.parse(document.getElementById("cal-data").textContent);
   var PX_PER_HOUR = cfg.px_per_hour;
   var PROJECTS = cfg.projects || [];
@@ -308,7 +310,7 @@
     if (!st.moved) {
       // treat as a click → open the edit modal (in place, no page change)
       window.openEntryEditModal(
-        "/entries/" + st.id + "/edit?modal=1&next=" + encodeURIComponent(CAL_NEXT)
+        appUrl("/entries/" + st.id + "/edit?modal=1&next=" + encodeURIComponent(CAL_NEXT))
       );
       return;
     }
@@ -316,7 +318,7 @@
     var date = st.body.dataset.date;
     var start = (st.mode === "move") ? (st.curStart != null ? st.curStart : st.startMin) : st.startMin;
     var end = (st.mode === "move") ? start + st.durMin : st.endMin;
-    fetch("/calendar/entries/" + st.id + "/move", {
+    fetch(appUrl("/calendar/entries/" + st.id + "/move"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entry_date: date, start_time: fmt(start), end_time: fmt(end) }),
     }).then(function (r) {
@@ -389,7 +391,7 @@
         var parts = (inp.name || "").split("__");
         if (parts.length === 3 && inp.value.trim()) meta[parts[2]] = inp.value.trim();
       });
-      fetch("/calendar/entries", {
+      fetch(appUrl("/calendar/entries"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: pid, entry_date: date, start_time: stv, end_time: env, description: desc, meta: meta }),
       }).then(function (r) {

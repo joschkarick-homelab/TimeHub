@@ -3,6 +3,8 @@
   // server to render the source→target panel. Debounced; also listens for the
   // custom "formatchange" event the editors fire after rewriting hidden JSON.
   (function () {
+    var BASE_PATH = ((document.querySelector('meta[name="base-path"]') || {}).content || "").replace(/\/$/, "");
+    function appUrl(p) { return BASE_PATH + p; }
     var panel = document.getElementById("preview-panel");
     if (!panel) return;
     // Target the mapping form explicitly — querySelector("form") would grab the
@@ -22,7 +24,7 @@
       body.set("time_format", val("time_format") || "%H:%M");
       body.set("column_map_json", val("column_map_json") || "{}");
       body.set("transforms_json", val("transforms_json") || "[]");
-      fetch("/import-formats/preview", {
+      fetch(appUrl("/import-formats/preview"), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: body.toString(),

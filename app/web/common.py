@@ -3,6 +3,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import jinja2
 from fastapi import (
     HTTPException,
     Request,
@@ -17,11 +18,21 @@ from app.config import get_settings
 from app.models import ImportFormat, Project, SavedView, TimeEntry, User
 from app.services import app_settings as app_settings_svc
 from app.services import salesforce as sf_svc
+from app.web.templating import join_base
 
 log = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@jinja2.pass_context
+def _template_path(context, path: str) -> str:
+    request = context["request"]
+    return join_base(request.scope.get("root_path", ""), path)
+
+
+templates.env.globals["path"] = _template_path
 
 
 # ── German date formatting ────────────────────────────────────────────────────
