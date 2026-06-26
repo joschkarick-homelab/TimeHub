@@ -37,10 +37,6 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str | None = None
 
-    initial_admin_email: str | None = None
-    initial_admin_password: str | None = None
-    initial_admin_name: str = "Admin"
-
     cors_origins: str = "*"
 
     # --- AI-assisted CSV mapping ---

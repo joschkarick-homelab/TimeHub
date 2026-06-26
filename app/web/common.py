@@ -141,9 +141,10 @@ def _maybe_user(request: Request, db: Session) -> User | None:
 
 class LoginRequired(Exception):
     """Raised when an unauthenticated request hits a protected web page; an
-    exception handler turns it into a redirect to /login (registered in
-    app.main). Lets route bodies say `user = _require_login(request, db)` in one
-    line instead of repeating the maybe-user/redirect dance everywhere."""
+    exception handler (registered in app.main) turns it into a 401 JSON response
+    — there is no app login page behind the Hub. Lets route bodies say
+    `user = _require_login(request, db)` in one line instead of repeating the
+    maybe-user/401 dance everywhere."""
 
 
 def _require_login(request: Request, db: Session) -> User:

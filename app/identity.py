@@ -70,8 +70,8 @@ def _should_be_admin(principal: HubPrincipal) -> bool:
 
 def _apply_existing(db: Session, user: User, principal: HubPrincipal) -> User:
     """Reconcile an already-known user with the current principal: backfill the
-    Hub subject, grant admin, refresh name, replace a placeholder email. Commits
-    only if something actually changed."""
+    Hub subject, grant admin, replace a placeholder email. Commits only if
+    something actually changed. full_name is deliberately NOT reconciled here."""
     changed = False
     if user.msq_user_id != principal.subject:
         user.msq_user_id = principal.subject
@@ -83,9 +83,9 @@ def _apply_existing(db: Session, user: User, principal: HubPrincipal) -> User:
     if _should_be_admin(principal) and not user.is_admin:
         user.is_admin = True
         changed = True
-    if principal.name and user.full_name != principal.name:
-        user.full_name = principal.name
-        changed = True
+    # full_name is set on provision only; the in-app profile is authoritative
+    # afterwards, so a Hub display-name change does not overwrite a user's edit
+    # (same grant-only philosophy as is_admin).
     # Replace the internal placeholder once a real email shows up for this user.
     if user.email.endswith(HUB_PLACEHOLDER_DOMAIN) and principal.email:
         user.email = principal.email

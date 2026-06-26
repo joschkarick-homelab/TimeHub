@@ -185,13 +185,7 @@ def test_profile_page_saves_name_and_no_longer_renders_salesforce(client):
     r = client.post("/profile", data={"full_name": "Admin Full"},
                     follow_redirects=False)
     assert r.status_code == 302
-    # The save persisted immediately. (A later request re-presenting an X-MSQ
-    # name would refresh it from the Hub identity, so assert on the DB row.)
-    from app.db import SessionLocal
-    from app.models import User
-    with SessionLocal() as db:
-        from sqlalchemy import func, select
-        u = db.execute(
-            select(User).where(func.lower(User.email) == "admin@example.com")
-        ).scalar_one()
-        assert u.full_name == "Admin Full"
+    # The saved name persists across a follow-up request: the Hub display name is
+    # provision-only, so re-presenting an X-MSQ name does not clobber the edit.
+    me = client.get("/api/v1/auth/me").json()
+    assert me["full_name"] == "Admin Full"

@@ -1,18 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 ApiKeyScope = Literal["read", "tracking", "read_write"]
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
 
 
 class ApiKeyCreate(BaseModel):

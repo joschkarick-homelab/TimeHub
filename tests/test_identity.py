@@ -55,7 +55,9 @@ def test_existing_user_matched_by_email_and_backfilled():
 
 
 def test_apply_existing_backfills_and_grants():
-    """The reconciliation helper used by both the normal and race-loser paths."""
+    """The reconciliation helper used by both the normal and race-loser paths:
+    it backfills the Hub subject and grants admin, but leaves full_name alone
+    (provision-only — the in-app profile is authoritative)."""
     with SessionLocal() as db:
         u = User(email="helper@x.de", full_name="Old", is_active=True)
         db.add(u)
@@ -66,8 +68,22 @@ def test_apply_existing_backfills_and_grants():
                        roles=frozenset({"AppHub.Admin"})),
         )
         assert out.msq_user_id == "msq-helper-1"
-        assert out.full_name == "New"
+        # full_name is NOT overwritten from the Hub name on an existing user.
+        assert out.full_name == "Old"
         assert out.is_admin is True
+
+
+def test_full_name_is_provision_only_not_overwritten():
+    """The Hub display name seeds full_name on provision; resolving the SAME
+    subject again with a different Hub name must NOT overwrite it (the in-app
+    profile edit wins)."""
+    subject = "msq-name-prov-1"
+    with SessionLocal() as db:
+        u = resolve_user(db, _principal(subject=subject, email="alpha@x.de", name="Alpha"))
+        assert u.full_name == "Alpha"  # provision sets it
+    with SessionLocal() as db:
+        u2 = resolve_user(db, _principal(subject=subject, email="alpha@x.de", name="Beta"))
+        assert u2.full_name == "Alpha"  # later Hub name does NOT overwrite
 
 
 def test_resolve_twice_same_subject_is_idempotent():
