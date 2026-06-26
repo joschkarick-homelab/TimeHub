@@ -19,7 +19,9 @@ from app.web.common import (
     _parse_date,
     _require_login,
     _safe_next,
+    redirect_to,
 )
+from app.web.templating import join_base
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,9 +30,11 @@ router = APIRouter()
 _KINDS = {"dashboard", "reports"}
 
 
-def _redirect_with(back: str, **params: str) -> RedirectResponse:
+def _redirect_with(request: Request, back: str, **params: str) -> RedirectResponse:
+    """`back` is app-relative (no slug); prefix it with the Hub mount path once."""
     sep = "&" if "?" in back else "?"
     url = f"{back}{sep}{urlencode(params)}" if params else back
+    url = join_base(request.scope.get("root_path", ""), url)
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
@@ -59,7 +63,7 @@ def save_view(
     name = name.strip()
     back = _safe_next(next, "/reports" if kind == "reports" else "/")
     if not name:
-        return _redirect_with(back, error="Bitte einen Namen für die Ansicht angeben")
+        return _redirect_with(request, back, error="Bitte einen Namen für die Ansicht angeben")
 
     rng = date_range if date_range in DATE_RANGES else "custom"
     pid: int | None = None
@@ -87,7 +91,7 @@ def save_view(
     db.add(view)
     db.commit()
 
-    return _redirect_with(back, view=str(view.id), flash=f"Ansicht '{name}' gespeichert")
+    return _redirect_with(request, back, view=str(view.id), flash=f"Ansicht '{name}' gespeichert")
 
 
 @router.post("/views/{view_id}/delete")
@@ -102,4 +106,4 @@ def delete_view(
     if view is not None and view.user_id == user.id:
         db.delete(view)
         db.commit()
-    return RedirectResponse(url=_safe_next(next), status_code=status.HTTP_302_FOUND)
+    return redirect_to(request, next)

@@ -420,6 +420,18 @@ def _safe_next(target: str | None, fallback: str = "/") -> str:
     return fallback
 
 
+def redirect_to(request: Request, target: str | None, fallback: str = "/", status_code: int = 302):
+    """Redirect to a same-site app target, prefixed with the Hub mount path
+    (root_path) exactly once. `target` is app-relative (no slug)."""
+    from fastapi.responses import RedirectResponse
+
+    safe = _safe_next(target, fallback)
+    return RedirectResponse(
+        url=join_base(request.scope.get("root_path", ""), safe),
+        status_code=status_code,
+    )
+
+
 def _json_user_or_401(request: Request, db: Session) -> User | JSONResponse:
     user = _maybe_user(request, db)
     if user is None:

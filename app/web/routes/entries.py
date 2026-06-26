@@ -27,6 +27,7 @@ from app.web.common import (
     _require_login,
     _resolve_duration,
     _safe_next,
+    redirect_to,
     templates,
 )
 
@@ -48,6 +49,7 @@ async def create_entry(
 ):
     user = _require_login(request, db)
     project = _owned_project_or_404(db, project_id, user)
+    base = request.scope.get("root_path", "")
     back = _safe_next(next)
     start = _parse_time(start_time)
     end = _parse_time(end_time)
@@ -56,7 +58,7 @@ async def create_entry(
     except ValueError as e:
         sep = "&" if "?" in back else "?"
         return RedirectResponse(
-            url=f"{back}{sep}error={e}".replace(" ", "+"),
+            url=f"{base}{back}{sep}error={e}".replace(" ", "+"),
             status_code=status.HTTP_302_FOUND,
         )
     entry = TimeEntry(
@@ -86,7 +88,7 @@ async def create_entry(
     db.flush()
     es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
-    return RedirectResponse(url=back, status_code=status.HTTP_302_FOUND)
+    return redirect_to(request, back)
 
 
 @router.get("/entries/{entry_id}/edit", response_class=HTMLResponse)
@@ -181,7 +183,7 @@ async def edit_entry_submit(
     db.flush()
     es_svc.reconcile_entry_syncs(db, entry, project, load_rules(db))
     db.commit()
-    return RedirectResponse(url=next_url, status_code=status.HTTP_302_FOUND)
+    return redirect_to(request, next_url)
 
 
 @router.post("/entries/{entry_id}/delete", response_class=HTMLResponse)
@@ -192,7 +194,7 @@ def delete_entry(
     entry = _owned_entry_or_404(db, entry_id, user)
     db.delete(entry)
     db.commit()
-    return RedirectResponse(url=_safe_next(next), status_code=status.HTTP_302_FOUND)
+    return redirect_to(request, next)
 
 
 @router.post("/entries/bulk-delete", response_class=HTMLResponse)
@@ -205,10 +207,11 @@ def bulk_delete_entries(
     """Delete several entries at once (mass-select mode on the dashboard).
     Scoped to the user's own entries; the active filter is preserved via next."""
     user = _require_login(request, db)
+    base = request.scope.get("root_path", "")
     back = _safe_next(next)
     if not entry_ids:
         sep = "&" if "?" in back else "?"
-        return RedirectResponse(url=f"{back}{sep}error=Keine+Einträge+ausgewählt",
+        return RedirectResponse(url=f"{base}{back}{sep}error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
     stmt = select(TimeEntry).where(
         TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id,
@@ -219,7 +222,7 @@ def bulk_delete_entries(
         n += 1
     db.commit()
     sep = "&" if "?" in back else "?"
-    return RedirectResponse(url=f"{back}{sep}flash={n}+Einträge+gelöscht",
+    return RedirectResponse(url=f"{base}{back}{sep}flash={n}+Einträge+gelöscht",
                             status_code=status.HTTP_302_FOUND)
 
 
@@ -236,10 +239,11 @@ def mark_entries_manually_synced(
     direkt in Salesforce erfasst wurden. Der aktive Dashboard-Filter bleibt
     über `next` erhalten."""
     user = _require_login(request, db)
+    base = request.scope.get("root_path", "")
     back = _safe_next(next)
     if not entry_ids:
         sep = "&" if "?" in back else "?"
-        return RedirectResponse(url=f"{back}{sep}error=Keine+Einträge+ausgewählt",
+        return RedirectResponse(url=f"{base}{back}{sep}error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
     stmt = select(TimeEntry).where(
         TimeEntry.id.in_(entry_ids), TimeEntry.user_id == user.id,
@@ -254,7 +258,7 @@ def mark_entries_manually_synced(
         n += 1
     db.commit()
     sep = "&" if "?" in back else "?"
-    return RedirectResponse(url=f"{back}{sep}flash={n}+Einträge+als+manuell+erfasst+markiert",
+    return RedirectResponse(url=f"{base}{back}{sep}flash={n}+Einträge+als+manuell+erfasst+markiert",
                             status_code=status.HTTP_302_FOUND)
 
 
@@ -271,5 +275,5 @@ def unmark_entry_manually_synced(
         es_svc.unmark_manually_synced(db, entry)
         db.add(entry)
         db.commit()
-    return RedirectResponse(url=_safe_next(next), status_code=status.HTTP_302_FOUND)
+    return redirect_to(request, next)
 

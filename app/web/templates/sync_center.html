@@ -160,7 +160,7 @@
                     </div>
                     <div class="text-xs text-rose-600">{{ item.reason }}</div>
                   </div>
-                  <a href="{{ path('/entries/' ~ e.id ~ '/edit?next=' ~ path('/sync')) }}"
+                  <a href="{{ path('/entries/' ~ e.id ~ '/edit?next=/sync') }}"
                      class="shrink-0 text-xs text-indigo-600 hover:underline">prüfen →</a>
                 </li>
               {% endfor %}

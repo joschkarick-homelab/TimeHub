@@ -310,7 +310,7 @@
     if (!st.moved) {
       // treat as a click → open the edit modal (in place, no page change)
       window.openEntryEditModal(
-        appUrl("/entries/" + st.id + "/edit?modal=1&next=" + encodeURIComponent(CAL_NEXT))
+        "/entries/" + st.id + "/edit?modal=1&next=" + encodeURIComponent(CAL_NEXT)
       );
       return;
     }

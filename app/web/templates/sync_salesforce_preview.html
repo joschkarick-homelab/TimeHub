@@ -71,7 +71,7 @@
                 {% if p %}
                   <a href="{{ path('/projects/' ~ p.id ~ '/edit') }}" class="text-xs text-indigo-600 hover:underline">→ Projekt</a>
                 {% endif %}
-                <a href="{{ path('/entries/' ~ s.entry.id ~ '/edit?next=' ~ path('/sync')) }}" class="text-xs text-indigo-600 hover:underline">→ Eintrag</a>
+                <a href="{{ path('/entries/' ~ s.entry.id ~ '/edit?next=/sync') }}" class="text-xs text-indigo-600 hover:underline">→ Eintrag</a>
               </td>
             </tr>
           {% endfor %}
