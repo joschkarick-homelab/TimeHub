@@ -191,6 +191,9 @@ class SalesforceClient:
             self.login()
 
     def query(self, soql: str) -> dict:
+        # Populate instance_url (SOAP login sets it) before composing the URL —
+        # otherwise a fresh service-user client builds "None/services/data/…".
+        self._ensure_login()
         url = (f"{self.instance_url}/services/data/v{self.api_version}/query"
                f"?{urllib.parse.urlencode({'q': soql})}")
         status, body = self._authed_get(url)
@@ -521,6 +524,8 @@ def describe_sobject(client: SalesforceClient, object_name: str) -> dict:
     """Fetch the SF describe metadata for an sObject. Available to any API user
     that can read the object — no admin/2FA required."""
     name = _ensure_sobject_name(object_name)
+    # Same ordering trap as query(): instance_url is only known after login.
+    client._ensure_login()
     url = (f"{client.instance_url}/services/data/v{client.api_version}/"
            f"sobjects/{name}/describe")
     status, body = client._authed_get(url)
