@@ -24,6 +24,7 @@ from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
+import jwt
 from sqlalchemy.orm import Session
 
 from app.security import decrypt_secret, encrypt_secret
@@ -37,6 +38,9 @@ M365_TENANT_KEY = "m365.tenant"
 M365_CLIENT_SECRET_KEY = "m365.client_secret"
 M365_REDIRECT_URI_KEY = "m365.redirect_uri"
 M365_TIMEZONE_KEY = "m365.timezone"
+# SSO uses its own redirect URI (the login callback), distinct from the calendar
+# connect callback above — both must be registered on the Entra app.
+M365_LOGIN_REDIRECT_URI_KEY = "m365.login_redirect_uri"
 
 # "organizations" works for any work/school tenant without hard-coding the
 # tenant id; a specific tenant id locks sign-in to that org.
@@ -48,6 +52,9 @@ _DEFAULT_TIMEZONE = "Europe/Berlin"
 # Delegated scopes: offline_access → refresh token; Calendars.Read → the
 # signed-in user's calendar; the rest identify the account for display.
 SCOPES = "openid profile email offline_access User.Read Calendars.Read"
+# SSO login only needs the standard sign-in scopes (no admin consent, no
+# offline_access/Graph) — just enough to get a validated ID token.
+OIDC_SCOPES = "openid profile email"
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 _AUTH_HOST = "https://login.microsoftonline.com"
@@ -72,6 +79,7 @@ def get_config(db: Session) -> dict:
             app_settings_svc.get_setting(db, M365_CLIENT_SECRET_KEY, "")
         ),
         "redirect_uri": app_settings_svc.get_setting(db, M365_REDIRECT_URI_KEY, ""),
+        "login_redirect_uri": app_settings_svc.get_setting(db, M365_LOGIN_REDIRECT_URI_KEY, ""),
         "timezone": app_settings_svc.get_setting(db, M365_TIMEZONE_KEY, "") or _DEFAULT_TIMEZONE,
     }
 
@@ -89,6 +97,7 @@ def save_config(
     tenant: str | None = None,
     client_secret: str | None = None,
     redirect_uri: str | None = None,
+    login_redirect_uri: str | None = None,
     timezone: str | None = None,
 ) -> None:
     """Persist global config. The client secret only overwrites when a
@@ -104,6 +113,10 @@ def save_config(
         )
     if redirect_uri is not None:
         app_settings_svc.set_setting(db, M365_REDIRECT_URI_KEY, redirect_uri.strip())
+    if login_redirect_uri is not None:
+        app_settings_svc.set_setting(
+            db, M365_LOGIN_REDIRECT_URI_KEY, login_redirect_uri.strip()
+        )
     if timezone is not None:
         app_settings_svc.set_setting(db, M365_TIMEZONE_KEY, timezone.strip() or _DEFAULT_TIMEZONE)
 
@@ -122,8 +135,17 @@ def make_pkce() -> tuple[str, str]:
 
 
 def authorize_url(
-    db: Session, *, state: str, code_challenge: str, redirect_uri: str
+    db: Session,
+    *,
+    state: str,
+    code_challenge: str,
+    redirect_uri: str,
+    scope: str = SCOPES,
+    nonce: str | None = None,
 ) -> str:
+    """Build the authorize redirect. Defaults to the calendar scopes; the SSO
+    login flow passes ``scope=OIDC_SCOPES`` and a ``nonce`` (bound into the ID
+    token and re-checked at the callback to block replay)."""
     c = get_config(db)
     if not c["client_id"]:
         raise M365Error("Microsoft 365 ist nicht konfiguriert")
@@ -132,11 +154,13 @@ def authorize_url(
         "response_type": "code",
         "redirect_uri": redirect_uri,
         "response_mode": "query",
-        "scope": SCOPES,
+        "scope": scope,
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }
+    if nonce:
+        params["nonce"] = nonce
     return f"{_AUTH_HOST}/{c['tenant']}/oauth2/v2.0/authorize?{urlencode(params)}"
 
 
@@ -161,7 +185,9 @@ def _token_request(db: Session, data: dict) -> dict:
     return resp.json()
 
 
-def exchange_code(db: Session, *, code: str, code_verifier: str, redirect_uri: str) -> dict:
+def exchange_code(
+    db: Session, *, code: str, code_verifier: str, redirect_uri: str, scope: str = SCOPES
+) -> dict:
     return _token_request(
         db,
         {
@@ -169,7 +195,7 @@ def exchange_code(db: Session, *, code: str, code_verifier: str, redirect_uri: s
             "code": code,
             "redirect_uri": redirect_uri,
             "code_verifier": code_verifier,
-            "scope": SCOPES,
+            "scope": scope,
         },
     )
 
@@ -179,6 +205,96 @@ def refresh_tokens(db: Session, refresh_token: str) -> dict:
         db,
         {"grant_type": "refresh_token", "refresh_token": refresh_token, "scope": SCOPES},
     )
+
+
+# ── OIDC login: ID-token validation ──────────────────────────────────────────
+# SSO trusts nothing the browser relays: the ID token is verified server-side
+# against the tenant's published signing keys (JWKS), with audience, issuer,
+# expiry and the per-login nonce all checked. With a concrete tenant configured,
+# the issuer check pins sign-in to that single organisation.
+
+_DISCOVERY_PATH = "/v2.0/.well-known/openid-configuration"
+
+
+def _fetch_discovery(db: Session) -> dict:
+    """Tenant OIDC metadata (``issuer`` + ``jwks_uri``). Split out so tests can
+    stub it instead of reaching Microsoft."""
+    c = get_config(db)
+    url = f"{_AUTH_HOST}/{c['tenant']}{_DISCOVERY_PATH}"
+    try:
+        resp = httpx.get(url, timeout=_HTTP_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise M365Error(f"Microsoft nicht erreichbar: {e}") from e
+    if resp.status_code >= 400:
+        raise M365Error(f"OIDC-Discovery fehlgeschlagen: HTTP {resp.status_code}")
+    return resp.json()
+
+
+def _resolve_signing_key(jwks_uri: str, id_token: str):
+    """Return the public signing key whose ``kid`` matches the token header.
+    Split out so tests can stub the JWKS lookup with a local key."""
+    if not jwks_uri:
+        raise M365Error("OIDC-Discovery ohne jwks_uri")
+    try:
+        return jwt.PyJWKClient(jwks_uri).get_signing_key_from_jwt(id_token).key
+    except jwt.PyJWTError as e:
+        raise M365Error(f"Token-Signaturschlüssel nicht abrufbar: {e}") from e
+
+
+def _verify_issuer_and_nonce(claims: dict, *, issuer_template: str, nonce: str) -> None:
+    """Reject the token unless the replay nonce matches and the issuer is the
+    Microsoft v2.0 issuer for the tenant that signed it. The discovery issuer is
+    concrete for a single tenant and carries a ``{tenantid}`` placeholder for the
+    multi-tenant (``organizations``/``common``) endpoints."""
+    if not nonce or not secrets.compare_digest(str(claims.get("nonce", "")), nonce):
+        raise M365Error("ID-Token ungültig: nonce stimmt nicht überein")
+    tid = str(claims.get("tid", ""))
+    iss = str(claims.get("iss", ""))
+    if "{tenantid}" in issuer_template:
+        if not tid or iss != issuer_template.replace("{tenantid}", tid):
+            raise M365Error("ID-Token ungültig: Aussteller nicht erlaubt")
+    elif iss != issuer_template:
+        raise M365Error("ID-Token ungültig: Aussteller nicht erlaubt")
+
+
+def validate_id_token(db: Session, id_token: str, *, nonce: str) -> dict:
+    """Fully validate an Entra ID token and return its claims, or raise
+    ``M365Error``. Checks signature (RS256 / tenant JWKS), audience (our client
+    id), expiry/issued-at, issuer and the per-login nonce."""
+    c = get_config(db)
+    if not c["client_id"]:
+        raise M365Error("Microsoft 365 ist nicht konfiguriert")
+    disc = _fetch_discovery(db)
+    key = _resolve_signing_key(disc.get("jwks_uri", ""), id_token)
+    try:
+        claims = jwt.decode(
+            id_token,
+            key,
+            algorithms=["RS256"],
+            audience=c["client_id"],
+            options={"require": ["exp", "iat", "aud", "iss"]},
+        )
+    except jwt.PyJWTError as e:
+        raise M365Error(f"ID-Token ungültig: {e}") from e
+    _verify_issuer_and_nonce(claims, issuer_template=disc.get("issuer", ""), nonce=nonce)
+    return claims
+
+
+def profile_from_claims(claims: dict) -> dict:
+    """Extract the fields we match/provision on from validated ID-token claims:
+    a normalized (lower-cased) ``email``, the stable ``oid`` and the display
+    ``name``."""
+    email = (
+        claims.get("email")
+        or claims.get("preferred_username")
+        or claims.get("upn")
+        or ""
+    ).strip().lower()
+    return {
+        "email": email,
+        "oid": (claims.get("oid") or "").strip(),
+        "name": (claims.get("name") or "").strip(),
+    }
 
 
 # ── Token persistence on the connection row ─────────────────────────────────
