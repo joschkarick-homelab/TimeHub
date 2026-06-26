@@ -34,6 +34,7 @@ from app.api.timer import (
     update_timer_core,
 )
 from app.db import SessionLocal
+from app.deps import _key_is_expired
 from app.models import ApiKey, Project, User
 from app.schemas.time_entry import TimeEntryCreate, TimeEntryOut
 from app.schemas.timer import TimerStart, TimerStop, TimerUpdate
@@ -44,6 +45,18 @@ from app.security import decode_token, hash_api_key
 _user_id_var: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "mcp_user_id", default=None
 )
+# Access scope of the authenticating key (read / tracking / read_write). Bearer
+# auth resolves to read_write. Write tools require a non-read scope.
+_scope_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "mcp_scope", default="read_write"
+)
+
+
+def _require_write() -> None:
+    """Guard for write tools: a read-only key may not mutate anything. All MCP
+    write tools touch only time-entries/timer, so the 'tracking' scope passes."""
+    if _scope_var.get() == "read":
+        raise ValueError("This API key is read-only; it cannot create or change time entries.")
 
 mcp = FastMCP("TimeHub", stateless_http=True, json_response=True, streamable_http_path="/")
 
@@ -155,6 +168,7 @@ def create_time_entry(
     (defaults to today). `start_time`/`end_time` are optional HH:MM labels."""
     from app.services.sync_rules import load_rules
 
+    _require_write()
     with _session_user() as (db, user):
         out = _make_entry(
             db,
@@ -180,6 +194,7 @@ def create_time_entries(entries: list[EntryInput]) -> dict:
     any per-row errors (a bad row does not abort the others)."""
     from app.services.sync_rules import load_rules
 
+    _require_write()
     with _session_user() as (db, user):
         rules = load_rules(db)
         created_ids: list[int] = []
@@ -212,6 +227,7 @@ def start_timer(
     """Start a timer. All fields are optional — a bare timer can be started and
     its project assigned later (update_timer) or when stopping. Fails if one is
     already running."""
+    _require_write()
     with _session_user() as (db, user):
         timer = start_timer_core(
             db, user, TimerStart(project_code=project_code, description=description, tags=tags or [])
@@ -227,6 +243,7 @@ def update_timer(
 ) -> dict:
     """Assign or change the running timer's project, description, or tags. Only
     provided fields change."""
+    _require_write()
     with _session_user() as (db, user):
         timer = update_timer_core(
             db, user, TimerUpdate(project_code=project_code, description=description, tags=tags)
@@ -239,6 +256,7 @@ def stop_timer(round_to_minutes: int | None = None, project_code: str | None = N
     """Stop the running timer and create the time entry. `project_code` assigns
     a project if the timer was started without one. `round_to_minutes`
     optionally rounds the duration up to the nearest step (e.g. 15)."""
+    _require_write()
     with _session_user() as (db, user):
         entry = stop_timer_core(
             db, user, TimerStop(round_to_minutes=round_to_minutes, project_code=project_code)
@@ -249,6 +267,7 @@ def stop_timer(round_to_minutes: int | None = None, project_code: str | None = N
 @_tool
 def cancel_timer() -> str:
     """Discard the running timer without creating an entry."""
+    _require_write()
     with _session_user() as (db, user):
         cancel_timer_core(db, user)
         return "Timer cancelled."
@@ -266,8 +285,9 @@ def get_weekly_hours(week_offset: int = 0) -> dict:
 # ── Auth middleware + ASGI wiring ─────────────────────────────────────────────
 
 
-def _resolve_user_id(raw_api_key: str | None, bearer: str | None) -> int | None:
-    """Validate an API key or bearer JWT and return the active user's id."""
+def _resolve_auth(raw_api_key: str | None, bearer: str | None) -> tuple[int, str] | None:
+    """Validate an API key or bearer JWT; returns (user_id, scope) or None.
+    Expired or revoked keys are rejected. Bearer auth is full access."""
     db = SessionLocal()
     try:
         if raw_api_key:
@@ -276,13 +296,13 @@ def _resolve_user_id(raw_api_key: str | None, bearer: str | None) -> int | None:
                     ApiKey.key_hash == hash_api_key(raw_api_key), ApiKey.revoked_at.is_(None)
                 )
             ).scalar_one_or_none()
-            if key is not None:
+            if key is not None and not _key_is_expired(key):
                 key.last_used_at = datetime.now(UTC)
                 db.add(key)
                 db.commit()
                 user = db.get(User, key.user_id)
                 if user is not None and user.is_active:
-                    return user.id
+                    return user.id, key.scope
         if bearer:
             try:
                 payload = decode_token(bearer)
@@ -290,7 +310,7 @@ def _resolve_user_id(raw_api_key: str | None, bearer: str | None) -> int | None:
             except (ValueError, TypeError):
                 return None
             if user is not None and user.is_active:
-                return user.id
+                return user.id, "read_write"
         return None
     finally:
         db.close()
@@ -332,15 +352,18 @@ class ApiKeyAuthMiddleware:
             decoded = authz.decode("latin-1")
             if decoded.lower().startswith("bearer "):
                 bearer = decoded[7:].strip()
-        user_id = _resolve_user_id(api_key.decode("latin-1") if api_key else None, bearer)
-        if user_id is None:
+        auth = _resolve_auth(api_key.decode("latin-1") if api_key else None, bearer)
+        if auth is None:
             await _send_401(send)
             return
-        token = _user_id_var.set(user_id)
+        user_id, key_scope = auth
+        user_token = _user_id_var.set(user_id)
+        scope_token = _scope_var.set(key_scope)
         try:
             await self.app(scope, receive, send)
         finally:
-            _user_id_var.reset(token)
+            _user_id_var.reset(user_token)
+            _scope_var.reset(scope_token)
 
 
 _asgi_app = None

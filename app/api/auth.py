@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -32,6 +32,8 @@ def _serialize_key(k: ApiKey) -> ApiKeyOut:
         id=k.id,
         name=k.name,
         prefix=k.prefix,
+        scope=k.scope,
+        expires_at=k.expires_at.isoformat() if k.expires_at else None,
         last_used_at=k.last_used_at.isoformat() if k.last_used_at else None,
         created_at=k.created_at.isoformat(),
         revoked_at=k.revoked_at.isoformat() if k.revoked_at else None,
@@ -45,7 +47,19 @@ def create_api_key(
     db: Session = Depends(get_db),
 ):
     full, prefix, digest = generate_api_key()
-    key = ApiKey(user_id=user.id, name=payload.name, prefix=prefix, key_hash=digest)
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=payload.expires_in_days)
+        if payload.expires_in_days
+        else None
+    )
+    key = ApiKey(
+        user_id=user.id,
+        name=payload.name,
+        prefix=prefix,
+        key_hash=digest,
+        scope=payload.scope,
+        expires_at=expires_at,
+    )
     db.add(key)
     db.commit()
     db.refresh(key)
