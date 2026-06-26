@@ -1,14 +1,17 @@
 import logging
+import zipfile
 
 from fastapi import (
     APIRouter,
     Depends,
+    File,
     Form,
     HTTPException,
     Request,
+    UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -17,6 +20,7 @@ from app.db import get_db
 from app.models import User
 from app.security import hash_password
 from app.services import app_settings as app_settings_svc
+from app.services import backup as backup_svc
 from app.services import m365 as m365_svc
 from app.services import salesforce as sf_svc
 from app.web.common import (
@@ -181,6 +185,36 @@ def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(
         url=f"/users?flash=Salesforce-Login+ok+%28{client.instance_url}%29",
         status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.get("/admin/backup")
+def admin_backup(request: Request, db: Session = Depends(get_db)) -> Response:
+    _require_admin(request, db)
+    data = backup_svc.make_backup_zip(uploads_dir="/app/uploads")
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="timehub-backup.zip"'},
+    )
+
+
+@router.post("/admin/restore")
+async def admin_restore(
+    request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)
+) -> RedirectResponse:
+    _require_admin(request, db)
+    raw = await file.read()
+    base = request.scope.get("root_path", "")
+    try:
+        backup_svc.restore_from_zip(raw, uploads_dir="/app/uploads")
+    except (ValueError, zipfile.BadZipFile) as exc:
+        from urllib.parse import quote_plus
+
+        return RedirectResponse(url=f"{base}/users?error={quote_plus(str(exc))}", status_code=303)
+    return RedirectResponse(
+        url=f"{base}/users?flash=Wiederherstellung+erfolgreich+%E2%80%93+bitte+neu+laden",
+        status_code=303,
     )
 
 

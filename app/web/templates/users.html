@@ -263,6 +263,43 @@
   </form>
 </section>
 
+<section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 th-section-title th-section-orange th-outfit">Datensicherung</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Lade die komplette TimeHub-Datenbank (inkl. ggf. hochgeladener Dateien) als
+    ZIP herunter oder spiele eine Sicherung wieder ein — ganz ohne Server-Zugriff.
+    Dasselbe ZIP-Format dient auch dem <strong>erstmaligen Datenimport</strong>:
+    eine migrierte SQLite einfach als ZIP (mit <code>db/timehub.sqlite</code>)
+    hier hochladen.
+  </p>
+
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <a href="/admin/backup"
+       class="h-9 inline-flex items-center px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+      Backup herunterladen (ZIP)
+    </a>
+  </div>
+
+  <hr class="my-4 border-slate-200" />
+
+  <h3 class="font-medium text-sm mb-2">Wiederherstellen</h3>
+  <p class="text-xs text-rose-600 mb-3">
+    <strong>Achtung:</strong> Beim Wiederherstellen werden <strong>ALLE</strong>
+    aktuellen Daten durch den Inhalt des ZIPs überschrieben. Nach erfolgreicher
+    Wiederherstellung bitte die Seite neu laden.
+  </p>
+  <form method="post" action="/admin/restore" enctype="multipart/form-data"
+        onsubmit="return confirm('Überschreibt ALLE Daten. Fortfahren?')"
+        class="flex flex-wrap items-center gap-3">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
+    <input type="file" name="file" accept=".zip" required
+           class="text-sm border border-slate-300 rounded px-2 py-1.5" />
+    <button class="h-9 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded text-sm font-medium">
+      Wiederherstellen
+    </button>
+  </form>
+</section>
+
 <section class="bg-white border border-slate-200 overflow-hidden">
   <h2 class="font-semibold px-5 pt-5 pb-3 th-section-title th-section-teal th-outfit">Vorhandene Nutzer</h2>
   <table class="w-full text-sm">
