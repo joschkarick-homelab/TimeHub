@@ -22,6 +22,8 @@ COPY scripts ./scripts
 RUN mkdir -p /app/data /app/uploads \
  && chmod +x /app/scripts/entrypoint.sh
 
+VOLUME ["/app/data", "/app/uploads"]
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

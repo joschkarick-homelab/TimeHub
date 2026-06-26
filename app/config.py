@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     #   2. POSTGRES_USER + POSTGRES_PASSWORD + POSTGRES_HOST + POSTGRES_DB set
     #      → URL gets constructed with proper escaping (URL-unsafe password chars
     #        like /, @, : are handled correctly)
-    #   3. SQLite fallback at ./data/timehub.sqlite
+    #   3. SQLite fallback at /app/data/timehub.sqlite (named Hub volume)
     database_url: str | None = None
     postgres_user: str | None = None
     postgres_password: str | None = None
@@ -77,7 +77,9 @@ class Settings(BaseSettings):
                 database=self.postgres_db,
             ).render_as_string(hide_password=False)
         else:
-            self.database_url = "sqlite:///./data/timehub.sqlite"
+            # Absolute path inside the container so the named Hub volume
+            # (mounted at /app/data) always holds the DB, regardless of CWD.
+            self.database_url = "sqlite:////app/data/timehub.sqlite"
         return self
 
     @property
