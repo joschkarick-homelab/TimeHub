@@ -10,24 +10,21 @@ from app.services.backup import make_backup_zip, restore_from_zip
 
 
 def _login(client):
-    r = client.post("/login", data={"email": "admin@example.com", "password": "testpass"},
-                    follow_redirects=False)
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _login_non_admin(client, email="backup-other@example.com"):
-    """Create a non-admin user (via the admin API) and start a web session for it."""
-    admin_token = client.post(
-        "/api/v1/auth/login", json={"email": "admin@example.com", "password": "testpass"}
-    ).json()["access_token"]
+    """Create a non-admin user (via the admin API) and act as it."""
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
     client.post(
         "/api/v1/users",
         json={"email": email, "password": "secret123", "full_name": "Other U", "is_admin": False},
-        headers={"Authorization": f"Bearer {admin_token}"},
     )
-    r = client.post("/login", data={"email": email, "password": "secret123"},
-                    follow_redirects=False)
-    assert r.status_code == 302
+    act_as(client, email)
 
 
 def test_backup_zip_contains_db():
@@ -36,8 +33,10 @@ def test_backup_zip_contains_db():
         assert "db/timehub.sqlite" in zf.namelist()
 
 
-def test_restore_roundtrip():
-    # Restoring the app's own backup must succeed and keep the schema intact.
+def test_restore_roundtrip(client):
+    # Touch the app once so an admin is provisioned from the Hub identity, then
+    # restoring the app's own backup must succeed and keep the schema intact.
+    client.get("/")
     data = make_backup_zip(uploads_dir=None)
     restore_from_zip(data, uploads_dir=None)
     from sqlalchemy import text
@@ -94,17 +93,16 @@ def test_backup_endpoint_requires_admin_and_streams_zip(client):
         assert "db/timehub.sqlite" in zf.namelist()
 
 
-def test_backup_endpoint_rejects_anonymous(client):
-    r = client.get("/admin/backup", follow_redirects=False)
-    # No session → redirect to login (or 403), never a 200 ZIP stream.
+def test_backup_endpoint_rejects_anonymous(raw_client):
+    r = raw_client.get("/admin/backup", follow_redirects=False)
+    # No Hub identity → 401, never a 200 ZIP stream.
     assert r.status_code != 200
     assert r.status_code in (302, 401, 403)
 
 
-def test_restore_endpoint_rejects_anonymous(client):
-    # CSRF header is set by the client fixture, so this gets past CSRF and is
-    # rejected purely on auth grounds.
-    r = client.post(
+def test_restore_endpoint_rejects_anonymous(raw_client):
+    # No Hub identity → rejected on auth grounds before any restore.
+    r = raw_client.post(
         "/admin/restore",
         files={"file": ("x.zip", b"not-a-zip", "application/zip")},
         follow_redirects=False,

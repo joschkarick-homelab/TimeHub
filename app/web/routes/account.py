@@ -13,8 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import ApiKey, User
-from app.security import create_access_token, generate_api_key, verify_password
+from app.models import ApiKey
+from app.security import generate_api_key
 from app.services import m365 as m365_svc
 from app.services import salesforce as sf_svc
 from app.web.common import (
@@ -29,47 +29,11 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/login", response_class=HTMLResponse)
-def login_form(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": None, "m365_enabled": m365_svc.configured(db)},
-    )
-
-
-@router.post("/login", response_class=HTMLResponse)
-def login_submit(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    # `hashed_password` is empty for SSO-only accounts — guard before verifying so
-    # such a user can't be password-authenticated (they must use M365 sign-in).
-    if (
-        user is None
-        or not user.is_active
-        or not user.hashed_password
-        or not verify_password(password, user.hashed_password)
-    ):
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": "Ungültige Zugangsdaten",
-                "m365_enabled": m365_svc.configured(db),
-            },
-            status_code=401,
-        )
-    request.session["access_token"] = create_access_token(user.id)
-    return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-
-
 @router.post("/logout")
-def logout(request: Request):
+def logout(request: Request) -> RedirectResponse:
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    # The Hub owns the session; /auth/logout (absolute, Hub root) ends SSO hub-wide.
+    return RedirectResponse(url="/auth/logout", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/settings/theme")

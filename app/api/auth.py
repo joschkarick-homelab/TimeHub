@@ -1,31 +1,17 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import ApiKey, User
-from app.schemas.auth import ApiKeyCreate, ApiKeyCreated, ApiKeyOut, LoginRequest, TokenResponse
+from app.schemas.auth import ApiKeyCreate, ApiKeyCreated, ApiKeyOut
 from app.schemas.user import UserOut
-from app.security import create_access_token, generate_api_key, verify_password
+from app.security import generate_api_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-@router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
-    # SSO-only accounts have no local password hash — reject the password flow.
-    if (
-        user is None
-        or not user.is_active
-        or not user.hashed_password
-        or not verify_password(payload.password, user.hashed_password)
-    ):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    return TokenResponse(access_token=create_access_token(user.id))
 
 
 @router.get("/me", response_model=UserOut)

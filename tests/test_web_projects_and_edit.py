@@ -4,20 +4,16 @@ import io
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302, r.text
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _login_api(client) -> str:
-    r = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    )
-    return r.json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def test_projects_page_renders_and_creates(client):

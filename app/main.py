@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -12,7 +12,7 @@ from app import __version__
 from app.api import api_router
 from app.config import get_settings
 from app.scope_mw import ApiKeyWriteScopeMiddleware
-from app.services.bootstrap import ensure_builtin_formats, ensure_initial_admin
+from app.services.bootstrap import ensure_builtin_formats
 from app.web.router import LoginRequired
 from app.web.router import router as web_router
 
@@ -24,7 +24,6 @@ logging.basicConfig(level=settings.log_level.upper())
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    ensure_initial_admin()
     ensure_builtin_formats()
     if settings.mcp_enabled:
         # Run the MCP session manager alongside the app for the /mcp endpoint.
@@ -41,6 +40,7 @@ app = FastAPI(
     version=__version__,
     description="Zentrale Zeiterfassung – API für Erfassung, Import, Export und Reporting.",
     lifespan=lifespan,
+    root_path=settings.normalized_base_path,
 )
 
 # A wildcard origin with credentials is unsafe (and spec-invalid). The API
@@ -64,10 +64,10 @@ app.add_middleware(
 app.add_middleware(ApiKeyWriteScopeMiddleware)
 
 @app.exception_handler(LoginRequired)
-async def _login_required_handler(request, exc) -> RedirectResponse:
-    # Protected web pages raise LoginRequired when there's no session; send the
-    # visitor to the login screen (same 302 the routes used to return inline).
-    return RedirectResponse(url="/login", status_code=302)
+async def _login_required_handler(request, exc):
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")

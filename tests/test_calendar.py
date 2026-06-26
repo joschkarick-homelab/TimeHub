@@ -2,19 +2,16 @@
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _token(client) -> str:
-    return client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def _project(client, code: str) -> int:
@@ -55,10 +52,9 @@ def test_calendar_clamps_days(client):
     assert r.status_code == 200  # clamped to 7, no crash
 
 
-def test_calendar_requires_login(client):
-    r = client.get("/calendar", follow_redirects=False)
-    assert r.status_code == 302
-    assert r.headers["location"] == "/login"
+def test_calendar_requires_login(raw_client):
+    r = raw_client.get("/calendar", follow_redirects=False)
+    assert r.status_code == 401
 
 
 # ---------- drag-create ----------
@@ -94,13 +90,14 @@ def test_calendar_create_rejects_end_before_start(client):
     assert "error" in r.json()
 
 
-def test_calendar_create_requires_login(client):
-    r = client.post(
+def test_calendar_create_requires_login(raw_client):
+    r = raw_client.post(
         "/calendar/entries",
         json={"project_id": 1, "entry_date": "2026-05-27",
               "start_time": "09:00", "end_time": "10:00"},
     )
-    assert r.status_code == 401
+    # No identity → rejected (CSRF guard fires first on the web router, then auth).
+    assert r.status_code in (401, 403)
 
 
 # ---------- move / resize ----------

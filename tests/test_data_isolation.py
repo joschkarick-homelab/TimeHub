@@ -5,12 +5,14 @@ import json
 
 
 def _api_token(client, email, pw):
-    return client.post("/api/v1/auth/login",
-                       json={"email": email, "password": pw}).json()["access_token"]
+    # Identity is now the email itself; _h turns it into X-MSQ headers.
+    return email
 
 
-def _h(token):
-    return {"Authorization": f"Bearer {token}"}
+def _h(email):
+    from tests.conftest import hub_headers
+
+    return hub_headers(email)
 
 
 def _make_user(client, admin_h, email):
@@ -108,8 +110,9 @@ def test_admin_reports_api_only_returns_own_data(client):
 # ---------- Web: reports + edit/delete ----------
 
 def _login(client, email, pw):
-    r = client.post("/login", data={"email": email, "password": pw}, follow_redirects=False)
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, email)
 
 
 def test_web_reports_admin_sees_only_own_and_no_employee_filter(client):

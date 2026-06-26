@@ -11,19 +11,16 @@ from datetime import date
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302, r.text
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _api_token(client) -> str:
-    r = client.post("/api/v1/auth/login",
-                    json={"email": "admin@example.com", "password": "testpass"})
-    assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def _ensure_project(client, h, code="CRUDP") -> int:

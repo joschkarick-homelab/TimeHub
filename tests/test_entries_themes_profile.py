@@ -4,19 +4,16 @@ dropdown-deduplication fix for projects where code == name."""
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _login_api(client) -> str:
-    return client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def _make_project(client, code: str, name: str | None = None) -> int:
@@ -101,12 +98,9 @@ def test_entry_edit_rejects_other_users_entry(client):
     pid = _make_project(client, "EOWN")
     eid = _make_entry(client, pid)
 
-    # log in as other via session
-    r = client.post(
-        "/login", data={"email": "other@example.com", "password": "secret123"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    # act as the other user via Hub identity
+    from tests.conftest import act_as
+    act_as(client, "other@example.com")
 
     r = client.get(f"/entries/{eid}/edit")
     assert r.status_code == 403
@@ -191,7 +185,13 @@ def test_profile_page_saves_name_and_no_longer_renders_salesforce(client):
     r = client.post("/profile", data={"full_name": "Admin Full"},
                     follow_redirects=False)
     assert r.status_code == 302
-    token = _login_api(client)
-    me = client.get("/api/v1/auth/me",
-                    headers={"Authorization": f"Bearer {token}"}).json()
-    assert me["full_name"] == "Admin Full"
+    # The save persisted immediately. (A later request re-presenting an X-MSQ
+    # name would refresh it from the Hub identity, so assert on the DB row.)
+    from app.db import SessionLocal
+    from app.models import User
+    with SessionLocal() as db:
+        from sqlalchemy import func, select
+        u = db.execute(
+            select(User).where(func.lower(User.email) == "admin@example.com")
+        ).scalar_one()
+        assert u.full_name == "Admin Full"

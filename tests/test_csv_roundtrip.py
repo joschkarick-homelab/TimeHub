@@ -7,15 +7,14 @@
 import io
 
 
-def _login(client, email="admin@example.com", password="testpass") -> str:
-    r = client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+def _login(client, email="admin@example.com", password="testpass") -> dict:
+    from tests.conftest import hub_headers
+
+    return hub_headers(email)
 
 
 def test_import_auto_creates_unknown_projects_and_matches_loosely(client):
-    token = _login(client)
-    h = {"Authorization": f"Bearer {token}"}
+    h = _login(client)
 
     # Seed an existing project that should match loosely.
     r = client.post(
@@ -61,8 +60,7 @@ def test_import_auto_creates_unknown_projects_and_matches_loosely(client):
 def test_format_round_trips_export_to_import(client):
     """Export the entries we just made using the same format, then re-import
     that export — should produce the same number of entries with no errors."""
-    token = _login(client)
-    h = {"Authorization": f"Bearer {token}"}
+    h = _login(client)
 
     # Use the format we created in the previous test (fetch by name).
     formats = client.get("/api/v1/import-formats", headers=h).json()

@@ -7,14 +7,12 @@ from app import mcp_server as mcp
 
 
 def _api_key(client) -> str:
-    token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
     return client.post(
         "/api/v1/auth/api-keys",
         json={"name": "mcp-test"},
-        headers={"Authorization": f"Bearer {token}"},
     ).json()["key"]
 
 

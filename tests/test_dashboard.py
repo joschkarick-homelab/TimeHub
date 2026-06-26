@@ -4,12 +4,9 @@ from datetime import date
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302, r.text
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def test_dashboard_renders_today_as_default_and_groups_by_day(client):
@@ -49,10 +46,7 @@ def test_de_day_label_relative_and_weekday():
 def test_dashboard_renders_dates_in_german_format(client):
     """Grouped entries must show the German DD.MM.YYYY date, not ISO."""
     _login_session(client)
-    api_token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    api_token = "hub-identity"
     h = {"Authorization": f"Bearer {api_token}"}
     proj = client.post(
         "/api/v1/projects",
@@ -89,10 +83,7 @@ def test_export_via_import_format_endpoint(client):
     confirm we get a downloadable CSV in the format's shape."""
     _login_session(client)
     # need an entry in scope — use the JSON API
-    api_token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    api_token = "hub-identity"
     h = {"Authorization": f"Bearer {api_token}"}
 
     # ensure a project + entry exist

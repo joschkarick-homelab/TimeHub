@@ -5,19 +5,16 @@ from datetime import date
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _login_api(client) -> str:
-    return client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def _make_project(client, code: str, customer: str | None = None) -> int:
@@ -188,10 +185,7 @@ def test_views_are_per_user(client):
     )
 
     # Switch to the other user's session.
-    r = client.post(
-        "/login", data={"email": "viewer@example.com", "password": "secret123"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+    act_as(client, "viewer@example.com")
     r = client.get("/")
     assert "AdminOnly" not in r.text

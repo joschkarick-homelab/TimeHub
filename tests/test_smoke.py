@@ -5,14 +5,9 @@ def test_healthz(client):
 
 
 def test_login_and_create_entry(client):
-    # login as initial admin
-    r = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    )
-    assert r.status_code == 200, r.text
-    token = r.json()["access_token"]
-    h = {"Authorization": f"Bearer {token}"}
+    # admin identity comes from the Hub (X-MSQ-* on the client fixture)
+    from tests.conftest import hub_headers
+    h = hub_headers("admin@example.com")
 
     # create a project
     r = client.post(
@@ -48,21 +43,13 @@ def test_login_and_create_entry(client):
     assert "DEMO" in r.text
 
 
-def test_api_key_flow(client):
-    r = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    )
-    token = r.json()["access_token"]
-    r = client.post(
-        "/api/v1/auth/api-keys",
-        json={"name": "ci-key"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+def test_api_key_flow(client, raw_client):
+    # Mint a key while acting as admin via the Hub identity.
+    r = client.post("/api/v1/auth/api-keys", json={"name": "ci-key"})
     assert r.status_code == 201, r.text
     key = r.json()["key"]
     assert key.startswith("thk_")
 
-    # use the api key
-    r = client.get("/api/v1/auth/me", headers={"X-API-Key": key})
+    # Use the api key — on raw_client so the KEY (not a Hub identity) authenticates.
+    r = raw_client.get("/api/v1/auth/me", headers={"X-API-Key": key})
     assert r.status_code == 200

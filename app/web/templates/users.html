@@ -173,17 +173,8 @@
     Das Secret wird nur überschrieben, wenn ein Wert eingetragen wird.
   </p>
   <p class="text-xs text-slate-500 mb-3">
-    Als <strong>Redirect-URIs</strong> in der App-Registrierung (Typ „Web") müssen
-    <code>{{ m365_redirect_hint }}</code> (Kalender) und
-    <code>{{ m365_login_redirect_hint }}</code> (SSO-Login) eingetragen sein.
-  </p>
-  <p class="text-xs text-slate-500 mb-3">
-    <strong>SSO-Login:</strong> Mit hinterlegter Client-ID + Secret erscheint auf
-    der Anmeldeseite „Mit Microsoft 365 anmelden". Dafür genügen die
-    Standard-Scopes <code>openid</code>/<code>profile</code>/<code>email</code>
-    (kein Admin-Consent nötig). Für die Tenant-Beschränkung eine konkrete
-    <strong>Tenant-ID</strong> (statt <code>organizations</code>) eintragen –
-    dann werden nur Anmeldungen aus diesem Tenant akzeptiert.
+    Als <strong>Redirect-URI</strong> in der App-Registrierung (Typ „Web") muss
+    <code>{{ m365_redirect_hint }}</code> (Kalender) eingetragen sein.
   </p>
   <form method="post" action="/settings/m365" class="grid sm:grid-cols-2 gap-3">
     <label class="text-sm">
@@ -219,14 +210,6 @@
       </span>
       <input name="m365_redirect_uri" value="{{ m365_redirect_uri }}"
              placeholder="{{ m365_redirect_hint }}"
-             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
-    </label>
-    <label class="text-sm sm:col-span-2">
-      <span class="block font-medium mb-1">
-        Redirect-URI SSO-Login <span class="text-slate-400 font-normal text-[10px]">(optional – sonst automatisch)</span>
-      </span>
-      <input name="m365_login_redirect_uri" value="{{ m365_login_redirect_uri }}"
-             placeholder="{{ m365_login_redirect_hint }}"
              class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
     </label>
     <div class="sm:col-span-2 flex gap-2">

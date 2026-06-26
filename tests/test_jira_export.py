@@ -14,19 +14,16 @@ from app.services.reports import _strftime_en, export_via_import_format
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _token(client) -> str:
-    return client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def _project(client, code: str, target: str) -> int:

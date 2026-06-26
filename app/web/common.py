@@ -132,16 +132,11 @@ REPORT_ROW_CAP = 10000
 
 
 def _maybe_user(request: Request, db: Session) -> User | None:
-    token = request.session.get("access_token")
-    if not token:
-        return None
-    try:
-        from app.security import decode_token
+    """Identity comes from the Hub (X-MSQ-*) or dev-bypass, resolved lazily and
+    cached on request.state. No session-token decoding."""
+    from app.identity import resolve_request_user
 
-        payload = decode_token(token)
-    except ValueError:
-        return None
-    return db.get(User, int(payload["sub"]))
+    return resolve_request_user(request, db)
 
 
 class LoginRequired(Exception):
