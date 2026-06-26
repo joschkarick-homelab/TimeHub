@@ -33,3 +33,7 @@ class User(Base):
     api_keys: Mapped[list["ApiKey"]] = relationship(  # noqa: F821
         back_populates="user", cascade="all, delete-orphan"
     )
+    # Optional read-only Microsoft 365 calendar link (one mailbox per user).
+    m365_connection: Mapped["M365Connection | None"] = relationship(  # noqa: F821
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )

@@ -17,6 +17,7 @@ from app.db import get_db
 from app.models import User
 from app.security import hash_password
 from app.services import app_settings as app_settings_svc
+from app.services import m365 as m365_svc
 from app.services import salesforce as sf_svc
 from app.web.common import (
     _ctx,
@@ -38,6 +39,7 @@ def users_page(
     user = _require_admin(request, db)
     users = list(db.execute(select(User).order_by(User.id)).scalars())
     sf_creds = sf_svc.get_credentials(db)
+    m365_cfg = m365_svc.get_config(db)
     return templates.TemplateResponse(
         "users.html",
         _ctx(
@@ -50,9 +52,40 @@ def users_page(
             sf_api_version=sf_creds["api_version"],
             sf_password_set=bool(sf_creds["password"]),
             sf_token_set=bool(sf_creds["security_token"]),
+            m365_client_id=m365_cfg["client_id"],
+            m365_tenant=m365_cfg["tenant"],
+            m365_timezone=m365_cfg["timezone"],
+            m365_redirect_uri=m365_cfg["redirect_uri"],
+            m365_secret_set=bool(m365_cfg["client_secret"]),
+            m365_redirect_hint=str(request.url_for("m365_callback")),
             error=error,
             flash=flash,
         ),
+    )
+
+
+@router.post("/settings/m365", response_class=HTMLResponse)
+def settings_m365(
+    request: Request,
+    m365_client_id: str = Form(""),
+    m365_tenant: str = Form(""),
+    m365_client_secret: str = Form(""),
+    m365_redirect_uri: str = Form(""),
+    m365_timezone: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    _require_admin(request, db)
+    m365_svc.save_config(
+        db,
+        client_id=m365_client_id,
+        tenant=m365_tenant,
+        client_secret=m365_client_secret,
+        redirect_uri=m365_redirect_uri,
+        timezone=m365_timezone,
+    )
+    return RedirectResponse(
+        url="/users?flash=Microsoft-365-Einstellungen+gespeichert",
+        status_code=status.HTTP_302_FOUND,
     )
 
 

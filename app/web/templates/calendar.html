@@ -34,6 +34,22 @@
   Ziehen auf dem Raster legt einen Eintrag an · Block ziehen verschiebt ihn · untere Kante zieht die Dauer · Klick öffnet die Bearbeitung.
 </p>
 
+{% if m365_error %}
+  <div class="mb-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+    M365-Kalender konnte nicht geladen werden: {{ m365_error }}
+    <a href="/profile" class="underline">Verbindung prüfen</a>
+  </div>
+{% elif m365_connected %}
+  <p class="text-xs text-slate-500 mb-2 hidden md:flex items-center gap-3">
+    <span class="inline-flex items-center gap-1">
+      <span class="inline-block w-2.5 h-2.5 rounded-sm" style="background: var(--purple);"></span> Zeiterfassung (links)
+    </span>
+    <span class="inline-flex items-center gap-1">
+      <span class="inline-block w-2.5 h-2.5 rounded-sm cal-m365-swatch"></span> M365-Kalender (rechts, read-only)
+    </span>
+  </p>
+{% endif %}
+
 {% if not projects %}
   <div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-3">
     Es gibt noch keine aktiven Projekte. Lege zuerst ein Projekt an, dann kannst du Zeiten erfassen.
@@ -41,7 +57,8 @@
 {% endif %}
 
 <div id="cal-scroll" class="overflow-auto border border-slate-200 bg-white" style="max-height: 72vh;">
-  <div class="grid" style="grid-template-columns: 56px repeat({{ days_n }}, minmax(132px, 1fr)); min-width: {{ 56 + days_n * 132 }}px;">
+  {% set col_min = 184 if m365_connected else 132 %}
+  <div class="grid" style="grid-template-columns: 56px repeat({{ days_n }}, minmax({{ col_min }}px, 1fr)); min-width: {{ 56 + days_n * col_min }}px;">
 
     {# row 1 col 1: corner #}
     <div class="sticky top-0 left-0 z-30 bg-white border-b border-r border-slate-200"></div>
@@ -69,6 +86,17 @@
             {% endfor %}
           </div>
         {% endif %}
+        {% if m365_connected and col.m365.allday %}
+          <div class="mt-1 space-y-0.5">
+            {% for ev in col.m365.allday %}
+              <div class="flex items-center gap-1 text-[10px] truncate cal-m365-allday"
+                   title="M365 · ganztägig – {{ ev.subject }}">
+                <span class="inline-block w-1.5 h-1.5 rounded-sm shrink-0 cal-m365-swatch"></span>
+                <span class="truncate">{{ ev.subject }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
       </div>
     {% endfor %}
 
@@ -81,30 +109,54 @@
       {% endfor %}
     </div>
 
-    {# row 2: day bodies #}
+    {# row 2: day bodies — when M365 is connected each day splits into an
+       editable time-tracking lane (left) and a read-only M365 lane (right). #}
     {% for col in columns %}
-      <div class="cal-body relative {% if not loop.first %}border-l border-slate-100{% endif %}"
-           data-date="{{ col.date }}"
-           style="height: {{ total_h }}px; background-image: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent {{ px_per_hour }}px);">
-        {% for e in col.timed %}
-          {% set top = e.start * px_per_hour / 60 %}
-          {% set bh = (e.end - e.start) * px_per_hour / 60 %}
-          <div class="cal-block absolute left-1 right-1 rounded-md border border-slate-200 shadow-sm overflow-hidden px-1.5 py-1 cursor-grab select-none"
-               data-id="{{ e.id }}" data-date="{{ col.date }}" data-start="{{ e.start }}" data-end="{{ e.end }}"
-               style="top: {{ top }}px; height: {{ [bh, 18]|max }}px; --proj: {{ e.color }}; touch-action: none;">
-            <div class="text-[11px] font-medium text-slate-900 leading-tight truncate">{{ e.project_label }}</div>
-            <div class="text-[10px] text-slate-500 tabular-nums leading-tight">
-              {{ '%02d:%02d'|format(e.start // 60, e.start % 60) }}–{{ '%02d:%02d'|format(e.end // 60, e.end % 60) }}
+      <div class="relative {% if not loop.first %}border-l border-slate-100{% endif %}"
+           style="height: {{ total_h }}px;">
+        <div class="cal-body absolute top-0 bottom-0"
+             data-date="{{ col.date }}"
+             style="left: 0; right: {{ '46%' if m365_connected else '0' }}; background-image: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent {{ px_per_hour }}px);">
+          {% for e in col.timed %}
+            {% set top = e.start * px_per_hour / 60 %}
+            {% set bh = (e.end - e.start) * px_per_hour / 60 %}
+            <div class="cal-block absolute left-1 right-1 rounded-md border border-slate-200 shadow-sm overflow-hidden px-1.5 py-1 cursor-grab select-none"
+                 data-id="{{ e.id }}" data-date="{{ col.date }}" data-start="{{ e.start }}" data-end="{{ e.end }}"
+                 style="top: {{ top }}px; height: {{ [bh, 18]|max }}px; --proj: {{ e.color }}; touch-action: none;">
+              <div class="text-[11px] font-medium text-slate-900 leading-tight truncate">{{ e.project_label }}</div>
+              <div class="text-[10px] text-slate-500 tabular-nums leading-tight">
+                {{ '%02d:%02d'|format(e.start // 60, e.start % 60) }}–{{ '%02d:%02d'|format(e.end // 60, e.end % 60) }}
+              </div>
+              {% if e.needs_sync and not e.ready %}
+                <div class="text-[10px] text-amber-700 leading-tight truncate" title="Fehlt: {{ e.missing | join(', ') }}">⚠ {{ e.missing | join(', ') }}</div>
+              {% endif %}
+              {% if e.description %}
+                <div class="text-[10px] text-slate-500 leading-tight truncate">{{ e.description }}</div>
+              {% endif %}
+              <div class="cal-resize absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"></div>
             </div>
-            {% if e.needs_sync and not e.ready %}
-              <div class="text-[10px] text-amber-700 leading-tight truncate" title="Fehlt: {{ e.missing | join(', ') }}">⚠ {{ e.missing | join(', ') }}</div>
-            {% endif %}
-            {% if e.description %}
-              <div class="text-[10px] text-slate-500 leading-tight truncate">{{ e.description }}</div>
-            {% endif %}
-            <div class="cal-resize absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"></div>
+          {% endfor %}
+        </div>
+        {% if m365_connected %}
+          {# read-only lane — pointer-events:none so drag-create/move on the day
+             still hits the editable lane underneath. #}
+          <div class="absolute top-0 bottom-0 overflow-hidden border-l border-slate-200 cal-m365-lane"
+               style="left: 54%; right: 0; pointer-events: none;">
+            {% for ev in col.m365.timed %}
+              {% set top = ev.start * px_per_hour / 60 %}
+              {% set bh = (ev.end - ev.start) * px_per_hour / 60 %}
+              <div class="cal-m365-block absolute left-0.5 right-0.5 rounded border overflow-hidden px-1 py-0.5"
+                   data-show-as="{{ ev.show_as }}"
+                   style="top: {{ top }}px; height: {{ [bh, 16]|max }}px;"
+                   title="{{ ev.subject }} · {{ '%02d:%02d'|format(ev.start // 60, ev.start % 60) }}–{{ '%02d:%02d'|format(ev.end // 60, ev.end % 60) }}{% if ev.organizer %} · {{ ev.organizer }}{% endif %}">
+                <div class="text-[10px] font-medium leading-tight truncate">{{ ev.subject }}</div>
+                <div class="text-[9px] tabular-nums leading-tight opacity-75">
+                  {{ '%02d:%02d'|format(ev.start // 60, ev.start % 60) }}{% if ev.continues %} →{% endif %}
+                </div>
+              </div>
+            {% endfor %}
           </div>
-        {% endfor %}
+        {% endif %}
       </div>
     {% endfor %}
 
