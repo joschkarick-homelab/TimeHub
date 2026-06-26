@@ -78,6 +78,28 @@ def test_describe_sobject_hits_right_endpoint_and_parses(monkeypatch):
     assert meta["fields"][0]["name"] == "Id"
 
 
+def test_query_logs_in_before_building_url(monkeypatch):
+    """Regression: a fresh SOAP service-user client has no instance_url until it
+    logs in. query() must trigger that login *before* composing the URL, or it
+    builds 'None/services/data/...' and urllib raises 'unknown url type'."""
+    from app.services import salesforce as sfs
+    calls = []
+
+    def fake_http(method, url, **kw):
+        calls.append((method, url))
+        if method == "POST":  # the SOAP login round-trip
+            return 200, _LOGIN_OK
+        return 200, b'{"records":[]}'
+
+    monkeypatch.setattr(sfs, "_http", fake_http)
+    client = sfs.SalesforceClient("u", "p", "")  # no session_id / instance_url yet
+    client.query("SELECT Id FROM Account")
+
+    get_url = next(url for method, url in calls if method == "GET")
+    assert not get_url.startswith("None")
+    assert get_url.startswith("https://eu40.salesforce.com/services/data/v60.0/query")
+
+
 def test_coerce_bool_lenient():
     from app.services.salesforce import _coerce_bool
     for truthy in ("true", "True", "1", "yes", "ja", "x", "wahr", "Y", True):
