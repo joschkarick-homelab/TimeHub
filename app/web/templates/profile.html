@@ -117,6 +117,51 @@
   {% endif %}
 </section>
 
+<section class="bg-white border border-slate-200 p-5 max-w-2xl mb-6">
+  <h2 class="font-semibold mb-1 th-section-title th-section-teal th-outfit">Microsoft 365 Kalender</h2>
+  <p class="text-xs text-slate-500 mb-4">
+    Verbinde deinen Outlook-Kalender, um deine Termine read-only neben der
+    Zeiterfassung im <a href="/calendar" class="text-indigo-600 hover:underline">Kalender</a>
+    zu sehen. TimeHub liest nur – es schreibt nichts in Outlook zurück.
+  </p>
+
+  {% if not m365_configured %}
+    <div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+      Microsoft 365 ist noch nicht eingerichtet. Bitte wende dich an eine:n Administrator:in.
+    </div>
+  {% elif m365_connection %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="text-sm">
+        <span class="inline-flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+          Verbunden{% if m365_connection.account %} als
+            <strong>{{ m365_connection.account }}</strong>{% endif %}
+        </span>
+        {% if m365_connection.last_error %}
+          <div class="text-xs text-rose-600 mt-1">Letzter Fehler: {{ m365_connection.last_error }}</div>
+        {% endif %}
+      </div>
+      <div class="flex gap-2">
+        <a href="/m365/connect"
+           class="h-9 px-3 inline-flex items-center border border-slate-300 rounded text-sm hover:bg-slate-50">
+          Neu verbinden
+        </a>
+        <form method="post" action="/m365/disconnect"
+              onsubmit="return confirm('Microsoft-365-Verbindung trennen?');">
+          <button class="h-9 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded text-sm font-medium">
+            Trennen
+          </button>
+        </form>
+      </div>
+    </div>
+  {% else %}
+    <a href="/m365/connect"
+       class="h-10 px-4 inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-sm">
+      Mit Microsoft 365 verbinden
+    </a>
+  {% endif %}
+</section>
+
 <section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <h2 class="font-semibold mb-3 th-section-title th-section-orange th-outfit">Rolle &amp; Status</h2>
   <dl class="text-sm grid grid-cols-2 gap-y-1">

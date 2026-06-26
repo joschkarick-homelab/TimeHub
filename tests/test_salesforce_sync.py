@@ -325,10 +325,12 @@ def test_settings_route_can_clear_token(client):
 
 def test_settings_salesforce_route_persists(client):
     _login_session(client)
+    # Distinct sentinel values so the "never echoed" assertion can't collide
+    # with unrelated field names on the page (e.g. an "…secret" input).
     r = client.post("/settings/salesforce", data={
         "sf_username": "api.user@firma.com",
-        "sf_password": "secret",
-        "sf_security_token": "TOKEN",
+        "sf_password": "sf-pw-xyzzy",
+        "sf_security_token": "sf-tok-xyzzy",
         "sf_login_url": "https://test.salesforce.com",
         "sf_api_version": "60.0",
     }, follow_redirects=False)
@@ -337,7 +339,7 @@ def test_settings_salesforce_route_persists(client):
     # username visible; password/token marked "gesetzt" but never echoed
     assert "api.user@firma.com" in page.text
     assert "gesetzt" in page.text
-    assert "secret" not in page.text and "TOKEN" not in page.text
+    assert "sf-pw-xyzzy" not in page.text and "sf-tok-xyzzy" not in page.text
 
 
 # ---------- preview route (stubbed client) ----------

@@ -110,6 +110,65 @@
 </section>
 
 <section class="bg-white border border-slate-200 p-5 mb-6">
+  <h2 class="font-semibold mb-3 th-section-title th-section-teal th-outfit">Microsoft 365 Kalender</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Entra-App-Registrierung für die read-only Kalender-Ansicht. Lege in Azure/Entra
+    eine App mit den <strong>delegierten</strong> Berechtigungen
+    <code>Calendars.Read</code>, <code>offline_access</code>, <code>User.Read</code>
+    an und trage hier Client-ID, Tenant und ein Client-Secret ein. Jede:r Nutzer:in
+    verbindet danach den eigenen Kalender im
+    <a href="/profile" class="text-indigo-600 hover:underline">Profil</a>.
+    Das Secret wird nur überschrieben, wenn ein Wert eingetragen wird.
+  </p>
+  <p class="text-xs text-slate-500 mb-3">
+    Als <strong>Redirect-URI</strong> in der App-Registrierung (Typ „Web") muss
+    <code>{{ m365_redirect_hint }}</code> eingetragen sein.
+  </p>
+  <form method="post" action="/settings/m365" class="grid sm:grid-cols-2 gap-3">
+    <label class="text-sm">
+      <span class="block font-medium mb-1">Client-ID (Application ID)</span>
+      <input name="m365_client_id" value="{{ m365_client_id }}"
+             placeholder="00000000-0000-0000-0000-000000000000"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">Tenant</span>
+      <input name="m365_tenant" value="{{ m365_tenant }}"
+             placeholder="organizations oder Tenant-ID"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">
+        Client-Secret
+        {% if m365_secret_set %}<span class="text-emerald-700 text-[10px] ml-1">gesetzt</span>{% endif %}
+      </span>
+      <input type="password" name="m365_client_secret" autocomplete="new-password"
+             placeholder="{{ '••••••••' if m365_secret_set else 'noch nicht hinterlegt' }}"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">Zeitzone (Anzeige)</span>
+      <input name="m365_timezone" value="{{ m365_timezone }}"
+             placeholder="Europe/Berlin"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="text-sm sm:col-span-2">
+      <span class="block font-medium mb-1">
+        Redirect-URI <span class="text-slate-400 font-normal text-[10px]">(optional – sonst automatisch)</span>
+      </span>
+      <input name="m365_redirect_uri" value="{{ m365_redirect_uri }}"
+             placeholder="{{ m365_redirect_hint }}"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <div class="sm:col-span-2 flex gap-2">
+      <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+        Microsoft-365-Einstellungen speichern
+      </button>
+    </div>
+  </form>
+</section>
+
+<section class="bg-white border border-slate-200 p-5 mb-6">
   <h2 class="font-semibold mb-3 th-section-title th-section-purple th-outfit">Neuen Nutzer anlegen</h2>
   <form method="post" action="/users" class="grid sm:grid-cols-6 gap-3 items-end">
     <div class="sm:col-span-2">

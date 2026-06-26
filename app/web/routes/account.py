@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import ApiKey, User
 from app.security import create_access_token, generate_api_key, verify_password
+from app.services import m365 as m365_svc
 from app.web.common import (
     _DEFAULT_THEME,
     _THEMES,
@@ -96,6 +97,8 @@ def profile_page(
             api_keys=api_keys,
             new_api_key=new_api_key,
             new_api_key_name=new_api_key_name,
+            m365_configured=m365_svc.configured(db),
+            m365_connection=user.m365_connection,
         ),
     )
 

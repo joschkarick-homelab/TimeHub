@@ -4,6 +4,7 @@ from app.models.app_setting import AppSetting
 from app.models.csv_template import CsvTemplate
 from app.models.entry_sync import EntrySync
 from app.models.import_format import ImportFormat
+from app.models.m365_connection import M365Connection
 from app.models.project import Project
 from app.models.saved_view import SavedView
 from app.models.sync_rule import SyncRule
@@ -17,6 +18,7 @@ __all__ = [
     "CsvTemplate",
     "EntrySync",
     "ImportFormat",
+    "M365Connection",
     "Project",
     "SavedView",
     "SyncRule",

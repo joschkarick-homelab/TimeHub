@@ -12,8 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Project, TimeEntry
+from app.models import M365Connection, Project, TimeEntry
 from app.services import entry_sync as es_svc
+from app.services import m365 as m365_svc
 from app.services import sync_fields as sf
 from app.services.sync_rules import load_rules
 from app.web.common import (
@@ -110,6 +111,26 @@ def calendar_page(
         for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
     }
 
+    # Optional read-only Microsoft 365 calendar overlay. Any failure (lapsed
+    # consent, network, Graph error) degrades to a banner — time tracking stays
+    # fully usable.
+    m365_conn = db.execute(
+        select(M365Connection).where(M365Connection.user_id == user.id)
+    ).scalar_one_or_none()
+    m365_events: list[dict] = []
+    m365_error: str | None = None
+    if m365_conn is not None:
+        try:
+            m365_events = m365_svc.calendar_view(db, m365_conn, start_d, end_d)
+        except m365_svc.M365Error as e:
+            m365_error = str(e)
+            # Persist the error so the profile page can prompt a reconnect.
+            if m365_conn.last_error != m365_error:
+                m365_conn.last_error = m365_error
+                db.add(m365_conn)
+                db.commit()
+            log.info("M365 calendar fetch failed for user %s: %s", user.id, e)
+
     today = date.today()
     columns = []
     for i in range(days_n):
@@ -127,6 +148,11 @@ def calendar_page(
             "timed": timed,
             "untimed": untimed,
             "total_minutes": sum(e.duration_minutes for e in day_entries),
+            "m365": (
+                m365_svc.events_for_day(m365_events, d)
+                if m365_conn is not None
+                else {"timed": [], "allday": []}
+            ),
         })
 
     projects_json = [
@@ -146,6 +172,8 @@ def calendar_page(
             sync_field_registry=sf.registry_json("entry"),
             px_per_hour=CAL_PX_PER_HOUR,
             days_n=days_n,
+            m365_connected=m365_conn is not None,
+            m365_error=m365_error,
             start=start_d.isoformat(),
             prev_start=(start_d - timedelta(days=days_n)).isoformat(),
             next_start=(start_d + timedelta(days=days_n)).isoformat(),

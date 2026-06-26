@@ -178,6 +178,30 @@
       background-color: color-mix(in srgb, var(--proj, var(--purple)) 26%, var(--bg));
     }
 
+    /* ── Microsoft 365 calendar overlay (read-only, teal-tinted) ────────── */
+    /* Distinct from the project-coloured tracking blocks: a flat teal tint so
+       the eye reads "this is the external calendar", not a project. */
+    .cal-m365-lane    { background-color: color-mix(in srgb, var(--teal) 6%, var(--bg)); }
+    .cal-m365-swatch  { background-color: var(--teal); }
+    .cal-m365-allday  { color: var(--teal); }
+    .cal-m365-block {
+      border-color: color-mix(in srgb, var(--teal) 45%, var(--bg)) !important;
+      background-color: color-mix(in srgb, var(--teal) 16%, var(--bg));
+      color: var(--text);
+    }
+    html[data-theme="light"] .cal-m365-block {
+      background-color: color-mix(in srgb, var(--teal) 24%, var(--bg));
+    }
+    /* Tentative meetings read as lighter/striped; free time barely there. */
+    .cal-m365-block[data-show-as="tentative"] {
+      background-image: repeating-linear-gradient(45deg,
+        color-mix(in srgb, var(--teal) 22%, var(--bg)) 0 4px, transparent 4px 8px);
+    }
+    .cal-m365-block[data-show-as="free"] {
+      background-color: transparent;
+      border-style: dashed !important;
+    }
+
     /* ── User dropdown ──────────────────────────────────────────────── */
     #user-menu { display: none; }
     #user-menu.open { display: block; }
