@@ -39,6 +39,7 @@ def users_page(
     user = _require_admin(request, db)
     users = list(db.execute(select(User).order_by(User.id)).scalars())
     sf_creds = sf_svc.get_credentials(db)
+    sf_oauth = sf_svc.get_oauth_config(db)
     m365_cfg = m365_svc.get_config(db)
     return templates.TemplateResponse(
         "users.html",
@@ -52,6 +53,11 @@ def users_page(
             sf_api_version=sf_creds["api_version"],
             sf_password_set=bool(sf_creds["password"]),
             sf_token_set=bool(sf_creds["security_token"]),
+            sf_oauth_client_id=sf_oauth["client_id"],
+            sf_oauth_login_url=sf_oauth["login_url"],
+            sf_oauth_redirect_uri=sf_oauth["redirect_uri"],
+            sf_oauth_secret_set=bool(sf_oauth["client_secret"]),
+            sf_oauth_redirect_hint=str(request.url_for("salesforce_oauth_callback")),
             m365_client_id=m365_cfg["client_id"],
             m365_tenant=m365_cfg["tenant"],
             m365_timezone=m365_cfg["timezone"],
@@ -125,6 +131,31 @@ def settings_salesforce(
     )
     return RedirectResponse(
         url="/users?flash=Salesforce-Zugangsdaten+gespeichert",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/settings/salesforce/oauth", response_class=HTMLResponse)
+def settings_salesforce_oauth(
+    request: Request,
+    sf_oauth_client_id: str = Form(""),
+    sf_oauth_client_secret: str = Form(""),
+    sf_oauth_login_url: str = Form(""),
+    sf_oauth_redirect_uri: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Persist the Connected App config for the per-user Salesforce OAuth flow.
+    The secret only overwrites when a value is entered (empty keeps existing)."""
+    _require_admin(request, db)
+    sf_svc.save_oauth_config(
+        db,
+        client_id=sf_oauth_client_id,
+        client_secret=sf_oauth_client_secret,
+        login_url=sf_oauth_login_url,
+        redirect_uri=sf_oauth_redirect_uri,
+    )
+    return RedirectResponse(
+        url="/users?flash=Salesforce-OAuth-Einstellungen+gespeichert",
         status_code=status.HTTP_302_FOUND,
     )
 

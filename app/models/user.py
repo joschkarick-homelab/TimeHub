@@ -45,3 +45,7 @@ class User(Base):
     m365_connection: Mapped["M365Connection | None"] = relationship(  # noqa: F821
         back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
+    # Optional per-user Salesforce OAuth link (the org logs in via M365 SSO).
+    salesforce_connection: Mapped["SalesforceConnection | None"] = relationship(  # noqa: F821
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )

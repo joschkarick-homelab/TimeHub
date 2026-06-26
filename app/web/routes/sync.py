@@ -64,7 +64,7 @@ def sync_center(
             buckets=buckets,
             cards=[(t, es_svc.TARGET_LABELS[t]) for t in es_svc.DISPLAY_TARGETS],
             projects_by_id=proj_lookup,
-            sf_configured=sf_svc.credentials_configured(db),
+            sf_configured=sf_svc.available_for_user(db, user),
             sync_dynamic_options=_sync_dynamic_options(db, user),
             formats=formats,
             flash=flash,
@@ -201,7 +201,7 @@ def sync_salesforce_preview(
         p.id: p for p in db.execute(select(Project).where(Project.user_id == user.id)).scalars()
     }
 
-    client = sf_svc.client_from_settings(db)
+    client = sf_svc.client_for_user(db, user)
     if client is None:
         return templates.TemplateResponse(
             "sync_salesforce_preview.html",
@@ -270,7 +270,7 @@ def sync_salesforce_execute(
         return RedirectResponse(url="/?error=Keine+Einträge+ausgewählt",
                                 status_code=status.HTTP_302_FOUND)
 
-    client = sf_svc.client_from_settings(db)
+    client = sf_svc.client_for_user(db, user)
     if client is None:
         return templates.TemplateResponse(
             "sync_salesforce_execute.html",
