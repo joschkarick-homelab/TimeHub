@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -19,6 +20,10 @@ from app.models import User
 log = logging.getLogger(__name__)
 
 ADMIN_ROLE = "AppHub.Admin"
+# Reserved internal placeholder domain: synthesized for principals that arrive
+# without a real email, so the UNIQUE email column stays satisfiable. Backfilled
+# with the real address once the same subject later presents one.
+HUB_PLACEHOLDER_DOMAIN = "@hub.local"
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,34 @@ def _should_be_admin(principal: HubPrincipal) -> bool:
     return bool(principal.email and principal.email in get_settings().admin_email_set)
 
 
+def _apply_existing(db: Session, user: User, principal: HubPrincipal) -> User:
+    """Reconcile an already-known user with the current principal: backfill the
+    Hub subject, grant admin, refresh name, replace a placeholder email. Commits
+    only if something actually changed."""
+    changed = False
+    if user.msq_user_id != principal.subject:
+        user.msq_user_id = principal.subject
+        changed = True
+    # Grant-only: we never auto-revoke is_admin on login, because admin can also
+    # be granted in-app (admin users page: app/web/routes/admin.py) and a
+    # login-revoke would clobber that. Removing the Hub allowlist/role does NOT
+    # demote — do that in the users page or the DB.
+    if _should_be_admin(principal) and not user.is_admin:
+        user.is_admin = True
+        changed = True
+    if principal.name and user.full_name != principal.name:
+        user.full_name = principal.name
+        changed = True
+    # Replace the internal placeholder once a real email shows up for this user.
+    if user.email.endswith(HUB_PLACEHOLDER_DOMAIN) and principal.email:
+        user.email = principal.email
+        changed = True
+    if changed:
+        db.add(user)
+        db.commit()
+    return user
+
+
 def resolve_user(db: Session, principal: HubPrincipal) -> User:
     """Match by msq_user_id, then email; provision if unknown. Admin status is
     re-evaluated on every login so allowlist/role changes take effect."""
@@ -74,34 +107,35 @@ def resolve_user(db: Session, principal: HubPrincipal) -> User:
             select(User).where(func.lower(User.email) == principal.email)
         ).scalar_one_or_none()
 
-    if user is None:
-        user = User(
-            email=principal.email or f"{principal.subject}@hub.local",
-            full_name=principal.name or principal.email or principal.subject,
-            msq_user_id=principal.subject,
-            is_active=True,
-            is_admin=_should_be_admin(principal),
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        log.info("Provisioned TimeHub user from Hub identity: %s", user.email)
-        return user
+    if user is not None:
+        return _apply_existing(db, user, principal)
 
-    changed = False
-    if user.msq_user_id != principal.subject:
-        user.msq_user_id = principal.subject
-        changed = True
-    admin = _should_be_admin(principal)
-    if admin and not user.is_admin:
-        user.is_admin = True
-        changed = True
-    if principal.name and user.full_name != principal.name:
-        user.full_name = principal.name
-        changed = True
-    if changed:
-        db.add(user)
+    user = User(
+        email=principal.email or f"{principal.subject}{HUB_PLACEHOLDER_DOMAIN}",
+        full_name=principal.name or principal.email or principal.subject,
+        msq_user_id=principal.subject,
+        is_active=True,
+        is_admin=_should_be_admin(principal),
+    )
+    db.add(user)
+    try:
         db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Lost a concurrent first-touch race — the winner already inserted the
+        # row under our UNIQUE msq_user_id/email. Re-select and reconcile.
+        existing = db.execute(
+            select(User).where(User.msq_user_id == principal.subject)
+        ).scalar_one_or_none()
+        if existing is None and principal.email:
+            existing = db.execute(
+                select(User).where(func.lower(User.email) == principal.email)
+            ).scalar_one_or_none()
+        if existing is None:
+            raise
+        return _apply_existing(db, existing, principal)
+    db.refresh(user)
+    log.info("Provisioned TimeHub user from Hub identity: %s", user.email)
     return user
 
 
