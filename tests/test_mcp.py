@@ -129,6 +129,20 @@ def test_stop_assigns_project_inline_via_tools(as_user):
     assert entry["project_id"]
 
 
+def test_read_scope_blocks_write_tools(as_user):
+    token = mcp._scope_var.set("read")
+    try:
+        # read tools still work
+        assert isinstance(mcp.list_projects(), list)
+        # write tools refuse
+        with pytest.raises(ValueError, match="read-only"):
+            mcp.create_time_entry(project_code="MCPTOOL", duration_minutes=30)
+        with pytest.raises(ValueError, match="read-only"):
+            mcp.start_timer(project_code="MCPTOOL")
+    finally:
+        mcp._scope_var.reset(token)
+
+
 def test_cancel_timer_via_tools(as_user):
     mcp.start_timer(project_code="MCPTOOL")
     assert mcp.cancel_timer() == "Timer cancelled."

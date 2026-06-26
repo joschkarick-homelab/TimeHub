@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import (
     APIRouter,
@@ -100,16 +100,34 @@ def profile_page(
     )
 
 
+_VALID_SCOPES = {"read", "tracking", "read_write"}
+
+
 @router.post("/profile/api-keys")
 def create_profile_api_key(
     request: Request,
     name: str = Form(""),
+    scope: str = Form("read_write"),
+    expires_in_days: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _require_login(request, db)
     label = name.strip() or "API Key"
+    if scope not in _VALID_SCOPES:
+        scope = "read_write"
+    days = expires_in_days.strip()
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=int(days)) if days.isdigit() and int(days) > 0 else None
+    )
     full, prefix, digest = generate_api_key()
-    key = ApiKey(user_id=user.id, name=label, prefix=prefix, key_hash=digest)
+    key = ApiKey(
+        user_id=user.id,
+        name=label,
+        prefix=prefix,
+        key_hash=digest,
+        scope=scope,
+        expires_at=expires_at,
+    )
     db.add(key)
     db.commit()
     # Revealed once on the next /profile render (see profile_page).

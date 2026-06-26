@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app import __version__
 from app.api import api_router
 from app.config import get_settings
+from app.scope_mw import ApiKeyWriteScopeMiddleware
 from app.services.bootstrap import ensure_builtin_formats, ensure_initial_admin
 from app.web.router import LoginRequired
 from app.web.router import router as web_router
@@ -59,6 +60,8 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.session_cookie_secure,
 )
+# Reject writes from read-only / tracking-scoped API keys before they hit a route.
+app.add_middleware(ApiKeyWriteScopeMiddleware)
 
 @app.exception_handler(LoginRequired)
 async def _login_required_handler(request, exc) -> RedirectResponse:

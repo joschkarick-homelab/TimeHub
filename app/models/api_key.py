@@ -16,6 +16,11 @@ class ApiKey(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     prefix: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     key_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    # Access level: "read" (GET only), "tracking" (read + write time-entries &
+    # timer), or "read_write" (full). Defaults to full for back-compat.
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, default="read_write")
+    # Optional expiry; null = never expires.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -129,7 +129,18 @@ Auth-Schemata, die alle geschützten Routen akzeptieren:
 - Session-Cookie als Fallback für die Web-UI
 
 API-Keys legst du dir selbst unter **Mein Profil → API-Keys** an (einmalige
-Anzeige des Schlüssels).
+Anzeige des Schlüssels). Jeder Key hat einen **Scope** und optional ein
+**Ablaufdatum**:
+
+| Scope | Darf |
+| --- | --- |
+| `read` | nur lesen (GET) |
+| `tracking` | lesen + **nur** `time-entries` & `timer` schreiben — empfohlen für Raycast/MCP |
+| `read_write` | alles (inkl. Projekte, Key-Verwaltung) |
+
+Schreibende Zugriffe mit zu schwachem Scope werden mit **403** abgelehnt,
+abgelaufene Keys mit **401**. Bestehende Keys vor diesem Feature gelten als
+`read_write` ohne Ablauf.
 
 ### 4a. MCP-Server (Claude-Integration)
 
