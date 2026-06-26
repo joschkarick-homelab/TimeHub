@@ -2,9 +2,10 @@
   // Wires the dynamic, target-dependent sync fields of an entry-edit form
   // (rendered from _entry_form.html). Works for the standalone edit page as
   // well as a copy injected into the shared edit modal. Reads the registry and
-  // the entry's stored meta from the JSON blocks the fragment carries, and the
-  // effective target from the selected project's data-target (overridden by the
-  // explicit Sync-Ziel select). Depends on window.renderSyncFields.
+  // the entry's stored meta from the JSON blocks the fragment carries.
+  // Supports multi-target checkboxes and shows a deviation hint when the
+  // chosen targets differ from the project's defaults. Depends on
+  // window.renderSyncFields.
   window.wireEntryForm = function (form) {
     if (!form || !window.renderSyncFields) return;
     function json(sel, fallback) {
@@ -13,18 +14,93 @@
     }
     var registry = json(".ee-registry", {});
     var current = json(".ee-current-meta", {});
+    var projectMultiTargets = json(".ee-project-multi-targets", {});
+    var projectSf = json(".ee-project-sf", {});
     var proj = form.querySelector(".ee-project");
-    var override = form.querySelector(".ee-target");
     var box = form.querySelector(".ee-sync-fields");
-    if (!proj || !override || !box) return;
-    function effectiveTarget() {
-      if (override.value) return override.value;
-      var opt = proj.options[proj.selectedIndex];
-      return (opt && opt.dataset.target) || "intern";
+    var hintEl = form.querySelector(".ee-deviation-hint");
+    if (!proj || !box) return;
+
+    function getCheckboxes() {
+      return Array.prototype.slice.call(form.querySelectorAll(".ee-sync-target"));
     }
-    function update() { window.renderSyncFields(box, registry, effectiveTarget(), current); }
-    proj.addEventListener("change", update);
-    override.addEventListener("change", update);
+    function getCheckedTargets() {
+      return getCheckboxes().filter(function (cb) { return cb.checked; })
+                            .map(function (cb) { return cb.value; });
+    }
+    function projectDefaultTargets() {
+      var opt = proj.options[proj.selectedIndex];
+      var projId = opt ? opt.value : "";
+      return (projectMultiTargets[projId] || []).slice();
+    }
+    function effectiveTargets() {
+      var checked = getCheckedTargets();
+      if (checked.length) return checked;
+      var defs = projectDefaultTargets();
+      return defs.length ? defs : ["intern"];
+    }
+
+    // userDirty: user has explicitly touched the checkboxes this session.
+    var userDirty = getCheckedTargets().length > 0;
+
+    function applyProjectDefaults() {
+      var defs = projectDefaultTargets();
+      getCheckboxes().forEach(function (cb) {
+        cb.checked = defs.indexOf(cb.value) !== -1;
+      });
+    }
+
+    function checkDeviation() {
+      if (!hintEl) return;
+      var checked = getCheckedTargets();
+      if (!checked.length) { hintEl.classList.add("hidden"); hintEl.textContent = ""; return; }
+
+      var opt = proj.options[proj.selectedIndex];
+      var projId = opt ? opt.value : "";
+      var defs = (projectMultiTargets[projId] || []).slice().sort();
+      var checkedSorted = checked.slice().sort();
+
+      var msgs = [];
+      if (checkedSorted.join(",") !== defs.join(",")) {
+        var defLabel = defs.length ? defs.join(", ") : "—";
+        msgs.push("Sync-Ziele weichen vom Projekt-Standard (" + defLabel + ") ab.");
+      }
+      // Salesforce assignment deviation
+      if (checked.indexOf("salesforce") !== -1 && defs.indexOf("salesforce") !== -1) {
+        var projSfId = projectSf[projId] || "";
+        var sfHidden = box.querySelector('input[type="hidden"][name="meta__salesforce__assignment_id"]');
+        if (sfHidden && projSfId && sfHidden.value && sfHidden.value !== projSfId) {
+          msgs.push("Die Salesforce-Projektbesetzung weicht vom Projekt-Standard ab.");
+        }
+      }
+      if (msgs.length) {
+        hintEl.textContent = "Hinweis: " + msgs.join(" ");
+        hintEl.classList.remove("hidden");
+      } else {
+        hintEl.classList.add("hidden");
+        hintEl.textContent = "";
+      }
+    }
+
+    function update() {
+      window.renderSyncFields(box, registry, effectiveTargets(), current);
+      checkDeviation();
+    }
+
+    proj.addEventListener("change", function () {
+      if (!userDirty) applyProjectDefaults();
+      update();
+    });
+    getCheckboxes().forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        userDirty = true;
+        update();
+      });
+    });
+    // Re-check deviation when any sync field value changes (e.g. SF assignment pick).
+    box.addEventListener("change", checkDeviation);
+    box.addEventListener("input", checkDeviation);
+
     update();
   };
 </script>

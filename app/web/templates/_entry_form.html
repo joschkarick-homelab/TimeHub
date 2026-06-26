@@ -15,7 +15,9 @@
     <label class="block text-xs font-medium mb-1">Projekt</label>
     <select name="project_id" class="ee-project w-full h-10 border border-slate-300 rounded px-2 bg-white" required>
       {% for p in projects %}
-        <option value="{{ p.id }}" data-target="{{ project_targets.get(p.id) or 'intern' }}"
+        <option value="{{ p.id }}"
+                data-targets="{{ (project_multi_targets.get(p.id) or []) | tojson | e }}"
+                data-sf="{{ project_sf_assignments.get(p.id) or '' }}"
                 {% if p.id == entry.project_id %}selected{% endif %}>
           {{ p.display_label }}
         </option>
@@ -47,15 +49,25 @@
     <input name="description" value="{{ entry.description }}"
            class="w-full h-10 border border-slate-300 rounded px-2" />
   </div>
-  <div class="sm:col-span-2">
-    <label class="block text-xs font-medium mb-1">Sync-Ziel</label>
-    <select name="sync_target_override" class="ee-target w-full h-10 border border-slate-300 rounded px-2 bg-white">
-      <option value="">Projekt-Standard</option>
-      {% for t in sync_targets %}
-        <option value="{{ t }}" {% if entry.sync_target_override == t %}selected{% endif %}>{{ t }}</option>
+
+  {# Sync-Ziele: checkboxes for multi-target selection #}
+  {% set active_overrides = entry.sync_targets_override or [] %}
+  <div class="sm:col-span-6">
+    <label class="block text-xs font-medium mb-1">Sync-Ziele</label>
+    <div class="flex flex-wrap items-center gap-4 mt-1">
+      {% for t_val, t_label in [("jira", "Jira"), ("salesforce", "Salesforce"), ("bcs", "BCS")] %}
+      <label class="flex items-center gap-1.5 cursor-pointer text-sm select-none">
+        <input type="checkbox" name="sync_targets_override" value="{{ t_val }}"
+               class="ee-sync-target h-4 w-4 rounded"
+               {% if t_val in active_overrides %}checked{% endif %} />
+        {{ t_label }}
+      </label>
       {% endfor %}
-    </select>
+    </div>
+    <p class="text-[11px] text-slate-400 mt-1">Keine Auswahl = Projekt-Standard</p>
+    <div class="ee-deviation-hint hidden mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5"></div>
   </div>
+
   <div class="ee-sync-fields hidden sm:col-span-6 grid sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3"></div>
   <p class="sm:col-span-6 text-xs text-slate-500 -mt-1">
     Von + Bis überschreiben die Dauer. Sind beide leer, gilt die eingetragene Dauer.
@@ -71,6 +83,8 @@
   {# Data for window.wireEntryForm — read as text, never executed. #}
   <script type="application/json" class="ee-registry">{{ sync_field_registry | tojson }}</script>
   <script type="application/json" class="ee-current-meta">{{ current_meta | tojson }}</script>
+  <script type="application/json" class="ee-project-multi-targets">{{ project_multi_targets | tojson }}</script>
+  <script type="application/json" class="ee-project-sf">{{ project_sf_assignments | tojson }}</script>
 </form>
 
 <form method="post" action="/entries/{{ entry.id }}/delete" class="mt-3"

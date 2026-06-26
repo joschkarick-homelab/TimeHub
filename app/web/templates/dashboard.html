@@ -34,106 +34,157 @@
   </div>
 </div>
 
-{# Quick-entry trigger bar #}
-<div class="mb-6">
-  <button id="new-entry-btn"
-          class="flex items-center gap-2 w-full bg-white border border-slate-200 px-4 py-3 text-left transition-colors hover:border-purple-500"
-          style="box-shadow: 3px 3px 0 var(--border2);"
-          onclick="document.getElementById('new-entry-modal').classList.remove('hidden')">
-    <span class="inline-flex items-center justify-center w-6 h-6 bg-indigo-600 text-white text-sm font-bold shrink-0">+</span>
-    <span class="text-sm th-outfit font-semibold" style="color: var(--purple);">Neuer Eintrag</span>
-    <span class="text-xs ml-auto" style="color: var(--faint);">Klicken zum Erfassen</span>
-  </button>
-</div>
-
-{# New-entry modal #}
-<div id="new-entry-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
-     style="background: rgba(0,0,0,.65);">
-  <div class="bg-white border border-slate-200 p-5 w-full max-w-lg relative"
-       style="box-shadow: 5px 5px 0 var(--purple-shadow);">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="font-semibold th-section-title th-section-purple th-outfit">Neuer Eintrag</h2>
-      <button type="button" id="new-entry-close"
-              class="text-xl leading-none" style="color: var(--muted);">✕</button>
-    </div>
-    <form method="post" action="/entries" class="grid grid-cols-2 gap-3 items-end">
-      <input type="hidden" name="next" value="{{ filter_query }}" />
-      <div>
-        <label class="block text-xs font-medium mb-1">Datum</label>
-        <input name="entry_date" type="date" required value="{{ today }}"
-               class="w-full h-10 border border-slate-300 px-2" />
-      </div>
-      <div>
-        <label class="block text-xs font-medium mb-1">Projekt</label>
-        <select name="project_id" id="dash-project" required
-                class="w-full h-10 border border-slate-300 px-2 bg-white">
-          {% for p in projects %}
-            <option value="{{ p.id }}">{{ p.display_label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs font-medium mb-1">Von</label>
-        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
-      </div>
-      <div>
-        <label class="block text-xs font-medium mb-1">Bis</label>
-        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
-      </div>
-      <div>
-        <label class="block text-xs font-medium mb-1">Dauer (Min)</label>
-        <input name="duration_minutes" type="number" step="15" min="15" inputmode="numeric"
-               placeholder="60" class="w-full h-10 border border-slate-300 px-2" />
-      </div>
-      <div>
-        <label class="block text-xs font-medium mb-1">Beschreibung</label>
-        <input name="description" class="w-full h-10 border border-slate-300 px-2" />
-      </div>
-      <div id="dash-sync-fields" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t pt-3"
-           style="border-color: var(--border);"></div>
-      <p class="col-span-2 text-xs -mt-1" style="color: var(--faint);">
-        Von + Bis <strong>oder</strong> Dauer in Minuten eingeben.
-      </p>
-      <div class="col-span-2 flex gap-2 pt-1">
-        <button class="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold th-outfit tracking-wide">
-          Speichern
-        </button>
-        <button type="button" id="new-entry-cancel"
-                class="h-10 px-4 border border-slate-300 text-sm" style="color: var(--muted);">
-          Abbrechen
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-<script>
-(function () {
-  var modal = document.getElementById("new-entry-modal");
-  var closeBtn = document.getElementById("new-entry-close");
-  var cancelBtn = document.getElementById("new-entry-cancel");
-  function close() { modal.classList.add("hidden"); }
-  closeBtn.addEventListener("click", close);
-  cancelBtn.addEventListener("click", close);
-  modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
-})();
-</script>
+{# Quick text-entry bar (Feature: Schnell-Erfassung) #}
+{% include "_quick_entry.html" %}
 
 {% include "_sync_fields_js.html" %}
 {% include "_entry_form_js.html" %}
 {% include "_entry_modal.html" %}
 <script>
+  // --- Dashboard quick-modal sync logic ---
   (function () {
     var REGISTRY = {{ sync_field_registry | tojson }};
-    var PROJECT_TARGETS = {{ project_targets | tojson }};
+    var PROJECT_MULTI_TARGETS = {{ project_multi_targets | tojson }};
+    var PROJECT_SF_ASSIGNMENTS = {{ project_sf_assignments | tojson }};
     var proj = document.getElementById("dash-project");
     var box = document.getElementById("dash-sync-fields");
+    var hintEl = document.getElementById("dash-deviation-hint");
     if (!proj || !box) return;
-    function update() {
-      window.renderSyncFields(box, REGISTRY, PROJECT_TARGETS[proj.value] || "intern", {});
+
+    var userDirty = false;
+
+    function getCheckboxes() {
+      return Array.prototype.slice.call(document.querySelectorAll(".dash-sync-target"));
     }
-    proj.addEventListener("change", update);
-    update();
+    function getCheckedTargets() {
+      return getCheckboxes().filter(function (cb) { return cb.checked; })
+                            .map(function (cb) { return cb.value; });
+    }
+    function projectDefaultTargets() {
+      return (PROJECT_MULTI_TARGETS[proj.value] || []).slice();
+    }
+    function effectiveTargets() {
+      var checked = getCheckedTargets();
+      if (checked.length) return checked;
+      var defs = projectDefaultTargets();
+      return defs.length ? defs : ["intern"];
+    }
+    function applyProjectDefaults() {
+      var defs = projectDefaultTargets();
+      getCheckboxes().forEach(function (cb) {
+        cb.checked = defs.indexOf(cb.value) !== -1;
+      });
+    }
+    function checkDeviation() {
+      if (!hintEl) return;
+      var checked = getCheckedTargets();
+      if (!checked.length) { hintEl.classList.add("hidden"); return; }
+      var defs = projectDefaultTargets().slice().sort();
+      var checkedSorted = checked.slice().sort();
+      var msgs = [];
+      if (checkedSorted.join(",") !== defs.join(",")) {
+        msgs.push("Sync-Ziele weichen vom Projekt-Standard (" + (defs.join(", ") || "—") + ") ab.");
+      }
+      if (checked.indexOf("salesforce") !== -1 && defs.indexOf("salesforce") !== -1) {
+        var projSfId = PROJECT_SF_ASSIGNMENTS[proj.value] || "";
+        var sfHidden = box.querySelector('input[type="hidden"][name="meta__salesforce__assignment_id"]');
+        if (sfHidden && projSfId && sfHidden.value && sfHidden.value !== projSfId) {
+          msgs.push("Die Salesforce-Projektbesetzung weicht vom Projekt-Standard ab.");
+        }
+      }
+      if (msgs.length) {
+        hintEl.textContent = "Hinweis: " + msgs.join(" ");
+        hintEl.classList.remove("hidden");
+      } else {
+        hintEl.classList.add("hidden");
+      }
+    }
+
+    function dashUpdate() {
+      window.renderSyncFields(box, REGISTRY, effectiveTargets(), {});
+      checkDeviation();
+    }
+
+    proj.addEventListener("change", function () {
+      if (!userDirty) applyProjectDefaults();
+      dashUpdate();
+    });
+    getCheckboxes().forEach(function (cb) {
+      cb.addEventListener("change", function () { userDirty = true; dashUpdate(); });
+    });
+    box.addEventListener("change", checkDeviation);
+    box.addEventListener("input", checkDeviation);
+
+    // Reset state when modal opens (fresh entry each time).
+    window.openNewEntryModal = function (opts) {
+      opts = opts || {};
+      userDirty = false;
+
+      var modal = document.getElementById("new-entry-modal");
+      var form = modal ? modal.querySelector("form") : null;
+      if (!form) { if (modal) modal.classList.remove("hidden"); return; }
+
+      // Restore date to today if not provided.
+      var dateInput = form.querySelector('[name="entry_date"]');
+      if (dateInput) dateInput.value = opts.date || {{ today | tojson }};
+
+      if (opts.startTime !== undefined) {
+        var si = form.querySelector('[name="start_time"]');
+        if (si) si.value = opts.startTime;
+      }
+      if (opts.endTime !== undefined) {
+        var ei = form.querySelector('[name="end_time"]');
+        if (ei) ei.value = opts.endTime;
+      }
+      if (opts.durationMinutes !== undefined && opts.durationMinutes !== null) {
+        var di = form.querySelector('[name="duration_minutes"]');
+        if (di) di.value = opts.durationMinutes;
+      }
+      if (opts.description !== undefined) {
+        var desc = form.querySelector('[name="description"]');
+        if (desc) desc.value = opts.description || "";
+      }
+
+      // Set project (triggers default-target application).
+      if (opts.projectId) {
+        var projSel = form.querySelector('[name="project_id"]');
+        if (projSel) {
+          projSel.value = opts.projectId;
+          projSel.dispatchEvent(new Event("change"));
+        }
+      } else {
+        applyProjectDefaults();
+        dashUpdate();
+      }
+
+      // Override targets if explicitly provided (e.g. from #Jira / #BCS tokens).
+      if (opts.targets && opts.targets.length) {
+        userDirty = true;
+        getCheckboxes().forEach(function (cb) {
+          cb.checked = opts.targets.indexOf(cb.value) !== -1;
+        });
+        dashUpdate();
+      }
+
+      // Set sync field values after renderSyncFields has run.
+      if (opts.jiraKey || opts.bcsTask) {
+        setTimeout(function () {
+          if (opts.jiraKey) {
+            var jiraInput = box.querySelector('[name="meta__jira__issue_key"]');
+            if (jiraInput) jiraInput.value = opts.jiraKey;
+          }
+          if (opts.bcsTask) {
+            var bcsTask = box.querySelector('[name="meta__bcs__task"]');
+            if (bcsTask) bcsTask.value = opts.bcsTask;
+          }
+        }, 0);
+      }
+
+      modal.classList.remove("hidden");
+    };
+
+    applyProjectDefaults();
+    dashUpdate();
   })();
 </script>
 

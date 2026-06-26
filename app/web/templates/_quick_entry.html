@@ -1,0 +1,458 @@
+{# Schnell-Erfassung — einzeilige Text-Eingabe ähnlich Toggl.
+   Muss nach _sync_fields_js.html und dem Dashboard-Sync-Skript inkludiert werden,
+   da window.openNewEntryModal vorausgesetzt wird. #}
+
+{# New-entry modal (previously inline in dashboard.html) #}
+<div id="new-entry-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background: rgba(0,0,0,.65);">
+  <div class="bg-white border border-slate-200 p-5 w-full max-w-lg relative"
+       style="box-shadow: 5px 5px 0 var(--purple-shadow);">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold th-section-title th-section-purple th-outfit">Neuer Eintrag</h2>
+      <button type="button" id="new-entry-close"
+              class="text-xl leading-none" style="color: var(--muted);">✕</button>
+    </div>
+    <form method="post" action="/entries" class="grid grid-cols-2 gap-3 items-end">
+      <input type="hidden" name="next" value="{{ filter_query }}" />
+      <div>
+        <label class="block text-xs font-medium mb-1">Datum</label>
+        <input name="entry_date" type="date" required value="{{ today }}"
+               class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Projekt</label>
+        <select name="project_id" id="dash-project" required
+                class="w-full h-10 border border-slate-300 px-2 bg-white">
+          {% for p in projects %}
+            <option value="{{ p.id }}">{{ p.display_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Von</label>
+        <input name="start_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Bis</label>
+        <input name="end_time" type="time" class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Dauer (Min)</label>
+        <input name="duration_minutes" type="number" step="15" min="15" inputmode="numeric"
+               placeholder="60" class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium mb-1">Beschreibung</label>
+        <input name="description" class="w-full h-10 border border-slate-300 px-2" />
+      </div>
+      {# Sync-Ziele checkboxes #}
+      <div class="col-span-2">
+        <label class="block text-xs font-medium mb-1">Sync-Ziele</label>
+        <div class="flex flex-wrap items-center gap-4 mt-1">
+          {% for t_val, t_label in [("jira", "Jira"), ("salesforce", "Salesforce"), ("bcs", "BCS")] %}
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm select-none">
+            <input type="checkbox" name="sync_targets_override" value="{{ t_val }}"
+                   class="dash-sync-target h-4 w-4 rounded" />
+            {{ t_label }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="text-[11px] mt-1" style="color: var(--faint);">Keine Auswahl = Projekt-Standard</p>
+        <div id="dash-deviation-hint" class="hidden mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5"></div>
+      </div>
+      <div id="dash-sync-fields" class="hidden col-span-2 grid grid-cols-2 gap-3 border-t pt-3"
+           style="border-color: var(--border);"></div>
+      <p class="col-span-2 text-xs -mt-1" style="color: var(--faint);">
+        Von + Bis <strong>oder</strong> Dauer in Minuten eingeben.
+      </p>
+      <div class="col-span-2 flex gap-2 pt-1">
+        <button class="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold th-outfit tracking-wide">
+          Speichern
+        </button>
+        <button type="button" id="new-entry-cancel"
+                class="h-10 px-4 border border-slate-300 text-sm" style="color: var(--muted);">
+          Abbrechen
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById("new-entry-modal");
+  var closeBtn = document.getElementById("new-entry-close");
+  var cancelBtn = document.getElementById("new-entry-cancel");
+  function close() { modal.classList.add("hidden"); }
+  closeBtn.addEventListener("click", close);
+  cancelBtn.addEventListener("click", close);
+  modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+})();
+</script>
+
+{# ── Schnell-Erfassung ──────────────────────────────────────────────────────── #}
+<div id="quick-entry-bar" class="mb-4 relative">
+  {# Trigger-Zeile: Klick öffnet Modal, Tippen startet Parser #}
+  <div class="flex items-center gap-2 bg-white border border-slate-200 hover:border-purple-400 transition-colors"
+       style="box-shadow: 3px 3px 0 var(--border2); padding: 10px 14px;">
+    <button type="button" id="new-entry-btn"
+            class="inline-flex items-center justify-center w-6 h-6 bg-indigo-600 text-white text-sm font-bold shrink-0"
+            title="Neuer Eintrag (Modal öffnen)">+</button>
+    <input type="text" id="quick-entry-input"
+           placeholder="heute 9-10 Uhr @Projekt Meeting … oder einfach + klicken"
+           class="flex-1 text-sm outline-none bg-transparent min-w-0"
+           autocomplete="off" spellcheck="false" />
+    <button type="button" id="quick-entry-help"
+            class="shrink-0 text-xs px-1.5 py-0.5 border border-slate-200 rounded hover:bg-slate-50"
+            style="color: var(--faint);" title="Syntax-Hilfe">?</button>
+  </div>
+
+  {# Live-Chip-Vorschau #}
+  <div id="quick-entry-preview" class="hidden flex flex-wrap gap-1.5 px-1 pt-2"></div>
+
+  {# Projekt-Autocomplete-Dropdown #}
+  <div id="quick-entry-projects"
+       class="hidden absolute left-0 right-0 bg-white border border-slate-200 rounded shadow-lg z-30 max-h-52 overflow-y-auto"
+       style="top: 100%; margin-top: 2px;"></div>
+
+  {# Syntax-Hilfe (ausklappbar) #}
+  <div id="quick-entry-syntax"
+       class="hidden mt-2 text-xs leading-relaxed bg-slate-50 border border-slate-200 rounded px-3 py-2"
+       style="color: var(--muted);">
+    <strong>Datum:</strong>
+    <code>DD.MM.YYYY</code> &nbsp;·&nbsp;
+    <code>DD.MM.</code> (aktuelles Jahr) &nbsp;·&nbsp;
+    <code>Mo Di Mi Do Fr Sa So</code> (letztes Vorkommen) &nbsp;·&nbsp;
+    <code>Montag … Sonntag</code> &nbsp;·&nbsp;
+    <code>vorgestern gestern heute morgen übermorgen</code> &nbsp;·&nbsp;
+    <code>KW25</code> (Montag der KW) &nbsp;·&nbsp;
+    <code>-1 +1</code> (relative Tage)
+    <br />
+    <strong>Uhrzeit:</strong>
+    <code>13-14 Uhr</code> &nbsp;·&nbsp;
+    <code>13:30-14:15</code> &nbsp;·&nbsp;
+    <code>1300-1430</code> &nbsp;·&nbsp;
+    <code>2h</code> &nbsp;·&nbsp;
+    <code>1.5h</code> &nbsp;·&nbsp;
+    <code>90min</code>
+    <br />
+    <strong>Projekt:</strong> <code>@Projektname</code> (Autovervollständigung) &nbsp;·&nbsp;
+    <strong>Jira:</strong> <code>#Jira ABC-123</code> &nbsp;·&nbsp;
+    <strong>BCS:</strong> <code>#BCS 456</code>
+  </div>
+</div>
+
+<script>
+(function () {
+  var PROJECTS = [
+    {% for p in projects %}
+    { id: "{{ p.id }}", name: {{ p.display_label | tojson }}, code: {{ p.code | tojson }} }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
+
+  var input   = document.getElementById("quick-entry-input");
+  var preview = document.getElementById("quick-entry-preview");
+  var dropdown = document.getElementById("quick-entry-projects");
+  var helpBtn = document.getElementById("quick-entry-help");
+  var syntax  = document.getElementById("quick-entry-syntax");
+  var newBtn  = document.getElementById("new-entry-btn");
+
+  helpBtn.addEventListener("click", function () { syntax.classList.toggle("hidden"); });
+  newBtn.addEventListener("click", function () {
+    if (!input.value.trim()) {
+      if (window.openNewEntryModal) window.openNewEntryModal({});
+    } else {
+      submitQuickEntry();
+    }
+  });
+
+  // ── Helper ────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function pad2(n) { return String(Math.floor(n)).padStart(2, "0"); }
+  function offsetDate(base, days) {
+    var d = new Date(base.getTime());
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+  function lastWeekday(today, jsDay) {
+    // jsDay: 0=Sunday … 6=Saturday. Returns most recent past occurrence.
+    var diff = ((today.getDay() - jsDay) + 7) % 7;
+    if (diff === 0) diff = 7;
+    return offsetDate(today, -diff);
+  }
+  function toISO(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+  function toDE(iso) {
+    if (!iso) return "";
+    var p = iso.split("-");
+    return p[2] + "." + p[1] + "." + p[0];
+  }
+  function kwMonday(year, week) {
+    // ISO week: Jan 4 is always in week 1.
+    var jan4 = new Date(year, 0, 4);
+    var startOfW1 = new Date(jan4.getTime() - ((jan4.getDay() + 6) % 7) * 86400000);
+    return new Date(startOfW1.getTime() + (week - 1) * 7 * 86400000);
+  }
+
+  // ── Parser ────────────────────────────────────────────────────────────────
+  function parseQuickEntry(text, today) {
+    var remaining = text;
+    var result = {
+      date: null, startTime: null, endTime: null, durationMinutes: null,
+      projectId: null, projectName: null,
+      jiraKey: null, bcsTask: null,
+      description: null, targets: [],
+    };
+
+    // 1. @Projekt (longest case-insensitive prefix match)
+    var atRe = /@([^\s@][^\s]*(?:\s+[^\s@][^\s]*)*)/g;
+    var atM, bestMatch = null, bestMatchFull = null;
+    while ((atM = atRe.exec(text)) !== null) {
+      var typed = atM[1].trim();
+      var found = null;
+      PROJECTS.forEach(function (p) {
+        if (p.name.toLowerCase() === typed.toLowerCase() ||
+            p.code.toLowerCase() === typed.toLowerCase()) { found = p; }
+      });
+      if (!found) {
+        PROJECTS.forEach(function (p) {
+          if (p.name.toLowerCase().startsWith(typed.toLowerCase()) ||
+              p.code.toLowerCase().startsWith(typed.toLowerCase())) {
+            if (!found) found = p;
+          }
+        });
+      }
+      if (found) { bestMatch = found; bestMatchFull = atM[0]; break; }
+    }
+    if (bestMatch) {
+      result.projectId = bestMatch.id;
+      result.projectName = bestMatch.name;
+      remaining = remaining.replace(bestMatchFull, "");
+    }
+
+    // 2. #Jira KEY
+    var jiraM = remaining.match(/#[Jj]ira\s+([A-Za-z][A-Za-z0-9]*-\d+)/);
+    if (jiraM) {
+      result.jiraKey = jiraM[1].toUpperCase();
+      result.targets.push("jira");
+      remaining = remaining.replace(jiraM[0], "");
+    }
+
+    // 3. #BCS TASK
+    var bcsM = remaining.match(/#[Bb][Cc][Ss]\s+(\S+)/);
+    if (bcsM) {
+      result.bcsTask = bcsM[1];
+      result.targets.push("bcs");
+      remaining = remaining.replace(bcsM[0], "");
+    }
+
+    // 4. Time range / duration (most specific pattern first)
+    var timePatterns = [
+      // HH:MM-HH:MM
+      { re: /\b(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})\s*(?:[Uu]hr)?\b/,
+        fn: function (m) { return { s: pad2(m[1])+":"+m[2], e: pad2(m[3])+":"+m[4] }; } },
+      // HH:MM-HH
+      { re: /\b(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2})\s*(?:[Uu]hr)?\b/,
+        fn: function (m) { return { s: pad2(m[1])+":"+m[2], e: pad2(m[3])+":00" }; } },
+      // HH-HH:MM
+      { re: /\b(\d{1,2})\s*[-–]\s*(\d{1,2}):(\d{2})\s*(?:[Uu]hr)?\b/,
+        fn: function (m) { return { s: pad2(m[1])+":00", e: pad2(m[2])+":"+m[3] }; } },
+      // HHMM-HHMM (4-digit each)
+      { re: /\b(\d{2})(\d{2})\s*[-–]\s*(\d{2})(\d{2})\b/,
+        fn: function (m) { return { s: m[1]+":"+m[2], e: m[3]+":"+m[4] }; } },
+      // HH-HH
+      { re: /\b(\d{1,2})\s*[-–]\s*(\d{1,2})\s*(?:[Uu]hr)?\b/,
+        fn: function (m) { return { s: pad2(m[1])+":00", e: pad2(m[2])+":00" }; } },
+      // 1.5h / 1,5h
+      { re: /\b(\d+)[.,](\d)\s*[hH]\b/,
+        fn: function (m) { return { dur: Math.round(parseFloat(m[1]+"."+m[2])*60) }; } },
+      // Nh
+      { re: /\b(\d+)\s*[hH]\b/,
+        fn: function (m) { return { dur: parseInt(m[1],10)*60 }; } },
+      // Nmin
+      { re: /\b(\d+)\s*[mM]in\b/,
+        fn: function (m) { return { dur: parseInt(m[1],10) }; } },
+    ];
+    for (var i = 0; i < timePatterns.length; i++) {
+      var tp = timePatterns[i];
+      var tm = remaining.match(tp.re);
+      if (!tm) continue;
+      var r = tp.fn(tm);
+      if (r.s !== undefined) { result.startTime = r.s; result.endTime = r.e; }
+      else if (r.dur !== undefined) { result.durationMinutes = r.dur; }
+      remaining = remaining.replace(tp.re, "");
+      break;
+    }
+
+    // 5. Date
+    var datePatterns = [
+      { re: /\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b/,
+        fn: function (m) { return new Date(+m[3], +m[2]-1, +m[1]); } },
+      { re: /\b(\d{1,2})\.(\d{1,2})\.\b/,
+        fn: function (m) { return new Date(today.getFullYear(), +m[2]-1, +m[1]); } },
+      { re: /\b[Kk][Ww]\s*(\d{1,2})\b/,
+        fn: function (m) { return kwMonday(today.getFullYear(), +m[1]); } },
+      { re: /\bvorgestern\b/i,   fn: function () { return offsetDate(today, -2); } },
+      { re: /\bgestern\b/i,      fn: function () { return offsetDate(today, -1); } },
+      { re: /\bheute\b/i,        fn: function () { return offsetDate(today, 0); } },
+      { re: /\bmorgen\b/i,       fn: function () { return offsetDate(today, 1); } },
+      { re: /\bübermorgen\b/i,   fn: function () { return offsetDate(today, 2); } },
+      // Short weekday: Mo Di Mi Do Fr Sa So
+      { re: /\b(Mo|Di|Mi|Do|Fr|Sa|So)\b/i,
+        fn: function (m) {
+          var map = { mo:1,di:2,mi:3,do:4,fr:5,sa:6,so:0 };
+          return lastWeekday(today, map[m[1].toLowerCase()]);
+        } },
+      // Full weekday
+      { re: /\b(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)\b/i,
+        fn: function (m) {
+          var map = { montag:1,dienstag:2,mittwoch:3,donnerstag:4,freitag:5,samstag:6,sonntag:0 };
+          return lastWeekday(today, map[m[1].toLowerCase()]);
+        } },
+      // Relative: -2 / +1
+      { re: /(?:^|\s)([+-]\d+)\b/,
+        fn: function (m) { return offsetDate(today, parseInt(m[1], 10)); } },
+    ];
+    for (var j = 0; j < datePatterns.length; j++) {
+      var dp = datePatterns[j];
+      var dm = remaining.match(dp.re);
+      if (!dm) continue;
+      var d = dp.fn(dm);
+      if (d && !isNaN(d.getTime())) { result.date = toISO(d); }
+      remaining = remaining.replace(dp.re, "");
+      break;
+    }
+
+    result.description = remaining.trim().replace(/\s+/g, " ");
+    return result;
+  }
+
+  // ── Chip-Vorschau ─────────────────────────────────────────────────────────
+  function chip(bg, text, border) {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ' +
+           bg + ' border ' + (border||'border-transparent') + '">' + text + '</span>';
+  }
+  function updatePreview(parsed) {
+    var chips = [];
+    if (parsed.date)
+      chips.push(chip("bg-blue-50 text-blue-700", "📅 " + esc(toDE(parsed.date)), "border-blue-200"));
+    if (parsed.startTime && parsed.endTime)
+      chips.push(chip("bg-green-50 text-green-700", "⏰ " + esc(parsed.startTime) + "–" + esc(parsed.endTime), "border-green-200"));
+    else if (parsed.durationMinutes)
+      chips.push(chip("bg-green-50 text-green-700", "⏱ " + parsed.durationMinutes + " Min", "border-green-200"));
+    if (parsed.projectName)
+      chips.push(chip("bg-purple-50 text-purple-700", "🏷 " + esc(parsed.projectName), "border-purple-200"));
+    if (parsed.jiraKey)
+      chips.push(chip("bg-amber-50 text-amber-700", "🎫 " + esc(parsed.jiraKey), "border-amber-200"));
+    if (parsed.bcsTask)
+      chips.push(chip("bg-orange-50 text-orange-700", "📋 BCS " + esc(parsed.bcsTask), "border-orange-200"));
+    if (parsed.description)
+      chips.push(chip("bg-slate-50 text-slate-600", "📝 " + esc(parsed.description.slice(0,60)), "border-slate-200"));
+    if (chips.length) {
+      preview.innerHTML = chips.join("");
+      preview.classList.remove("hidden");
+    } else {
+      preview.classList.add("hidden");
+    }
+  }
+
+  // ── @Projekt-Autocomplete ─────────────────────────────────────────────────
+  var atSearchStart = -1;
+
+  function showDropdown(query) {
+    var q = query.toLowerCase();
+    var hits = PROJECTS.filter(function (p) {
+      return p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q);
+    }).slice(0, 12);
+    if (!hits.length) { hideDropdown(); return; }
+    dropdown.innerHTML = hits.map(function (p) {
+      return '<div data-pid="' + esc(p.id) + '" data-pname="' + esc(p.name) + '"' +
+             ' class="px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 flex items-center gap-2">' +
+             '<span class="font-medium">' + esc(p.name) + '</span>' +
+             '<span class="text-slate-400 text-xs">' + esc(p.code) + '</span></div>';
+    }).join("");
+    dropdown.classList.remove("hidden");
+  }
+  function hideDropdown() { dropdown.classList.add("hidden"); atSearchStart = -1; }
+
+  dropdown.addEventListener("mousedown", function (e) {
+    var item = e.target.closest("[data-pid]");
+    if (!item) return;
+    e.preventDefault();
+    var name = item.getAttribute("data-pname");
+    var cur = input.value;
+    var atPos = cur.lastIndexOf("@");
+    // Replace from @ up to the next space (or end of string).
+    var after = cur.slice(atPos + 1);
+    var spaceIdx = after.indexOf(" ");
+    var endPos = atPos + 1 + (spaceIdx === -1 ? after.length : spaceIdx);
+    input.value = cur.slice(0, atPos) + "@" + name + cur.slice(endPos);
+    hideDropdown();
+    input.focus();
+    handleInput();
+  });
+
+  // ── Main input handler ────────────────────────────────────────────────────
+  function handleInput() {
+    var text = input.value;
+    var cursor = typeof input.selectionStart === "number" ? input.selectionStart : text.length;
+    // Detect @... context.
+    var lastAt = text.lastIndexOf("@", cursor);
+    if (lastAt !== -1) {
+      var between = text.slice(lastAt + 1, cursor);
+      if (!between.includes(" ")) {
+        atSearchStart = lastAt;
+        showDropdown(between);
+      } else { hideDropdown(); }
+    } else { hideDropdown(); }
+
+    var parsed = parseQuickEntry(text, new Date());
+    updatePreview(parsed);
+  }
+
+  input.addEventListener("input", handleInput);
+  input.addEventListener("blur", function () { setTimeout(hideDropdown, 150); });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // If dropdown open: pick first item.
+      if (!dropdown.classList.contains("hidden")) {
+        var first = dropdown.querySelector("[data-pid]");
+        if (first) { first.dispatchEvent(new MouseEvent("mousedown")); return; }
+      }
+      submitQuickEntry();
+    }
+    if (e.key === "Escape") {
+      if (!dropdown.classList.contains("hidden")) { hideDropdown(); }
+      else { input.value = ""; preview.classList.add("hidden"); }
+    }
+  });
+
+  // ── Submit → pre-fill modal ───────────────────────────────────────────────
+  function submitQuickEntry() {
+    var text = input.value.trim();
+    if (!text) { if (window.openNewEntryModal) window.openNewEntryModal({}); return; }
+    var parsed = parseQuickEntry(text, new Date());
+    if (window.openNewEntryModal) {
+      window.openNewEntryModal({
+        date: parsed.date || null,
+        startTime: parsed.startTime || "",
+        endTime: parsed.endTime || "",
+        durationMinutes: parsed.durationMinutes || null,
+        projectId: parsed.projectId || null,
+        description: parsed.description || "",
+        jiraKey: parsed.jiraKey || null,
+        bcsTask: parsed.bcsTask || null,
+        targets: parsed.targets || [],
+      });
+    }
+    input.value = "";
+    preview.classList.add("hidden");
+  }
+})();
+</script>
