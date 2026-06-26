@@ -436,7 +436,7 @@ def _sync_dynamic_options(db: Session, user: User | None) -> dict:
     options: dict[str, list[dict]] = {}
     if user is None:
         return options
-    client = sf_svc.client_from_settings(db)
+    client = sf_svc.client_for_user(db, user)
     if client is None or not user.email:
         return options
     try:

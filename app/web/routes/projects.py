@@ -122,7 +122,7 @@ def projects_page(
             sync_targets=_KNOWN_SYNC_TARGETS,
             sync_field_registry=sf.registry_json("project"),
             sync_dynamic_options=_sync_dynamic_options(db, user),
-            sf_configured=sf_svc.credentials_configured(db),
+            sf_configured=sf_svc.available_for_user(db, user),
             statuses=_KNOWN_STATUSES,
             flash=flash,
             error=error,
@@ -182,12 +182,12 @@ def projects_import_sf_form(
     (gleiche Filter wie das PB-Dropdown), beschränkt auf jene, die noch an
     keinem Projekt hinterlegt sind — zum Ankreuzen und Anlegen."""
     user = _require_login(request, db)
-    if not sf_svc.credentials_configured(db):
+    if not sf_svc.available_for_user(db, user):
         return RedirectResponse(
             url="/projects?error=Salesforce+ist+nicht+konfiguriert",
             status_code=status.HTTP_302_FOUND,
         )
-    client = sf_svc.client_from_settings(db)
+    client = sf_svc.client_for_user(db, user)
     assignments: list[dict] = []
     sf_error: str | None = None
     if client is None or not user.email:
@@ -215,7 +215,7 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
     salesforce, mit hinterlegter assignment_id). Re-fetch + Re-Dedup, damit eine
     inzwischen angelegte oder weggefallene PB nicht doppelt/fälschlich landet."""
     user = _require_login(request, db)
-    if not sf_svc.credentials_configured(db):
+    if not sf_svc.available_for_user(db, user):
         return RedirectResponse(
             url="/projects?error=Salesforce+ist+nicht+konfiguriert",
             status_code=status.HTTP_302_FOUND,
@@ -227,7 +227,7 @@ async def projects_import_sf_run(request: Request, db: Session = Depends(get_db)
             url="/projects?error=Keine+Projektbesetzung+ausgewählt",
             status_code=status.HTTP_302_FOUND,
         )
-    client = sf_svc.client_from_settings(db)
+    client = sf_svc.client_for_user(db, user)
     if client is None or not user.email:
         return RedirectResponse(
             url="/projects?error=Keine+Salesforce-Verbindung",

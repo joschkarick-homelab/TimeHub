@@ -90,6 +90,58 @@
     </button>
   </form>
 
+  <hr class="my-5 border-slate-200" />
+  <h3 class="font-medium text-sm mb-2">Per-User-Login über Microsoft 365 (OAuth)</h3>
+  <p class="text-xs text-slate-500 mb-3">
+    Optional und <strong>pro Nutzer</strong>: Lege in Salesforce eine
+    <strong>Connected App</strong> (bzw. External Client App) mit aktiviertem
+    OAuth an, Scopes <code>api</code> + <code>refresh_token</code>. Trage die
+    <strong>Callback-URL</strong> <code>{{ sf_oauth_redirect_hint }}</code> dort
+    ein. Da euer Salesforce-Login per Microsoft-SSO läuft, melden sich Nutzer
+    damit effektiv über M365 an und synchronisieren mit ihren eigenen
+    SF-Rechten; ohne Verbindung greift weiterhin der zentrale Service-User oben.
+    Consumer Key/Secret hier eintragen — Nutzer verbinden danach im
+    <a href="/profile" class="text-indigo-600 hover:underline">Profil</a>.
+  </p>
+  <form method="post" action="/settings/salesforce/oauth" class="grid sm:grid-cols-2 gap-3">
+    <label class="text-sm sm:col-span-2">
+      <span class="block font-medium mb-1">Consumer Key (Client-ID)</span>
+      <input name="sf_oauth_client_id" value="{{ sf_oauth_client_id }}"
+             placeholder="3MVG9..."
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">
+        Consumer Secret
+        {% if sf_oauth_secret_set %}<span class="text-emerald-700 text-[10px] ml-1">gesetzt</span>{% endif %}
+      </span>
+      <input type="password" name="sf_oauth_client_secret" autocomplete="new-password"
+             placeholder="{{ '••••••••' if sf_oauth_secret_set else 'noch nicht hinterlegt' }}"
+             class="w-full h-9 border border-slate-300 rounded px-2" />
+    </label>
+    <label class="text-sm">
+      <span class="block font-medium mb-1">
+        Login-URL <span class="text-slate-400 font-normal text-[10px]">(optional)</span>
+      </span>
+      <input name="sf_oauth_login_url" value="{{ sf_oauth_login_url }}"
+             placeholder="https://login.salesforce.com"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <label class="text-sm sm:col-span-2">
+      <span class="block font-medium mb-1">
+        Callback-URL <span class="text-slate-400 font-normal text-[10px]">(optional – sonst automatisch)</span>
+      </span>
+      <input name="sf_oauth_redirect_uri" value="{{ sf_oauth_redirect_uri }}"
+             placeholder="{{ sf_oauth_redirect_hint }}"
+             class="w-full h-9 border border-slate-300 rounded px-2 font-mono" />
+    </label>
+    <div class="sm:col-span-2 flex gap-2">
+      <button class="h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
+        OAuth-Einstellungen speichern
+      </button>
+    </div>
+  </form>
+
   <details class="mt-4">
     <summary class="text-xs text-slate-500 cursor-pointer">Schema-Inspektor (für Custom Objects)</summary>
     <p class="text-xs text-slate-500 my-2">

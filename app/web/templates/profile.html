@@ -191,6 +191,51 @@
   {% endif %}
 </section>
 
+<section class="bg-white border border-slate-200 p-5 mb-6 max-w-2xl">
+  <h2 class="font-semibold mb-1 th-section-title th-section-teal th-outfit">Salesforce</h2>
+  <p class="text-xs text-slate-500 mb-4">
+    Verbinde dein eigenes Salesforce-Konto, damit der Sync mit deinen eigenen
+    Berechtigungen läuft. Die Anmeldung erfolgt über euer Microsoft-365-Login.
+    Ist nichts verbunden, nutzt TimeHub weiterhin den zentralen Service-Zugang.
+  </p>
+
+  {% if not sf_oauth_configured %}
+    <div class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+      Salesforce-OAuth ist noch nicht eingerichtet. Bitte wende dich an eine:n Administrator:in.
+    </div>
+  {% elif sf_connection %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="text-sm">
+        <span class="inline-flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+          Verbunden{% if sf_connection.account %} als
+            <strong>{{ sf_connection.account }}</strong>{% endif %}
+        </span>
+        {% if sf_connection.last_error %}
+          <div class="text-xs text-rose-600 mt-1">Letzter Fehler: {{ sf_connection.last_error }}</div>
+        {% endif %}
+      </div>
+      <div class="flex gap-2">
+        <a href="/salesforce/oauth/connect"
+           class="h-9 px-3 inline-flex items-center border border-slate-300 rounded text-sm hover:bg-slate-50">
+          Neu verbinden
+        </a>
+        <form method="post" action="/salesforce/oauth/disconnect"
+              onsubmit="return confirm('Salesforce-Verbindung trennen?');">
+          <button class="h-9 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded text-sm font-medium">
+            Trennen
+          </button>
+        </form>
+      </div>
+    </div>
+  {% else %}
+    <a href="/salesforce/oauth/connect"
+       class="h-10 px-4 inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-sm">
+      Salesforce mit Microsoft 365 verbinden
+    </a>
+  {% endif %}
+</section>
+
 <section class="bg-white border border-slate-200 p-5 max-w-2xl">
   <h2 class="font-semibold mb-3 th-section-title th-section-orange th-outfit">Rolle &amp; Status</h2>
   <dl class="text-sm grid grid-cols-2 gap-y-1">

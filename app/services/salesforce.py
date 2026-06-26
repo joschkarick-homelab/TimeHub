@@ -9,16 +9,21 @@ module knows how to read them on demand.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 import re
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from xml.sax.saxutils import escape
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.security import decrypt_secret, encrypt_secret
@@ -32,8 +37,20 @@ SF_TOKEN_KEY = "sf.security_token"
 SF_LOGIN_URL_KEY = "sf.login_url"
 SF_API_VERSION_KEY = "sf.api_version"
 
+# Per-user OAuth (Connected App) — global, admin-managed config. The client
+# secret is Fernet-encrypted at rest, like the SOAP password.
+SF_OAUTH_CLIENT_ID_KEY = "sf.oauth_client_id"
+SF_OAUTH_CLIENT_SECRET_KEY = "sf.oauth_client_secret"
+SF_OAUTH_LOGIN_URL_KEY = "sf.oauth_login_url"
+SF_OAUTH_REDIRECT_URI_KEY = "sf.oauth_redirect_uri"
+
+# Salesforce OAuth scopes: API access + a refresh token for unattended renewal.
+SF_OAUTH_SCOPES = "api refresh_token"
+
 _DEFAULT_LOGIN_URL = "https://login.salesforce.com"
 _DEFAULT_API_VERSION = "60.0"
+# Refresh a little before a known expiry to avoid a racing 401.
+_EXPIRY_SKEW = timedelta(seconds=60)
 # Salesforce IDs are 15 or 18 case-sensitive alnum chars.
 _SF_ID_RE = re.compile(r"^[a-zA-Z0-9]{15,18}$")
 # sObject API names: letters/digits/underscore, ending with __c for custom.
@@ -124,6 +141,40 @@ class SalesforceClient:
         self.api_version = api_version or _DEFAULT_API_VERSION
         self.session_id: str | None = None
         self.instance_url: str | None = None
+        # Optional callable that mints a fresh access token (OAuth refresh) when
+        # a request comes back 401. None for the SOAP service user.
+        self._reauth = None
+
+    @classmethod
+    def from_oauth(
+        cls, *, access_token: str, instance_url: str, api_version: str = _DEFAULT_API_VERSION
+    ) -> SalesforceClient:
+        """Build a client around an already-issued OAuth access token + instance
+        URL (no SOAP login). ``client_for_user`` wires ``_reauth`` so an expired
+        token is refreshed transparently."""
+        self = cls.__new__(cls)
+        self.username = ""
+        self._password = ""
+        self.login_url = _DEFAULT_LOGIN_URL
+        self.api_version = api_version or _DEFAULT_API_VERSION
+        self.session_id = access_token
+        self.instance_url = (instance_url or "").rstrip("/")
+        self._reauth = None
+        return self
+
+    def _auth_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.session_id}", "Accept": "application/json"}
+
+    def _authed_get(self, url: str) -> tuple[int, bytes]:
+        """GET with the bearer session, retrying once after an OAuth refresh if
+        the token was rejected (401). The SOAP client has no ``_reauth`` and so
+        never retries."""
+        self._ensure_login()
+        status, body = _http("GET", url, headers=self._auth_headers())
+        if status == 401 and self._reauth is not None:
+            self.session_id = self._reauth()
+            status, body = _http("GET", url, headers=self._auth_headers())
+        return status, body
 
     def login(self) -> None:
         url = f"{self.login_url}/services/Soap/u/{self.api_version}"
@@ -140,13 +191,9 @@ class SalesforceClient:
             self.login()
 
     def query(self, soql: str) -> dict:
-        self._ensure_login()
         url = (f"{self.instance_url}/services/data/v{self.api_version}/query"
                f"?{urllib.parse.urlencode({'q': soql})}")
-        status, body = _http("GET", url, headers={
-            "Authorization": f"Bearer {self.session_id}",
-            "Accept": "application/json",
-        })
+        status, body = self._authed_get(url)
         if status >= 400:
             raise SalesforceError(f"SOQL-Abfrage fehlgeschlagen (HTTP {status}): "
                                   f"{body.decode('utf-8', errors='replace')[:300]}")
@@ -204,6 +251,235 @@ def client_from_settings(db: Session) -> SalesforceClient | None:
                             c["login_url"], c["api_version"])
 
 
+# ---------- Per-user OAuth (Connected App) ----------
+#
+# A per-user alternative to the shared SOAP service account: each user connects
+# their own Salesforce via the OAuth web-server flow (PKCE). Because the org's
+# Salesforce login delegates to Microsoft 365 SSO, the user effectively signs in
+# with M365 — TimeHub receives a Salesforce token scoped to that user's own
+# permissions. The shared service user remains the fallback when a user hasn't
+# connected (see ``client_for_user``).
+
+
+def make_pkce() -> tuple[str, str]:
+    """Return ``(verifier, challenge)`` for an S256 PKCE exchange."""
+    verifier = secrets.token_urlsafe(48)
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return verifier, challenge
+
+
+def get_oauth_config(db: Session) -> dict:
+    return {
+        "client_id": app_settings_svc.get_setting(db, SF_OAUTH_CLIENT_ID_KEY, ""),
+        "client_secret": decrypt_secret(
+            app_settings_svc.get_setting(db, SF_OAUTH_CLIENT_SECRET_KEY, "")
+        ),
+        # OAuth endpoints default to the SOAP login host, falling back to the
+        # public login domain so a half-configured org still points somewhere
+        # sensible.
+        "login_url": (
+            app_settings_svc.get_setting(db, SF_OAUTH_LOGIN_URL_KEY, "")
+            or app_settings_svc.get_setting(db, SF_LOGIN_URL_KEY, "")
+            or _DEFAULT_LOGIN_URL
+        ).rstrip("/"),
+        "redirect_uri": app_settings_svc.get_setting(db, SF_OAUTH_REDIRECT_URI_KEY, ""),
+    }
+
+
+def oauth_configured(db: Session) -> bool:
+    """True once the Connected App is usable (consumer key + secret present)."""
+    c = get_oauth_config(db)
+    return bool(c["client_id"] and c["client_secret"])
+
+
+def save_oauth_config(
+    db: Session,
+    *,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    login_url: str | None = None,
+    redirect_uri: str | None = None,
+) -> None:
+    """Persist Connected-App config. The secret only overwrites when a non-empty
+    value is given (so the admin form can render an empty input without wiping
+    the stored secret) — same convention as the SOAP store."""
+    if client_id is not None:
+        app_settings_svc.set_setting(db, SF_OAUTH_CLIENT_ID_KEY, client_id.strip())
+    if client_secret is not None and client_secret.strip():
+        app_settings_svc.set_setting(
+            db, SF_OAUTH_CLIENT_SECRET_KEY, encrypt_secret(client_secret.strip())
+        )
+    if login_url is not None:
+        app_settings_svc.set_setting(db, SF_OAUTH_LOGIN_URL_KEY, login_url.strip())
+    if redirect_uri is not None:
+        app_settings_svc.set_setting(db, SF_OAUTH_REDIRECT_URI_KEY, redirect_uri.strip())
+
+
+def oauth_authorize_url(db: Session, *, state: str, code_challenge: str,
+                        redirect_uri: str) -> str:
+    c = get_oauth_config(db)
+    if not c["client_id"]:
+        raise SalesforceError("Salesforce-OAuth ist nicht konfiguriert")
+    params = {
+        "response_type": "code",
+        "client_id": c["client_id"],
+        "redirect_uri": redirect_uri,
+        "scope": SF_OAUTH_SCOPES,
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+    return f"{c['login_url']}/services/oauth2/authorize?{urllib.parse.urlencode(params)}"
+
+
+def _oauth_token_request(db: Session, data: dict) -> dict:
+    c = get_oauth_config(db)
+    if not (c["client_id"] and c["client_secret"]):
+        raise SalesforceError("Salesforce-OAuth ist nicht konfiguriert")
+    url = f"{c['login_url']}/services/oauth2/token"
+    body = urllib.parse.urlencode(
+        {"client_id": c["client_id"], "client_secret": c["client_secret"], **data}
+    ).encode("utf-8")
+    status, resp = _http(
+        "POST", url, data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "Accept": "application/json"},
+        timeout=20,
+    )
+    if status >= 400:
+        detail = resp.decode("utf-8", errors="replace")[:300]
+        raise SalesforceError(f"Salesforce-Token-Anfrage fehlgeschlagen (HTTP {status}): {detail}")
+    try:
+        return json.loads(resp)
+    except ValueError as e:
+        raise SalesforceError("Salesforce-Token-Antwort ohne JSON") from e
+
+
+def oauth_exchange_code(db: Session, *, code: str, code_verifier: str,
+                        redirect_uri: str) -> dict:
+    return _oauth_token_request(
+        db,
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "code_verifier": code_verifier,
+        },
+    )
+
+
+def oauth_refresh(db: Session, refresh_token: str) -> dict:
+    return _oauth_token_request(
+        db, {"grant_type": "refresh_token", "refresh_token": refresh_token}
+    )
+
+
+def oauth_userinfo(access_token: str, instance_url: str) -> str:
+    """Best-effort display identity (username/email) for the connected account.
+    Failures are swallowed — the connection is still usable without a label."""
+    url = f"{instance_url.rstrip('/')}/services/oauth2/userinfo"
+    try:
+        status, body = _http(
+            "GET", url,
+            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+            timeout=15,
+        )
+        if status >= 400:
+            return ""
+        data = json.loads(body)
+    except (SalesforceError, ValueError):
+        return ""
+    return data.get("preferred_username") or data.get("email") or data.get("name") or ""
+
+
+def store_oauth_tokens(db: Session, conn, token_response: dict, *,
+                       account: str | None = None) -> None:
+    """Encrypt and persist the tokens from a code/refresh exchange onto the
+    connection. A refresh response may omit ``refresh_token`` — keep the
+    existing one in that case (mirrors the M365 token store)."""
+    access = token_response.get("access_token")
+    if not access:
+        raise SalesforceError("Token-Antwort ohne access_token")
+    conn.access_token = encrypt_secret(access)
+    new_refresh = token_response.get("refresh_token")
+    if new_refresh:
+        conn.refresh_token = encrypt_secret(new_refresh)
+    if token_response.get("instance_url"):
+        conn.instance_url = token_response["instance_url"]
+    # Salesforce often omits expires_in (session length is org-configured), in
+    # which case we leave the expiry unset and lean on the 401-refresh backstop.
+    expires_in = token_response.get("expires_in")
+    conn.token_expires_at = (
+        datetime.now(UTC) + timedelta(seconds=int(expires_in)) if expires_in else None
+    )
+    if account is not None:
+        conn.account = account
+    conn.last_error = None
+
+
+def _reauth_oauth(db: Session, conn) -> str:
+    """Refresh the stored tokens and return the new access token. Used both
+    proactively (known expiry) and as the client's 401 retry hook."""
+    rt = decrypt_secret(conn.refresh_token or "")
+    if not rt:
+        raise SalesforceError("Keine gültige Salesforce-Sitzung – bitte neu verbinden")
+    tokens = oauth_refresh(db, rt)
+    store_oauth_tokens(db, conn, tokens)
+    db.add(conn)
+    db.commit()
+    return decrypt_secret(conn.access_token or "")
+
+
+def _valid_oauth_token(db: Session, conn) -> str:
+    """Return a usable access token, refreshing first if a known expiry has
+    passed. When the expiry is unknown the stored token is returned as-is and a
+    401 mid-request drives the refresh instead."""
+    expires = conn.token_expires_at
+    if expires is not None and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    if expires is not None and expires <= datetime.now(UTC) + _EXPIRY_SKEW:
+        return _reauth_oauth(db, conn)
+    return decrypt_secret(conn.access_token or "")
+
+
+def user_connection(db: Session, user):
+    """The user's Salesforce OAuth connection row, or None."""
+    from app.models import SalesforceConnection
+
+    return db.execute(
+        select(SalesforceConnection).where(SalesforceConnection.user_id == user.id)
+    ).scalar_one_or_none()
+
+
+def available_for_user(db: Session, user) -> bool:
+    """Whether a Salesforce client can be built for this user at all — either via
+    their own OAuth connection or the shared service account. Used to gate the
+    SF features in the UI so an OAuth-only user isn't blocked when no global
+    service credentials are configured."""
+    if credentials_configured(db):
+        return True
+    conn = user_connection(db, user)
+    return conn is not None and bool(conn.access_token)
+
+
+def client_for_user(db: Session, user) -> SalesforceClient | None:
+    """The Salesforce client to use for ``user``: their own OAuth connection if
+    present, otherwise the shared SOAP service account (the fallback for users
+    who haven't connected or whose per-user permissions don't suffice)."""
+    conn = user_connection(db, user)
+    if conn is not None and conn.access_token:
+        token = _valid_oauth_token(db, conn)
+        client = SalesforceClient.from_oauth(
+            access_token=token,
+            instance_url=conn.instance_url,
+            api_version=get_credentials(db)["api_version"],
+        )
+        client._reauth = lambda: _reauth_oauth(db, conn)
+        return client
+    return client_from_settings(db)
+
+
 # ---------- High-level queries used by the sync flow ----------
 
 
@@ -245,13 +521,9 @@ def describe_sobject(client: SalesforceClient, object_name: str) -> dict:
     """Fetch the SF describe metadata for an sObject. Available to any API user
     that can read the object — no admin/2FA required."""
     name = _ensure_sobject_name(object_name)
-    client._ensure_login()
     url = (f"{client.instance_url}/services/data/v{client.api_version}/"
            f"sobjects/{name}/describe")
-    status, body = _http("GET", url, headers={
-        "Authorization": f"Bearer {client.session_id}",
-        "Accept": "application/json",
-    })
+    status, body = client._authed_get(url)
     if status >= 400:
         raise SalesforceError(
             f"Describe '{name}' fehlgeschlagen (HTTP {status}): "

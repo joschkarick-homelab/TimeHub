@@ -17,6 +17,7 @@ from app.web.routes import (
     m365_login,
     projects,
     reports,
+    salesforce_oauth,
     sync,
     views,
 )
@@ -34,6 +35,7 @@ for _m in (
     m365_login,
     projects,
     reports,
+    salesforce_oauth,
     sync,
     views,
 ):

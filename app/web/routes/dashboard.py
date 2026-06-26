@@ -133,7 +133,7 @@ def index(
         if e.project_id in proj_lookup
     }
 
-    sf_configured = sf_svc.credentials_configured(db)
+    sf_configured = sf_svc.available_for_user(db, user)
     # Pre-flagged entries the user can pick for a Salesforce sync: target must
     # resolve to salesforce, local data must be sync-ready, and the entry hasn't
     # been synced yet.
