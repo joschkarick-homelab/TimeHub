@@ -5,17 +5,19 @@ entries — including driving the same server-side timer the Raycast extension
 uses. It is a thin layer over the existing API core functions, so behaviour and
 validation stay identical across the HTTP API, Raycast, and MCP.
 
-Auth reuses TimeHub API keys: the client sends the ``thk_…`` key as an
-``X-API-Key`` header (a ``Bearer`` JWT also works). A pure-ASGI middleware
-resolves the user once per request and stashes the id in a context variable the
-tools read; there is no session-cookie path here, mirroring the JSON API.
+Behind the Agent Hub the MCP server runs in ``mcp-bearer`` mode: the Hub does
+the M365/Entra OAuth, strips the inbound ``Authorization`` header, and forwards
+the same ``X-MSQ-*`` identity headers the rest of the app uses. A pure-ASGI
+middleware resolves the user once per request from those headers (or the
+dev-bypass identity) and stashes the id in a context variable the tools read —
+the MCP server itself does no token/API-key auth, mirroring the web/API readers.
 """
 
 import contextvars
 import functools
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
-from datetime import UTC, date, datetime
+from datetime import date
 
 from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
@@ -33,20 +35,21 @@ from app.api.timer import (
     timer_to_out,
     update_timer_core,
 )
+from app.config import get_settings
 from app.db import SessionLocal
-from app.deps import _key_is_expired
-from app.models import ApiKey, Project, User
+from app.identity import _dev_principal, principal_from_headers, resolve_user
+from app.models import Project, User
 from app.schemas.time_entry import TimeEntryCreate, TimeEntryOut
 from app.schemas.timer import TimerStart, TimerStop, TimerUpdate
-from app.security import decode_token, hash_api_key
 
 # Resolved per request by the auth middleware; tools read it to scope all work
 # to the authenticated user.
 _user_id_var: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "mcp_user_id", default=None
 )
-# Access scope of the authenticating key (read / tracking / read_write). Bearer
-# auth resolves to read_write. Write tools require a non-read scope.
+# Access scope for the request. Hub identity always resolves to read_write; the
+# 'read' guard in _require_write is kept for future-proofing. Write tools require
+# a non-read scope.
 _scope_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "mcp_scope", default="read_write"
 )
@@ -285,37 +288,6 @@ def get_weekly_hours(week_offset: int = 0) -> dict:
 # ── Auth middleware + ASGI wiring ─────────────────────────────────────────────
 
 
-def _resolve_auth(raw_api_key: str | None, bearer: str | None) -> tuple[int, str] | None:
-    """Validate an API key or bearer JWT; returns (user_id, scope) or None.
-    Expired or revoked keys are rejected. Bearer auth is full access."""
-    db = SessionLocal()
-    try:
-        if raw_api_key:
-            key = db.execute(
-                select(ApiKey).where(
-                    ApiKey.key_hash == hash_api_key(raw_api_key), ApiKey.revoked_at.is_(None)
-                )
-            ).scalar_one_or_none()
-            if key is not None and not _key_is_expired(key):
-                key.last_used_at = datetime.now(UTC)
-                db.add(key)
-                db.commit()
-                user = db.get(User, key.user_id)
-                if user is not None and user.is_active:
-                    return user.id, key.scope
-        if bearer:
-            try:
-                payload = decode_token(bearer)
-                user = db.get(User, int(payload.get("sub")))
-            except (ValueError, TypeError):
-                return None
-            if user is not None and user.is_active:
-                return user.id, "read_write"
-        return None
-    finally:
-        db.close()
-
-
 async def _send_401(send) -> None:
     body = b'{"detail":"Not authenticated"}'
     await send(
@@ -332,10 +304,22 @@ async def _send_401(send) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-class ApiKeyAuthMiddleware:
+class _ScopeHeaders:
+    """Minimal ``.get()`` over the raw ASGI header list for principal_from_headers."""
+
+    def __init__(self, raw):
+        self._h = {k.decode().lower(): v.decode("latin-1") for k, v in raw}
+
+    def get(self, key, default=None):
+        return self._h.get(key.lower(), default)
+
+
+class HubIdentityAuthMiddleware:
     """Pure-ASGI guard (not BaseHTTPMiddleware, which would break the SSE
-    stream): authenticate via X-API-Key / Bearer, set the user contextvar, then
-    delegate to the MCP app. Rejects unauthenticated requests with 401."""
+    stream): resolve identity from X-MSQ-* (or dev-bypass), set the user
+    contextvar, then delegate to the MCP app. The Hub (mcp-bearer) has already
+    done the OAuth and stripped Authorization, so we never see a token. Rejects
+    requests without a resolvable, active user with 401."""
 
     def __init__(self, app):
         self.app = app
@@ -344,21 +328,24 @@ class ApiKeyAuthMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        headers = {k.lower(): v for k, v in scope.get("headers", [])}
-        api_key = headers.get(b"x-api-key")
-        authz = headers.get(b"authorization")
-        bearer = None
-        if authz:
-            decoded = authz.decode("latin-1")
-            if decoded.lower().startswith("bearer "):
-                bearer = decoded[7:].strip()
-        auth = _resolve_auth(api_key.decode("latin-1") if api_key else None, bearer)
-        if auth is None:
+        if get_settings().resolved_auth_mode == "dev-bypass":
+            principal = _dev_principal()
+        else:
+            principal = principal_from_headers(_ScopeHeaders(scope.get("headers", [])))
+        if principal is None:
             await _send_401(send)
             return
-        user_id, key_scope = auth
+        db = SessionLocal()
+        try:
+            user = resolve_user(db, principal)
+            user_id = user.id if user.is_active else None
+        finally:
+            db.close()
+        if user_id is None:
+            await _send_401(send)
+            return
         user_token = _user_id_var.set(user_id)
-        scope_token = _scope_var.set(key_scope)
+        scope_token = _scope_var.set("read_write")
         try:
             await self.app(scope, receive, send)
         finally:
@@ -373,7 +360,7 @@ def build_asgi_app():
     """The auth-wrapped MCP ASGI app (built once)."""
     global _asgi_app
     if _asgi_app is None:
-        _asgi_app = ApiKeyAuthMiddleware(mcp.streamable_http_app())
+        _asgi_app = HubIdentityAuthMiddleware(mcp.streamable_http_app())
     return _asgi_app
 
 
