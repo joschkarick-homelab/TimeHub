@@ -12,7 +12,15 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable: accounts provisioned via Microsoft 365 SSO have no local
+    # password. Password-login routes treat a missing hash as "no password set"
+    # and reject the password flow for that user (SSO-only).
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Stable Entra object id (the ID token's ``oid`` claim) for SSO users, so the
+    # link survives a mailbox/UPN rename. NULL for password-only accounts.
+    entra_oid: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True
+    )
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # External system mappings for future sync targets. Salesforce PSA needs

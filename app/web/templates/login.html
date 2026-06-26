@@ -27,6 +27,23 @@
         LOGIN
       </button>
     </form>
+    {% if m365_enabled %}
+    <div class="flex items-center gap-3 my-4">
+      <span class="flex-1 h-px bg-slate-200"></span>
+      <span class="text-[10px] tracking-widest" style="color: var(--faint);">ODER</span>
+      <span class="flex-1 h-px bg-slate-200"></span>
+    </div>
+    <a href="/auth/m365/login"
+       class="w-full flex items-center justify-center gap-2 border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+      <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden="true">
+        <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+        <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+        <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+        <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+      </svg>
+      Mit Microsoft 365 anmelden
+    </a>
+    {% endif %}
     <p class="text-xs mt-4" style="color: var(--faint);">
       Erste Anmeldung: Zugangsdaten aus <code style="color: var(--muted);">INITIAL_ADMIN_*</code>.
     </p>

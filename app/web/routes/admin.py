@@ -56,8 +56,10 @@ def users_page(
             m365_tenant=m365_cfg["tenant"],
             m365_timezone=m365_cfg["timezone"],
             m365_redirect_uri=m365_cfg["redirect_uri"],
+            m365_login_redirect_uri=m365_cfg["login_redirect_uri"],
             m365_secret_set=bool(m365_cfg["client_secret"]),
             m365_redirect_hint=str(request.url_for("m365_callback")),
+            m365_login_redirect_hint=str(request.url_for("m365_login_callback")),
             error=error,
             flash=flash,
         ),
@@ -71,6 +73,7 @@ def settings_m365(
     m365_tenant: str = Form(""),
     m365_client_secret: str = Form(""),
     m365_redirect_uri: str = Form(""),
+    m365_login_redirect_uri: str = Form(""),
     m365_timezone: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -81,6 +84,7 @@ def settings_m365(
         tenant=m365_tenant,
         client_secret=m365_client_secret,
         redirect_uri=m365_redirect_uri,
+        login_redirect_uri=m365_login_redirect_uri,
         timezone=m365_timezone,
     )
     return RedirectResponse(

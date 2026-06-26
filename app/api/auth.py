@@ -17,7 +17,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
-    if user is None or not user.is_active or not verify_password(payload.password, user.hashed_password):
+    # SSO-only accounts have no local password hash — reject the password flow.
+    if (
+        user is None
+        or not user.is_active
+        or not user.hashed_password
+        or not verify_password(payload.password, user.hashed_password)
+    ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     return TokenResponse(access_token=create_access_token(user.id))
 

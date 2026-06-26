@@ -29,8 +29,11 @@ router = APIRouter()
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login_form(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+def login_form(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": None, "m365_enabled": m365_svc.configured(db)},
+    )
 
 
 @router.post("/login", response_class=HTMLResponse)
@@ -41,10 +44,21 @@ def login_submit(
     db: Session = Depends(get_db),
 ):
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if user is None or not user.is_active or not verify_password(password, user.hashed_password):
+    # `hashed_password` is empty for SSO-only accounts — guard before verifying so
+    # such a user can't be password-authenticated (they must use M365 sign-in).
+    if (
+        user is None
+        or not user.is_active
+        or not user.hashed_password
+        or not verify_password(password, user.hashed_password)
+    ):
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Ungültige Zugangsdaten"},
+            {
+                "request": request,
+                "error": "Ungültige Zugangsdaten",
+                "m365_enabled": m365_svc.configured(db),
+            },
             status_code=401,
         )
     request.session["access_token"] = create_access_token(user.id)
