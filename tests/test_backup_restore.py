@@ -15,6 +15,21 @@ def _login(client):
     assert r.status_code == 302
 
 
+def _login_non_admin(client, email="backup-other@example.com"):
+    """Create a non-admin user (via the admin API) and start a web session for it."""
+    admin_token = client.post(
+        "/api/v1/auth/login", json={"email": "admin@example.com", "password": "testpass"}
+    ).json()["access_token"]
+    client.post(
+        "/api/v1/users",
+        json={"email": email, "password": "secret123", "full_name": "Other U", "is_admin": False},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    r = client.post("/login", data={"email": email, "password": "secret123"},
+                    follow_redirects=False)
+    assert r.status_code == 302
+
+
 def test_backup_zip_contains_db():
     data = make_backup_zip(uploads_dir=None)
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -48,6 +63,28 @@ def test_restore_rejects_non_timehub_db():
         restore_from_zip(buf.getvalue(), uploads_dir=None)
 
 
+def test_restore_rejects_path_traversal_in_uploads(tmp_path):
+    # A ZIP with a valid DB (so validation passes) PLUS a traversal upload entry
+    # must be rejected, and must NOT write anything outside uploads_dir.
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    db_bytes = make_backup_zip(uploads_dir=None)  # valid db/timehub.sqlite ZIP
+    with zipfile.ZipFile(io.BytesIO(db_bytes)) as zf:
+        db_payload = zf.read("db/timehub.sqlite")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("db/timehub.sqlite", db_payload)
+        zf.writestr("uploads/../../evil.txt", b"pwned")
+
+    with pytest.raises(ValueError):
+        restore_from_zip(buf.getvalue(), uploads_dir=str(uploads))
+
+    # Nothing escaped: neither the uploads' parent nor grandparent gained evil.txt.
+    assert not (tmp_path / "evil.txt").exists()
+    assert not (tmp_path.parent / "evil.txt").exists()
+
+
 def test_backup_endpoint_requires_admin_and_streams_zip(client):
     _login(client)
     r = client.get("/admin/backup")
@@ -55,3 +92,38 @@ def test_backup_endpoint_requires_admin_and_streams_zip(client):
     assert r.headers["content-type"] == "application/zip"
     with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
         assert "db/timehub.sqlite" in zf.namelist()
+
+
+def test_backup_endpoint_rejects_anonymous(client):
+    r = client.get("/admin/backup", follow_redirects=False)
+    # No session → redirect to login (or 403), never a 200 ZIP stream.
+    assert r.status_code != 200
+    assert r.status_code in (302, 401, 403)
+
+
+def test_restore_endpoint_rejects_anonymous(client):
+    # CSRF header is set by the client fixture, so this gets past CSRF and is
+    # rejected purely on auth grounds.
+    r = client.post(
+        "/admin/restore",
+        files={"file": ("x.zip", b"not-a-zip", "application/zip")},
+        follow_redirects=False,
+    )
+    assert r.status_code != 200
+    assert r.status_code in (302, 401, 403)
+
+
+def test_backup_endpoint_rejects_non_admin(client):
+    _login_non_admin(client)
+    r = client.get("/admin/backup", follow_redirects=False)
+    assert r.status_code == 403
+
+
+def test_restore_endpoint_rejects_non_admin(client):
+    _login_non_admin(client, email="backup-other2@example.com")
+    r = client.post(
+        "/admin/restore",
+        files={"file": ("x.zip", b"not-a-zip", "application/zip")},
+        follow_redirects=False,
+    )
+    assert r.status_code == 403

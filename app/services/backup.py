@@ -14,6 +14,8 @@ import sqlite3
 import tempfile
 import zipfile
 
+from sqlalchemy.engine import make_url
+
 from app.config import get_settings
 
 _DB_ARCNAME = "db/timehub.sqlite"
@@ -24,7 +26,8 @@ def sqlite_path() -> str:
     if not url.startswith("sqlite"):
         raise RuntimeError("Backup/Restore wird nur für SQLite unterstützt")
     # sqlite:////app/data/timehub.sqlite → /app/data/timehub.sqlite
-    return "/" + url.split("sqlite:///", 1)[1].lstrip("/")
+    db = make_url(url).database or ""
+    return db if os.path.isabs(db) else "/" + db
 
 
 def make_backup_zip(uploads_dir: str | None = None) -> bytes:
@@ -84,9 +87,15 @@ def restore_from_zip(data: bytes, uploads_dir: str | None = None) -> None:
         engine.dispose()
 
         if uploads_dir:
+            root = os.path.abspath(uploads_dir)
             for name in names:
                 if name.startswith("uploads/") and not name.endswith("/"):
-                    target = os.path.join(uploads_dir, name[len("uploads/"):])
+                    rel = name[len("uploads/"):]
+                    # Reject any entry that resolves outside uploads_dir
+                    # (path traversal via ../ or an absolute path component).
+                    target = os.path.normpath(os.path.join(root, rel))
+                    if not (target == root or target.startswith(root + os.sep)):
+                        raise ValueError("Ungültiger Pfad im Backup-ZIP")
                     os.makedirs(os.path.dirname(target), exist_ok=True)
                     with open(target, "wb") as fh:
                         fh.write(zf.read(name))

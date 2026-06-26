@@ -1,5 +1,6 @@
 import logging
 import zipfile
+from urllib.parse import quote_plus
 
 from fastapi import (
     APIRouter,
@@ -177,7 +178,6 @@ def settings_salesforce_test(request: Request, db: Session = Depends(get_db)):
     try:
         client.login()
     except sf_svc.SalesforceError as e:
-        from urllib.parse import quote_plus
         return RedirectResponse(
             url=f"/users?error=Salesforce-Login+fehlgeschlagen:+{quote_plus(str(e))[:200]}",
             status_code=status.HTTP_302_FOUND,
@@ -204,13 +204,13 @@ async def admin_restore(
     request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)
 ) -> RedirectResponse:
     _require_admin(request, db)
+    # Unbounded read / zip-bomb is an accepted risk for this admin-only,
+    # interactive maintenance action (no untrusted callers reach this).
     raw = await file.read()
     base = request.scope.get("root_path", "")
     try:
         backup_svc.restore_from_zip(raw, uploads_dir="/app/uploads")
     except (ValueError, zipfile.BadZipFile) as exc:
-        from urllib.parse import quote_plus
-
         return RedirectResponse(url=f"{base}/users?error={quote_plus(str(exc))}", status_code=303)
     return RedirectResponse(
         url=f"{base}/users?flash=Wiederherstellung+erfolgreich+%E2%80%93+bitte+neu+laden",
@@ -231,8 +231,6 @@ def users_create(
     try:
         hashed = hash_password(password)
     except ValueError as e:
-        from urllib.parse import quote_plus
-
         return RedirectResponse(
             url="/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
         )
