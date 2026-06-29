@@ -24,7 +24,7 @@ def create_user(
     user = User(
         email=payload.email,
         full_name=payload.full_name,
-        hashed_password=hash_password(payload.password),
+        hashed_password=hash_password(payload.password) if payload.password else None,
         is_admin=payload.is_admin,
         is_active=payload.is_active,
     )

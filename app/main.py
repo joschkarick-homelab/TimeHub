@@ -102,7 +102,8 @@ app.include_router(api_router)
 app.include_router(web_router)
 
 if settings.mcp_enabled:
-    # Remote MCP server (Streamable HTTP) at /mcp; authenticates via API key.
+    # Remote MCP server (Streamable HTTP) at /mcp; authenticates via Hub X-MSQ
+    # identity (HubIdentityAuthMiddleware) / mcp-bearer, not an API key.
     from app import mcp_server
 
     app.mount("/mcp", mcp_server.build_asgi_app())

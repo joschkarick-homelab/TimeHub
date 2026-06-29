@@ -224,18 +224,22 @@ def users_create(
     request: Request,
     email: str = Form(...),
     full_name: str = Form(""),
-    password: str = Form(...),
+    password: str = Form(""),
     is_admin: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     _require_admin(request, db)
     base = request.scope.get("root_path", "")
-    try:
-        hashed = hash_password(password)
-    except ValueError as e:
-        return RedirectResponse(
-            url=f"{base}/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
-        )
+    # Password is inert under Hub auth (identity comes from X-MSQ-*). Only hash
+    # and store it when one was actually supplied; otherwise leave it NULL.
+    hashed = None
+    if password:
+        try:
+            hashed = hash_password(password)
+        except ValueError as e:
+            return RedirectResponse(
+                url=f"{base}/users?error=" + quote_plus(str(e)), status_code=status.HTTP_302_FOUND
+            )
     new = User(
         email=email,
         full_name=full_name,
