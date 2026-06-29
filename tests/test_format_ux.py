@@ -3,14 +3,16 @@ persistence (so all columns stay available on edit), and AI refine on edit."""
 
 
 def _login_session(client) -> None:
-    r = client.post("/login", data={"email": "admin@example.com", "password": "testpass"},
-                    follow_redirects=False)
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _token(client) -> str:
-    return client.post("/api/v1/auth/login",
-                       json={"email": "admin@example.com", "password": "testpass"}).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 # ---------- duration op (pure) ----------
@@ -102,9 +104,10 @@ def test_preview_endpoint_renders_transform(client):
     assert "90 min" in r.text
 
 
-def test_preview_endpoint_requires_login(client):
-    r = client.post("/import-formats/preview", data={"sample_text": "a\n1\n"})
-    assert r.status_code == 401
+def test_preview_endpoint_requires_login(raw_client):
+    r = raw_client.post("/import-formats/preview", data={"sample_text": "a\n1\n"})
+    # No identity → rejected (CSRF guard fires first on the web router, then auth).
+    assert r.status_code in (401, 403)
 
 
 # ---------- AI refine on the edit screen (stubbed) ----------

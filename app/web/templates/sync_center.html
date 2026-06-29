@@ -2,7 +2,7 @@
 {% block content %}
 <div class="flex items-center justify-between mb-1">
   <h1 class="text-xl font-bold th-outfit">Export-Wizard</h1>
-  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+  <a href="{{ path('/') }}" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
 </div>
 <p class="text-sm text-slate-600 mb-4">
   Pro Ziel eine Karte: was ist <span class="text-amber-700">bereit</span>, was ist
@@ -62,7 +62,7 @@
           <div class="flex flex-wrap gap-2">
             {% if t == "salesforce" %}
               {% if sf_configured %}
-                <form method="post" action="/sync/salesforce/preview">
+                <form method="post" action="{{ path('/sync/salesforce/preview') }}">
                   {% for e in ready %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}
                   <button class="h-9 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium">
                     ↗ Vorschau &amp; Sync ({{ ready|length }})
@@ -71,11 +71,11 @@
               {% else %}
                 <p class="text-xs text-slate-500">
                   Admin: Zugangsdaten unter
-                  <a href="/users" class="text-indigo-600 hover:underline">Nutzer → Salesforce-Integration</a>.
+                  <a href="{{ path('/users') }}" class="text-indigo-600 hover:underline">Nutzer → Salesforce-Integration</a>.
                 </p>
               {% endif %}
             {% else %}
-              <form method="post" action="/sync/{{ t }}/mark-done">
+              <form method="post" action="{{ path('/sync/' ~ t ~ '/mark-done') }}">
                 {% for e in ready %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}
                 <button class="h-9 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium">
                   ✓ Als erledigt markieren ({{ ready|length }})
@@ -84,7 +84,7 @@
             {% endif %}
             {# Escape-hatch: bereits extern erfasst → ohne Push abhaken #}
             {% if t == "salesforce" and sf_configured %}
-              <form method="post" action="/sync/{{ t }}/mark-done"
+              <form method="post" action="{{ path('/sync/' ~ t ~ '/mark-done') }}"
                     onsubmit="return confirm('Ohne Salesforce-Push als bereits erledigt markieren?');">
                 {% for e in ready %}<input type="hidden" name="entry_ids" value="{{ e.id }}" />{% endfor %}
                 <button class="h-9 px-3 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded text-sm">
@@ -116,7 +116,7 @@
                 — Projekt-Daten fehlen
                 <span class="text-slate-400">({{ gap.entry_count }} Eintrag{{ 'e' if gap.entry_count != 1 else '' }} betroffen)</span>
               </p>
-              <form method="post" action="/sync/project/{{ gap.project.id }}/fields" class="space-y-3">
+              <form method="post" action="{{ path('/sync/project/' ~ gap.project.id ~ '/fields') }}" class="space-y-3">
                 <input type="hidden" name="target" value="{{ t }}" />
                 <div class="sync-fix grid sm:grid-cols-2 gap-3"></div>
                 <script type="application/json" class="sync-fix-spec">{{ gap.spec | tojson }}</script>
@@ -136,7 +136,7 @@
                 <span class="tabular-nums text-slate-400">({{ '%.2f'|format(e.duration_minutes / 60) }} h)</span>
                 {% if e.description %}<span class="text-slate-400">— {{ e.description }}</span>{% endif %}
               </p>
-              <form method="post" action="/sync/entry/{{ e.id }}/fields" class="space-y-3">
+              <form method="post" action="{{ path('/sync/entry/' ~ e.id ~ '/fields') }}" class="space-y-3">
                 <input type="hidden" name="target" value="{{ t }}" />
                 <div class="sync-fix grid sm:grid-cols-2 gap-3"></div>
                 <script type="application/json" class="sync-fix-spec">{{ gap.spec | tojson }}</script>
@@ -160,7 +160,7 @@
                     </div>
                     <div class="text-xs text-rose-600">{{ item.reason }}</div>
                   </div>
-                  <a href="/entries/{{ e.id }}/edit?next=/sync"
+                  <a href="{{ path('/entries/' ~ e.id ~ '/edit?next=/sync') }}"
                      class="shrink-0 text-xs text-indigo-600 hover:underline">prüfen →</a>
                 </li>
               {% endfor %}
@@ -180,7 +180,7 @@
         Mit dem <span class="font-medium">Ziel</span>-Filter z. B. nur die Jira-Tickets exportieren —
         direkt im Jira-Plugin hochladbar, ohne Nacharbeit.
       </p>
-      <form method="get" action="/entries/export" class="flex flex-wrap items-end gap-2"
+      <form method="get" action="{{ path('/entries/export') }}" class="flex flex-wrap items-end gap-2"
             data-download="true">
         <label class="text-xs">
           <span class="block text-slate-500 mb-1">Format</span>
@@ -210,7 +210,7 @@
     {% else %}
       <p class="text-xs text-slate-500">
         Noch keine Importformate angelegt — der Export verwendet dieselben Format-Profile.
-        Leg eines unter <a href="/import-formats/new" class="text-indigo-600 hover:underline">Formate → neu</a> an.
+        Leg eines unter <a href="{{ path('/import-formats/new') }}" class="text-indigo-600 hover:underline">Formate → neu</a> an.
       </p>
     {% endif %}
   </section>

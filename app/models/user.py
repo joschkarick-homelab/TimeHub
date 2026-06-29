@@ -21,6 +21,11 @@ class User(Base):
     entra_oid: Mapped[str | None] = mapped_column(
         String(64), unique=True, index=True, nullable=True
     )
+    # Stable Hub subject id from X-MSQ-User-Id. Opaque — do NOT assume it equals
+    # the Entra oid (contract A.1.4). Primary match key behind the Agent Hub.
+    msq_user_id: Mapped[str | None] = mapped_column(
+        String(128), unique=True, index=True, nullable=True
+    )
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # External system mappings for future sync targets. Salesforce PSA needs

@@ -56,6 +56,36 @@ def test_status_columns_are_indexed():
         engine.dispose()
 
 
+def test_users_table_has_msq_user_id():
+    from sqlalchemy import inspect
+
+    from app.db import engine
+
+    cols = {c["name"] for c in inspect(engine).get_columns("users")}
+    assert "msq_user_id" in cols
+
+
+def test_migration_adds_unique_indexed_msq_user_id():
+    """T6: the Alembic chain itself must add users.msq_user_id as a
+    unique-indexed column (production boots via `alembic upgrade head`)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        url = f"sqlite:///{Path(tmp) / 'mig.sqlite'}"
+        engine = create_engine(url)
+        with engine.begin() as conn:
+            command.upgrade(_alembic_config(conn), "head")
+            insp = inspect(conn)
+            cols = {c["name"] for c in insp.get_columns("users")}
+            assert "msq_user_id" in cols
+            unique_indexed = {
+                c
+                for ix in insp.get_indexes("users")
+                if ix["unique"]
+                for c in ix["column_names"]
+            }
+            assert "msq_user_id" in unique_indexed
+        engine.dispose()
+
+
 def test_import_formats_schema_matches_model_nullability():
     """transforms/target_rules are nullable in both the model and migration
     0004 — guards against the drift the model previously had."""

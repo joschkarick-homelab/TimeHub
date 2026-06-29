@@ -186,10 +186,10 @@ def test_wizard_buckets_project_gap_dedups_across_entries():
 # ---------- materialization through the real API ----------
 
 def _token(client) -> str:
-    return client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
+    return "hub-identity"
 
 
 def _h(client):
@@ -263,12 +263,9 @@ def test_multi_target_project_materializes_each_target(client):
 # ---------- dashboard rendering + manual-mark bridge (web) ----------
 
 def _web_login(client):
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def test_dashboard_renders_matrix_columns(client):
@@ -402,10 +399,8 @@ def test_wizard_fill_rejects_foreign_project(client):
               "full_name": "O", "is_admin": False},
         headers=_h(client),
     )
-    client.post(
-        "/login", data={"email": "wf-other@example.com", "password": "secret123"},
-        follow_redirects=False,
-    )
+    from tests.conftest import act_as
+    act_as(client, "wf-other@example.com")
     r = client.post(
         f"/sync/project/{pid}/fields",
         data={"target": "salesforce", "meta__salesforce__assignment_id": "a012345678901234"},

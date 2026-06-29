@@ -17,7 +17,9 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=_PW_MAX)
+    # Inert under Agent Hub auth (identity comes from X-MSQ-*); kept only so a
+    # manually pre-created user row is valid. No password ever authenticates.
+    password: str | None = Field(default=None, min_length=8, max_length=_PW_MAX)
 
 
 class UserUpdate(BaseModel):

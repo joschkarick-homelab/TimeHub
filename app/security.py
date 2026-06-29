@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import secrets
-from datetime import UTC, datetime, timedelta
 
 import jwt
 from cryptography.fernet import Fernet, InvalidToken
@@ -58,15 +57,6 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return _pwd.verify(plain, hashed)
-
-
-def create_access_token(subject: str | int, extra: dict | None = None) -> str:
-    settings = get_settings()
-    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload: dict = {"sub": str(subject), "exp": expire, "iat": datetime.now(UTC)}
-    if extra:
-        payload.update(extra)
-    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> dict:

@@ -29,17 +29,13 @@ class Settings(BaseSettings):
     #   2. POSTGRES_USER + POSTGRES_PASSWORD + POSTGRES_HOST + POSTGRES_DB set
     #      → URL gets constructed with proper escaping (URL-unsafe password chars
     #        like /, @, : are handled correctly)
-    #   3. SQLite fallback at ./data/timehub.sqlite
+    #   3. SQLite fallback at /app/data/timehub.sqlite (named Hub volume)
     database_url: str | None = None
     postgres_user: str | None = None
     postgres_password: str | None = None
     postgres_host: str | None = None
     postgres_port: int = 5432
     postgres_db: str | None = None
-
-    initial_admin_email: str | None = None
-    initial_admin_password: str | None = None
-    initial_admin_name: str = "Admin"
 
     cors_origins: str = "*"
 
@@ -50,6 +46,20 @@ class Settings(BaseSettings):
 
     # --- MCP server (lets Claude write time entries; mounted at /mcp) ---
     mcp_enabled: bool = True
+
+    # --- Agent Hub identity ---
+    # "hub": trust X-MSQ-* headers (production behind the Hub).
+    # "dev-bypass": inject a fixed local dev user (no Hub in front).
+    # Empty → resolved by APP_ENV (prod=hub, else dev-bypass).
+    auth_mode: str | None = None
+    # Comma-separated emails that become TimeHub admins on provision/login.
+    admin_emails: str = ""
+    # Mount path the Hub serves this app under (e.g. "/timehub"); "" for root.
+    base_path: str = ""
+    # Dev-bypass identity (only used when auth_mode resolves to dev-bypass).
+    dev_user_email: str = "dev@mindsquare.local"
+    dev_user_name: str = "Dev User"
+    dev_user_admin: bool = True
 
     @model_validator(mode="after")
     def _guard_secret_key(self) -> "Settings":
@@ -77,7 +87,9 @@ class Settings(BaseSettings):
                 database=self.postgres_db,
             ).render_as_string(hide_password=False)
         else:
-            self.database_url = "sqlite:///./data/timehub.sqlite"
+            # Absolute path inside the container so the named Hub volume
+            # (mounted at /app/data) always holds the DB, regardless of CWD.
+            self.database_url = "sqlite:////app/data/timehub.sqlite"
         return self
 
     @property
@@ -85,6 +97,22 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def resolved_auth_mode(self) -> str:
+        raw = (self.auth_mode or "").strip().lower()
+        if raw in {"hub", "dev-bypass"}:
+            return raw
+        return "hub" if self.app_env.strip().lower() == "production" else "dev-bypass"
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+
+    @property
+    def normalized_base_path(self) -> str:
+        bp = "/" + self.base_path.strip().strip("/")
+        return "" if bp == "/" else bp
 
     @property
     def session_cookie_secure(self) -> bool:

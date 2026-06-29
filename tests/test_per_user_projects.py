@@ -5,13 +5,13 @@ from datetime import date, timedelta
 
 
 def _api_token(client, email, pw):
-    return client.post(
-        "/api/v1/auth/login", json={"email": email, "password": pw}
-    ).json()["access_token"]
+    return email
 
 
-def _h(token):
-    return {"Authorization": f"Bearer {token}"}
+def _h(email):
+    from tests.conftest import hub_headers
+
+    return hub_headers(email)
 
 
 def _make_user(client, admin_h, email):
@@ -100,11 +100,8 @@ def test_csv_import_creates_project_scoped_to_user(client):
 def test_non_admin_can_manage_own_projects_via_web(client):
     admin = _h(_api_token(client, "admin@example.com", "testpass"))
     _make_user(client, admin, "pp-web@example.com")
-    r = client.post(
-        "/login", data={"email": "pp-web@example.com", "password": "secret123"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+    act_as(client, "pp-web@example.com")
     # The create form is no longer admin-only.
     assert "Neues Projekt" in client.get("/projects").text
     r = client.post(
@@ -117,11 +114,8 @@ def test_non_admin_can_manage_own_projects_via_web(client):
 
 
 def test_dashboard_default_window_is_current_week(client):
-    r = client.post(
-        "/login", data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+    act_as(client, "admin@example.com")
     today = date.today()
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)

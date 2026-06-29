@@ -3,6 +3,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import jinja2
 from fastapi import (
     HTTPException,
     Request,
@@ -17,11 +18,21 @@ from app.config import get_settings
 from app.models import ImportFormat, Project, SavedView, TimeEntry, User
 from app.services import app_settings as app_settings_svc
 from app.services import salesforce as sf_svc
+from app.web.templating import join_base
 
 log = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@jinja2.pass_context
+def _template_path(context, path: str) -> str:
+    request = context["request"]
+    return join_base(request.scope.get("root_path", ""), path)
+
+
+templates.env.globals["path"] = _template_path
 
 
 # ── German date formatting ────────────────────────────────────────────────────
@@ -132,23 +143,19 @@ REPORT_ROW_CAP = 10000
 
 
 def _maybe_user(request: Request, db: Session) -> User | None:
-    token = request.session.get("access_token")
-    if not token:
-        return None
-    try:
-        from app.security import decode_token
+    """Identity comes from the Hub (X-MSQ-*) or dev-bypass, resolved lazily and
+    cached on request.state. No session-token decoding."""
+    from app.identity import resolve_request_user
 
-        payload = decode_token(token)
-    except ValueError:
-        return None
-    return db.get(User, int(payload["sub"]))
+    return resolve_request_user(request, db)
 
 
 class LoginRequired(Exception):
     """Raised when an unauthenticated request hits a protected web page; an
-    exception handler turns it into a redirect to /login (registered in
-    app.main). Lets route bodies say `user = _require_login(request, db)` in one
-    line instead of repeating the maybe-user/redirect dance everywhere."""
+    exception handler (registered in app.main) turns it into a 401 JSON response
+    — there is no app login page behind the Hub. Lets route bodies say
+    `user = _require_login(request, db)` in one line instead of repeating the
+    maybe-user/401 dance everywhere."""
 
 
 def _require_login(request: Request, db: Session) -> User:
@@ -411,6 +418,18 @@ def _safe_next(target: str | None, fallback: str = "/") -> str:
     if target and target.startswith("/") and not target.startswith("//"):
         return target
     return fallback
+
+
+def redirect_to(request: Request, target: str | None, fallback: str = "/", status_code: int = 302):
+    """Redirect to a same-site app target, prefixed with the Hub mount path
+    (root_path) exactly once. `target` is app-relative (no slug)."""
+    from fastapi.responses import RedirectResponse
+
+    safe = _safe_next(target, fallback)
+    return RedirectResponse(
+        url=join_base(request.scope.get("root_path", ""), safe),
+        status_code=status_code,
+    )
 
 
 def _json_user_or_401(request: Request, db: Session) -> User | JSONResponse:

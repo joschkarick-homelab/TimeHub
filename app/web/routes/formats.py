@@ -429,8 +429,9 @@ async def formats_save(
     )
     db.add(fmt)
     db.commit()
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url=f"/import-formats?flash=Format+'{name}'+gespeichert",
+        url=f"{base}/import-formats?flash=Format+'{name}'+gespeichert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -522,8 +523,9 @@ async def formats_edit_submit(
         fmt.is_global = bool(is_global)
     db.add(fmt)
     db.commit()
+    base = request.scope.get("root_path", "")
     return RedirectResponse(
-        url=f"/import-formats?flash=Format+'{name}'+aktualisiert",
+        url=f"{base}/import-formats?flash=Format+'{name}'+aktualisiert",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -639,7 +641,8 @@ def formats_delete(request: Request, fmt_id: int, db: Session = Depends(get_db))
         raise HTTPException(status_code=403, detail="not allowed")
     db.delete(fmt)
     db.commit()
-    return RedirectResponse(url="/import-formats", status_code=status.HTTP_302_FOUND)
+    base = request.scope.get("root_path", "")
+    return RedirectResponse(url=f"{base}/import-formats", status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/import-formats/{fmt_id}/promote", response_class=HTMLResponse)
@@ -651,7 +654,8 @@ def formats_promote(request: Request, fmt_id: int, db: Session = Depends(get_db)
     fmt.is_global = not fmt.is_global
     db.add(fmt)
     db.commit()
-    return RedirectResponse(url="/import-formats", status_code=status.HTTP_302_FOUND)
+    base = request.scope.get("root_path", "")
+    return RedirectResponse(url=f"{base}/import-formats", status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/import", response_class=HTMLResponse)

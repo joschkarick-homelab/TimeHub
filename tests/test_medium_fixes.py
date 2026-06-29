@@ -37,11 +37,16 @@ def test_duration_snap_warning_only_when_changed():
 # ── M8: JWT via PyJWT round-trips and rejects tampering ───────────────────────
 
 def test_jwt_roundtrip_and_invalid_token():
+    import jwt
     import pytest
 
-    from app.security import create_access_token, decode_token
+    from app.config import get_settings
+    from app.security import ALGORITHM, decode_token
 
-    tok = create_access_token(42)
+    # decode_token is still used by the MCP bearer path; prove it round-trips a
+    # well-formed token and rejects a tampered one. (Issuing is no longer an
+    # app concern after the login cutover, so we mint the token directly here.)
+    tok = jwt.encode({"sub": "42"}, get_settings().secret_key, algorithm=ALGORITHM)
     assert decode_token(tok)["sub"] == "42"
     with pytest.raises(ValueError):
         decode_token(tok + "tampered")

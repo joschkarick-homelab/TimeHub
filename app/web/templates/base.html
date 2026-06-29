@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
+  <meta name="base-path" content="{{ path('') }}" />
   <title>{{ title or "TimeHub" }}</title>
-  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="{{ path('/static/icon.svg') }}" />
+  <script src="/embed/waffle.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -252,9 +254,9 @@
       <div class="flex items-center h-14 gap-6">
 
         {# Logo #}
-        <a href="/" class="th-outfit flex items-center gap-2 font-bold text-sm tracking-tight shrink-0"
+        <a href="{{ path('/') }}" class="th-outfit flex items-center gap-2 font-bold text-sm tracking-tight shrink-0"
            style="color: var(--text); text-decoration: none;">
-          <img src="/static/icon.svg" alt="" class="w-7 h-7" style="image-rendering: pixelated;" />
+          <img src="{{ path('/static/icon.svg') }}" alt="" class="w-7 h-7" style="image-rendering: pixelated;" />
           TimeHub
         </a>
 
@@ -270,11 +272,11 @@
           {# Desktop nav #}
           {% set p = request.url.path %}
           <nav class="hidden md:flex items-center gap-7 flex-1">
-            <a href="/"          class="th-nav-link {% if p == '/' %}th-active{% endif %}">Dashboard</a>
-            <a href="/calendar"  class="th-nav-link {% if p.startswith('/calendar') %}th-active{% endif %}">Kalender</a>
-            <a href="/import"    class="th-nav-link {% if p.startswith('/import') and not p.startswith('/import-formats') %}th-active{% endif %}">Import</a>
-            <a href="/reports"   class="th-nav-link {% if p.startswith('/reports') %}th-active{% endif %}">Reports</a>
-            <a href="/sync"      class="th-nav-link {% if p.startswith('/sync') %}th-active{% endif %}">Sync</a>
+            <a href="{{ path('/') }}"          class="th-nav-link {% if p == '/' %}th-active{% endif %}">Dashboard</a>
+            <a href="{{ path('/calendar') }}"  class="th-nav-link {% if p.startswith('/calendar') %}th-active{% endif %}">Kalender</a>
+            <a href="{{ path('/import') }}"    class="th-nav-link {% if p.startswith('/import') and not p.startswith('/import-formats') %}th-active{% endif %}">Import</a>
+            <a href="{{ path('/reports') }}"   class="th-nav-link {% if p.startswith('/reports') %}th-active{% endif %}">Reports</a>
+            <a href="{{ path('/sync') }}"      class="th-nav-link {% if p.startswith('/sync') %}th-active{% endif %}">Sync</a>
           </nav>
 
           {# User dropdown #}
@@ -299,15 +301,15 @@
               <div class="px-3 py-2 text-xs border-b border-slate-200 truncate" style="color: var(--faint);">
                 {{ user.email }}
               </div>
-              <a href="/projects"       class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Projekte</a>
-              <a href="/import-formats" class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Formate</a>
+              <a href="{{ path('/projects') }}"       class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Projekte</a>
+              <a href="{{ path('/import-formats') }}" class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Formate</a>
               {% if user.is_admin %}
-                <a href="/users"        class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Nutzer</a>
+                <a href="{{ path('/users') }}"        class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Nutzer</a>
               {% endif %}
-              <a href="/profile"        class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Profil</a>
-              <a href="/docs"           class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">API</a>
+              <a href="{{ path('/profile') }}"        class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">Profil</a>
+              <a href="{{ path('/docs') }}"           class="block px-3 py-2 text-sm hover:bg-slate-50" style="color: var(--text);">API</a>
               <div class="border-t border-slate-200 mt-1 pt-1">
-                <form action="/settings/theme" method="post" class="px-3 py-1" data-no-loading="true">
+                <form action="{{ path('/settings/theme') }}" method="post" class="px-3 py-1" data-no-loading="true">
                   <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
                   <label class="block text-xs mb-1" style="color: var(--faint);">Design</label>
                   <select name="theme" onchange="this.form.submit()"
@@ -318,7 +320,7 @@
                     {% endfor %}
                   </select>
                 </form>
-                <form action="/logout" method="post" class="px-3 pb-1" data-no-loading="true">
+                <form action="{{ path('/logout') }}" method="post" class="px-3 pb-1" data-no-loading="true">
                   <button type="submit" class="w-full text-left text-sm py-1.5 transition-colors"
                           style="color: #fca5a5; background: none; border: none; cursor: pointer;">
                     Abmelden
@@ -330,8 +332,7 @@
 
         {% else %}
           <nav class="hidden md:flex items-center gap-6 ml-auto">
-            <a href="/login" class="th-nav-link">Login</a>
-            <a href="/docs"  class="th-nav-link">API</a>
+            <a href="{{ path('/docs') }}"  class="th-nav-link">API</a>
           </nav>
         {% endif %}
 
@@ -340,20 +341,20 @@
       {% if user %}
         <nav id="nav-mobile"
              class="hidden md:hidden border-t border-slate-200 py-3 flex-col gap-0.5 text-sm">
-          <a href="/"               class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Dashboard</a>
-          <a href="/calendar"       class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Kalender</a>
-          <a href="/import"         class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Import</a>
-          <a href="/reports"        class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Reports</a>
-          <a href="/sync"           class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Sync</a>
-          <a href="/projects"       class="block px-1 py-2 hover:underline" style="color: var(--muted);">Projekte</a>
-          <a href="/import-formats" class="block px-1 py-2 hover:underline" style="color: var(--muted);">Formate</a>
+          <a href="{{ path('/') }}"               class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Dashboard</a>
+          <a href="{{ path('/calendar') }}"       class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Kalender</a>
+          <a href="{{ path('/import') }}"         class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Import</a>
+          <a href="{{ path('/reports') }}"        class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Reports</a>
+          <a href="{{ path('/sync') }}"           class="block px-1 py-2 font-semibold hover:underline" style="color: var(--text);">Sync</a>
+          <a href="{{ path('/projects') }}"       class="block px-1 py-2 hover:underline" style="color: var(--muted);">Projekte</a>
+          <a href="{{ path('/import-formats') }}" class="block px-1 py-2 hover:underline" style="color: var(--muted);">Formate</a>
           {% if user.is_admin %}
-            <a href="/users"        class="block px-1 py-2 hover:underline" style="color: var(--muted);">Nutzer</a>
+            <a href="{{ path('/users') }}"        class="block px-1 py-2 hover:underline" style="color: var(--muted);">Nutzer</a>
           {% endif %}
-          <a href="/profile"        class="block px-1 py-2 hover:underline" style="color: var(--muted);">Profil</a>
-          <a href="/docs"           class="block px-1 py-2 hover:underline" style="color: var(--muted);">API</a>
+          <a href="{{ path('/profile') }}"        class="block px-1 py-2 hover:underline" style="color: var(--muted);">Profil</a>
+          <a href="{{ path('/docs') }}"           class="block px-1 py-2 hover:underline" style="color: var(--muted);">API</a>
           <div class="flex items-center gap-3 pt-3 mt-1 border-t border-slate-200">
-            <form action="/settings/theme" method="post" data-no-loading="true">
+            <form action="{{ path('/settings/theme') }}" method="post" data-no-loading="true">
               <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
               <select name="theme" onchange="this.form.submit()"
                       class="text-xs border border-slate-300 px-2 py-1"
@@ -364,7 +365,7 @@
               </select>
             </form>
             <span class="text-xs truncate flex-1" style="color: var(--muted);">{{ user.email }}</span>
-            <form action="/logout" method="post" data-no-loading="true">
+            <form action="{{ path('/logout') }}" method="post" data-no-loading="true">
               <button type="submit" class="text-sm hover:underline" style="color: #fca5a5; background: none; border: none; cursor: pointer;">Abmelden</button>
             </form>
           </div>

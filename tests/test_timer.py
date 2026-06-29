@@ -6,14 +6,12 @@ from datetime import date, datetime, timedelta
 
 
 def _api_key(client) -> dict:
-    token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
     key = client.post(
         "/api/v1/auth/api-keys",
         json={"name": "timer-test"},
-        headers={"Authorization": f"Bearer {token}"},
     ).json()["key"]
     return {"X-API-Key": key}
 

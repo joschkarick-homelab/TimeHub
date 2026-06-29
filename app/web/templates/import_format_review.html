@@ -19,7 +19,7 @@
       <p class="text-sm text-slate-600 italic mb-3">„{{ suggestion.notes }}"</p>
     {% endif %}
 
-    <form method="post" action="/import-formats" id="format-form" class="space-y-4">
+    <form method="post" action="{{ path('/import-formats') }}" id="format-form" class="space-y-4">
       <input type="hidden" name="name" value="{{ name }}" />
 
       <div>
@@ -43,7 +43,7 @@
         </p>
         <textarea name="instruction" rows="2" placeholder="Anweisung an die KI …"
                   class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm"></textarea>
-        <button type="submit" formaction="/import-formats/refine"
+        <button type="submit" formaction="{{ path('/import-formats/refine') }}"
                 class="mt-2 h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
           ↻ Nachschärfen
         </button>
@@ -103,7 +103,7 @@
         <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
           Speichern
         </button>
-        <a href="/import-formats/new" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
+        <a href="{{ path('/import-formats/new') }}" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
       </div>
     </form>
   </section>

@@ -8,8 +8,8 @@
     {% set sep = '&' if '?' in base_url else '?' %}
     <span class="inline-flex items-center border
                  {% if active_view and active_view.id == v.id %}bg-indigo-600 text-white border-indigo-600{% else %}bg-white border-slate-300{% endif %}">
-      <a href="{{ base_url }}{{ sep }}view={{ v.id }}" class="px-2.5 py-1 text-sm">{{ v.name }}</a>
-      <form method="post" action="/views/{{ v.id }}/delete" class="inline" data-no-loading="true"
+      <a href="{{ path(base_url) }}{{ sep }}view={{ v.id }}" class="px-2.5 py-1 text-sm">{{ v.name }}</a>
+      <form method="post" action="{{ path('/views/' ~ v.id ~ '/delete') }}" class="inline" data-no-loading="true"
             onsubmit="return confirm('Ansicht „{{ v.name }}“ löschen?');">
         <input type="hidden" name="next" value="{{ base_url }}" />
         <button class="px-1.5 py-1 text-xs opacity-70 hover:opacity-100" title="Ansicht löschen">✕</button>

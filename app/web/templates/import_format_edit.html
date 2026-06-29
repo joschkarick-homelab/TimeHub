@@ -2,7 +2,7 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-xl font-bold th-outfit">Importformat bearbeiten</h1>
-  <a href="/import-formats" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
+  <a href="{{ path('/import-formats') }}" class="text-sm text-slate-600 hover:underline">← zur Liste</a>
 </div>
 
 {% if error %}
@@ -13,7 +13,7 @@
 
 <div class="grid lg:grid-cols-2 gap-6 items-start">
   <section class="bg-white border border-slate-200 p-5">
-    <form method="post" action="/import-formats/{{ fmt.id }}/edit" id="format-form" class="space-y-4">
+    <form method="post" action="{{ path('/import-formats/' ~ fmt.id ~ '/edit') }}" id="format-form" class="space-y-4">
       <label class="block text-sm">
         <span class="block font-medium mb-1">Name</span>
         <input name="name" required value="{{ fmt.name }}"
@@ -29,7 +29,7 @@
         </p>
         <textarea name="instruction" rows="2" placeholder="Anweisung an die KI …"
                   class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm"></textarea>
-        <button type="submit" formaction="/import-formats/{{ fmt.id }}/refine"
+        <button type="submit" formaction="{{ path('/import-formats/' ~ fmt.id ~ '/refine') }}"
                 class="mt-2 h-9 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium">
           ↻ Nachschärfen
         </button>
@@ -100,7 +100,7 @@
         <button class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">
           Speichern
         </button>
-        <a href="/import-formats" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
+        <a href="{{ path('/import-formats') }}" class="text-sm text-slate-600 hover:underline self-center">Abbrechen</a>
       </div>
     </form>
   </section>

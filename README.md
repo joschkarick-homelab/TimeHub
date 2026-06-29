@@ -9,6 +9,38 @@ API-first, selbst gehostet, Docker-deploybar (Proxmox-LXC freundlich).
 
 ---
 
+## Container
+
+<!-- TODO: confirm mindcode owner/namespace -->
+
+- 📦 **Package**: https://mindcode.mindsquare.de/joschka.rick/timehub/packages
+- Image-Ref zum Einhängen in den Agent Hub:
+
+  ```
+  mindcode.mindsquare.de/joschka.rick/timehub:latest
+  ```
+
+Für eine pinned Version statt `:latest` einen Release-Tag verwenden (z. B. `:v2.0.0`).
+
+## Agent Hub
+
+TimeHub läuft hinter dem mindsquare Agent Hub (Identity-Aware Reverse Proxy):
+
+- **Identity** kommt vom Hub über `X-MSQ-*`-Header — die App hat keinen eigenen
+  Login. Admins werden über die `ADMIN_EMAILS`-Allowlist beim ersten Hub-Login
+  provisioniert.
+- Die **Hub-Waffle** ist eingebettet, daher ist **keine**
+  „Navigation-Override"-Ausnahme nötig.
+- **Daten:** Die DB liegt als SQLite im Volume `appdata-timehub-data`, Uploads
+  in `appdata-timehub-uploads`. Backup/Restore ist Self-Service über die Admin-UI
+  (Datensicherung).
+- **Lokale Entwicklung ohne Hub:** `AUTH_MODE=dev-bypass` setzen (Default
+  außerhalb von `production`) — das injiziert einen festen Dev-Admin-User.
+- Der **MCP-Endpunkt** unter `/timehub/mcp` nutzt den `mcp-bearer`-Modus des Hubs
+  (in der Hub-Admin am App-Eintrag gesetzt).
+
+---
+
 ## 1. Tech-Stack & Begründung
 
 | Schicht        | Wahl                                | Warum                                                                                  |

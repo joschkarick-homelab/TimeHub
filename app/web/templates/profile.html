@@ -11,7 +11,7 @@
 
 <section class="bg-white border border-slate-200 p-5 max-w-2xl mb-6">
   <h2 class="font-semibold mb-4 th-section-title th-section-purple th-outfit">Profil-Einstellungen</h2>
-  <form method="post" action="/profile" class="space-y-4">
+  <form method="post" action="{{ path('/profile') }}" class="space-y-4">
     <div class="grid sm:grid-cols-2 gap-3">
       <label class="text-sm">
         <span class="block font-medium mb-1">Anzeigename</span>
@@ -76,7 +76,7 @@
   </script>
   {% endif %}
 
-  <form method="post" action="/profile/api-keys" class="flex flex-wrap gap-2 mb-4 items-end">
+  <form method="post" action="{{ path('/profile/api-keys') }}" class="flex flex-wrap gap-2 mb-4 items-end">
     <label class="text-xs flex-1 min-w-[10rem]">
       <span class="block text-slate-500 mb-1">Bezeichnung</span>
       <input name="name" placeholder="z. B. Raycast" maxlength="120"
@@ -132,7 +132,7 @@
         <td class="py-1.5 text-slate-500">{{ k.expires_at.date() if k.expires_at else 'Nie' }}</td>
         <td class="py-1.5 text-slate-500">{{ k.last_used_at.date() if k.last_used_at else '–' }}</td>
         <td class="py-1.5 text-right">
-          <form method="post" action="/profile/api-keys/{{ k.id }}/revoke"
+          <form method="post" action="{{ path('/profile/api-keys/' ~ k.id ~ '/revoke') }}"
                 onsubmit="return confirm('Key „{{ k.name }}“ widerrufen? Tools mit diesem Key verlieren den Zugriff.');">
             <button class="text-rose-600 hover:underline text-xs">Widerrufen</button>
           </form>
@@ -150,7 +150,7 @@
   <h2 class="font-semibold mb-1 th-section-title th-section-teal th-outfit">Microsoft 365 Kalender</h2>
   <p class="text-xs text-slate-500 mb-4">
     Verbinde deinen Outlook-Kalender, um deine Termine read-only neben der
-    Zeiterfassung im <a href="/calendar" class="text-indigo-600 hover:underline">Kalender</a>
+    Zeiterfassung im <a href="{{ path('/calendar') }}" class="text-indigo-600 hover:underline">Kalender</a>
     zu sehen. TimeHub liest nur – es schreibt nichts in Outlook zurück.
   </p>
 
@@ -171,11 +171,11 @@
         {% endif %}
       </div>
       <div class="flex gap-2">
-        <a href="/m365/connect"
+        <a href="{{ path('/m365/connect') }}"
            class="h-9 px-3 inline-flex items-center border border-slate-300 rounded text-sm hover:bg-slate-50">
           Neu verbinden
         </a>
-        <form method="post" action="/m365/disconnect"
+        <form method="post" action="{{ path('/m365/disconnect') }}"
               onsubmit="return confirm('Microsoft-365-Verbindung trennen?');">
           <button class="h-9 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded text-sm font-medium">
             Trennen
@@ -184,7 +184,7 @@
       </div>
     </div>
   {% else %}
-    <a href="/m365/connect"
+    <a href="{{ path('/m365/connect') }}"
        class="h-10 px-4 inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-sm">
       Mit Microsoft 365 verbinden
     </a>
@@ -216,11 +216,11 @@
         {% endif %}
       </div>
       <div class="flex gap-2">
-        <a href="/salesforce/oauth/connect"
+        <a href="{{ path('/salesforce/oauth/connect') }}"
            class="h-9 px-3 inline-flex items-center border border-slate-300 rounded text-sm hover:bg-slate-50">
           Neu verbinden
         </a>
-        <form method="post" action="/salesforce/oauth/disconnect"
+        <form method="post" action="{{ path('/salesforce/oauth/disconnect') }}"
               onsubmit="return confirm('Salesforce-Verbindung trennen?');">
           <button class="h-9 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded text-sm font-medium">
             Trennen
@@ -229,7 +229,7 @@
       </div>
     </div>
   {% else %}
-    <a href="/salesforce/oauth/connect"
+    <a href="{{ path('/salesforce/oauth/connect') }}"
        class="h-10 px-4 inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-sm">
       Salesforce mit Microsoft 365 verbinden
     </a>
@@ -245,7 +245,7 @@
   </dl>
   <p class="text-xs text-slate-500 mt-3">
     Rolle und Aktiv-Flag setzt der Admin im
-    <a href="/users" class="text-indigo-600 hover:underline">Nutzer-Reiter</a>.
+    <a href="{{ path('/users') }}" class="text-indigo-600 hover:underline">Nutzer-Reiter</a>.
   </p>
 </section>
 {% endblock %}

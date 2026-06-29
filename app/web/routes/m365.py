@@ -24,11 +24,14 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _profile_redirect(*, flash: str | None = None, error: str | None = None) -> RedirectResponse:
+def _profile_redirect(
+    request: Request, *, flash: str | None = None, error: str | None = None
+) -> RedirectResponse:
+    base = request.scope.get("root_path", "")
     if error:
-        url = "/profile?error=" + quote_plus(error)[:300]
+        url = f"{base}/profile?error=" + quote_plus(error)[:300]
     else:
-        url = "/profile?flash=" + quote_plus(flash or "")
+        url = f"{base}/profile?flash=" + quote_plus(flash or "")
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
@@ -47,7 +50,7 @@ def m365_connect(request: Request, db: Session = Depends(get_db)):
     _require_login(request, db)
     if not m365_svc.configured(db):
         return _profile_redirect(
-            error="Microsoft 365 ist noch nicht konfiguriert – bitte an den Administrator wenden."
+            request, error="Microsoft 365 ist noch nicht konfiguriert – bitte an den Administrator wenden."
         )
     verifier, challenge = m365_svc.make_pkce()
     state = secrets.token_urlsafe(24)
@@ -64,7 +67,7 @@ def m365_connect(request: Request, db: Session = Depends(get_db)):
             db, state=state, code_challenge=challenge, redirect_uri=redirect_uri
         )
     except m365_svc.M365Error as e:
-        return _profile_redirect(error=str(e))
+        return _profile_redirect(request, error=str(e))
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
@@ -81,7 +84,7 @@ def m365_callback(
     saved = request.session.pop("m365_oauth", None)
 
     if error:
-        return _profile_redirect(error=f"Microsoft: {error_description or error}")
+        return _profile_redirect(request, error=f"Microsoft: {error_description or error}")
     if (
         not code
         or not state
@@ -89,7 +92,7 @@ def m365_callback(
         or not secrets.compare_digest(state, saved.get("state", ""))
     ):
         return _profile_redirect(
-            error="Microsoft-Anmeldung ungültig oder abgelaufen – bitte erneut versuchen."
+            request, error="Microsoft-Anmeldung ungültig oder abgelaufen – bitte erneut versuchen."
         )
 
     try:
@@ -101,7 +104,7 @@ def m365_callback(
         )
         account = m365_svc.fetch_account(tokens["access_token"])
     except m365_svc.M365Error as e:
-        return _profile_redirect(error=str(e))
+        return _profile_redirect(request, error=str(e))
 
     conn = db.execute(
         select(M365Connection).where(M365Connection.user_id == user.id)
@@ -111,7 +114,7 @@ def m365_callback(
     m365_svc.store_tokens(db, conn, tokens, account=account)
     db.add(conn)
     db.commit()
-    return _profile_redirect(flash=f"Microsoft 365 verbunden ({account})" if account
+    return _profile_redirect(request, flash=f"Microsoft 365 verbunden ({account})" if account
                              else "Microsoft 365 verbunden")
 
 
@@ -124,4 +127,4 @@ def m365_disconnect(request: Request, db: Session = Depends(get_db)):
     if conn is not None:
         db.delete(conn)
         db.commit()
-    return _profile_redirect(flash="Microsoft 365 getrennt")
+    return _profile_redirect(request, flash="Microsoft 365 getrennt")

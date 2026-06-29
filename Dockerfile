@@ -22,10 +22,22 @@ COPY scripts ./scripts
 RUN mkdir -p /app/data /app/uploads \
  && chmod +x /app/scripts/entrypoint.sh
 
+VOLUME ["/app/data", "/app/uploads"]
+
+COPY .env.example /app/.env.example
+
+# TODO: confirm mindcode owner/namespace
+LABEL org.opencontainers.image.title="TimeHub" \
+      org.opencontainers.image.description="Zentrale Zeiterfassung – Erfassung, Import, Export, Reporting" \
+      org.opencontainers.image.vendor="mindsquare AG" \
+      org.opencontainers.image.source="https://mindcode.mindsquare.de/joschka.rick/timehub" \
+      org.opencontainers.image.version="2.0.0" \
+      de.mindsquare.agenthub.category="productivity"
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://localhost:8000/healthz || exit 1
+  CMD curl -fsS http://localhost:8000/health || exit 1
 
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

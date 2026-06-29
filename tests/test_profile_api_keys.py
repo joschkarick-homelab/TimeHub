@@ -5,12 +5,9 @@ import re
 
 
 def _login_session(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 def _extract_key(html: str) -> str | None:
@@ -18,7 +15,7 @@ def _extract_key(html: str) -> str | None:
     return m.group(1) if m else None
 
 
-def test_create_key_revealed_once_then_hidden(client):
+def test_create_key_revealed_once_then_hidden(client, raw_client):
     _login_session(client)
 
     created = client.post(
@@ -37,20 +34,21 @@ def test_create_key_revealed_once_then_hidden(client):
     assert full not in page2
     assert "Raycast" in page2  # still listed by name/prefix
 
-    # And the revealed key works for API auth.
-    me = client.get("/api/v1/auth/me", headers={"X-API-Key": full})
+    # And the revealed key works for API auth — verified via raw_client so the
+    # key (not a Hub identity) is what authenticates the request.
+    me = raw_client.get("/api/v1/auth/me", headers={"X-API-Key": full})
     assert me.status_code == 200
     assert me.json()["email"] == "admin@example.com"
 
 
-def test_revoke_key_removes_it_and_disables_auth(client):
+def test_revoke_key_removes_it_and_disables_auth(client, raw_client):
     _login_session(client)
     client.post("/profile/api-keys", data={"name": "ToRevoke"}, follow_redirects=False)
     full = _extract_key(client.get("/profile").text)
     assert full
 
     # Find the key id from the list API (owned by the session user).
-    keys = client.get("/api/v1/auth/api-keys", headers={"X-API-Key": full}).json()
+    keys = raw_client.get("/api/v1/auth/api-keys", headers={"X-API-Key": full}).json()
     key_id = next(k["id"] for k in keys if k["name"] == "ToRevoke")
 
     revoked = client.post(
@@ -60,8 +58,8 @@ def test_revoke_key_removes_it_and_disables_auth(client):
 
     # No longer listed as active on the profile page…
     assert "ToRevoke" not in client.get("/profile").text
-    # …and the key can no longer authenticate.
-    assert client.get("/api/v1/auth/me", headers={"X-API-Key": full}).status_code == 401
+    # …and the key can no longer authenticate (raw_client → key-only auth).
+    assert raw_client.get("/api/v1/auth/me", headers={"X-API-Key": full}).status_code == 401
 
 
 def test_revoke_other_users_key_is_noop_redirect(client):

@@ -6,38 +6,74 @@ import pytest
 from app import mcp_server as mcp
 
 
-def _api_key(client) -> str:
-    token = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.com", "password": "testpass"},
-    ).json()["access_token"]
-    return client.post(
-        "/api/v1/auth/api-keys",
-        json={"name": "mcp-test"},
-        headers={"Authorization": f"Bearer {token}"},
-    ).json()["key"]
+def _admin_id(client) -> int:
+    return client.get("/api/v1/auth/me").json()["id"]
 
 
-def _admin_id(client, key: str) -> int:
-    return client.get("/api/v1/auth/me", headers={"X-API-Key": key}).json()["id"]
-
-
-def _project(client, key: str, code: str) -> None:
+def _project(client, code: str) -> None:
     client.post(
         "/api/v1/projects",
         json={"name": f"MCP {code}", "code": code, "default_sync_target": "intern"},
-        headers={"X-API-Key": key},
     )
 
 
-# ── HTTP auth middleware ──────────────────────────────────────────────────────
+# ── HTTP auth middleware (Hub X-MSQ identity) ─────────────────────────────────
 
 
-def test_mcp_requires_auth(client):
-    # No key → 401 before any MCP handling.
-    assert client.post("/mcp/", json={}).status_code == 401
-    # Bogus key → 401 too.
-    assert client.post("/mcp/", json={}, headers={"X-API-Key": "thk_nope"}).status_code == 401
+def test_mcp_requires_identity(raw_client):
+    # No X-MSQ-* identity → 401 before any MCP handling (the Hub would normally
+    # supply them; a direct request that bypasses the Hub is unauthenticated).
+    assert raw_client.post("/mcp/", json={}).status_code == 401
+
+
+def _drive_middleware(headers: list[tuple[bytes, bytes]]):
+    """Run HubIdentityAuthMiddleware around a stub downstream app and capture
+    the response start. The stub records that it was reached (delegation) and
+    sends a 204; this isolates the AUTH decision from the live MCP session
+    manager (whose task group is only running under the app lifespan)."""
+    import asyncio
+
+    reached = {"value": False}
+
+    async def downstream(scope, receive, send):
+        reached["value"] = True
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    statuses: list[int] = []
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            statuses.append(message["status"])
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    app = mcp.HubIdentityAuthMiddleware(downstream)
+    scope = {"type": "http", "method": "POST", "path": "/mcp/", "headers": headers}
+    asyncio.run(app(scope, receive, send))
+    return statuses[0], reached["value"]
+
+
+def test_mcp_identity_authenticates_and_delegates(client):
+    # An identity-carrying request (X-MSQ-* admin headers) authenticates: the
+    # middleware resolves the user, sets the contextvar, and delegates downstream
+    # (no 401). The admin user is provisioned by the `client` fixture's identity.
+    headers = [
+        (b"x-msq-user-id", b"admin-msq"),
+        (b"x-msq-user-email", b"admin@example.com"),
+        (b"x-msq-user-name", b"Admin"),
+    ]
+    status, reached = _drive_middleware(headers)
+    assert status != 401
+    assert reached is True
+
+
+def test_mcp_no_identity_401_does_not_delegate():
+    # No X-MSQ-* headers → 401, downstream MCP app is never reached.
+    status, reached = _drive_middleware([])
+    assert status == 401
+    assert reached is False
 
 
 # ── Tool logic ────────────────────────────────────────────────────────────────
@@ -45,14 +81,14 @@ def test_mcp_requires_auth(client):
 
 @pytest.fixture
 def as_user(client):
-    """Authenticate the tool context as the admin user (as the middleware would)
-    and ensure a project exists."""
-    key = _api_key(client)
-    uid = _admin_id(client, key)
-    _project(client, key, "MCPTOOL")
+    """Authenticate the tool context as the admin Hub user (as the middleware
+    would) and ensure a project exists. The `client` fixture carries the admin
+    X-MSQ-* identity, so the user is auto-provisioned on first request."""
+    uid = _admin_id(client)
+    _project(client, "MCPTOOL")
     token = mcp._user_id_var.set(uid)
     try:
-        yield key
+        yield client
     finally:
         mcp._user_id_var.reset(token)
 

@@ -30,7 +30,17 @@
   // (e.g. the calendar stashes its scroll position so it survives the reload).
   window.entryModalBeforeSubmit = null;
 
+  // `url` is an app-relative path (no Hub slug); prefix it with the mount path
+  // (from <meta name="base-path">) exactly once so the fetch hits the app, not
+  // the Hub root. Already-prefixed/absolute URLs are passed through unchanged.
+  var BASE_PATH = ((document.querySelector('meta[name="base-path"]') || {}).content || "").replace(/\/$/, "");
+  function withBase(u) {
+    if (!u || !u.startsWith("/") || (BASE_PATH && u.startsWith(BASE_PATH + "/"))) return u;
+    return BASE_PATH + u;
+  }
+
   window.openEntryEditModal = function (url) {
+    url = withBase(url);
     fetch(url, { headers: { "X-Requested-With": "fetch" } })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
       .then(function (html) {

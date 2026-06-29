@@ -37,6 +37,13 @@ def test_falls_back_to_sqlite_when_nothing_set():
     assert s.database_url.startswith("sqlite:")
 
 
+def test_sqlite_default_lives_under_app_data():
+    # No .env in the repo and the autouse _isolate_env fixture clears every
+    # DB-related env var, so this exercises the pure fallback branch.
+    s = _fresh_settings()
+    assert s.database_url == "sqlite:////app/data/timehub.sqlite"
+
+
 def test_explicit_database_url_wins(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./explicit.sqlite")
     monkeypatch.setenv("POSTGRES_USER", "ignored")

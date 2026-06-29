@@ -2,7 +2,7 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-xl font-semibold">Salesforce-Sync — Vorschau</h1>
-  <a href="/" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
+  <a href="{{ path('/') }}" class="text-sm text-slate-600 hover:underline">← zum Dashboard</a>
 </div>
 
 {% if error %}
@@ -69,9 +69,9 @@
               <td class="px-4 py-2 text-amber-800">{{ s.reason }}</td>
               <td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
                 {% if p %}
-                  <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">→ Projekt</a>
+                  <a href="{{ path('/projects/' ~ p.id ~ '/edit') }}" class="text-xs text-indigo-600 hover:underline">→ Projekt</a>
                 {% endif %}
-                <a href="/entries/{{ s.entry.id }}/edit?next=/sync" class="text-xs text-indigo-600 hover:underline">→ Eintrag</a>
+                <a href="{{ path('/entries/' ~ s.entry.id ~ '/edit?next=/sync') }}" class="text-xs text-indigo-600 hover:underline">→ Eintrag</a>
               </td>
             </tr>
           {% endfor %}
@@ -133,7 +133,7 @@
     {% endfor %}
   </div>
 
-  <form method="post" action="/sync/salesforce/execute"
+  <form method="post" action="{{ path('/sync/salesforce/execute') }}"
         class="mt-6 bg-sky-50 border border-sky-300 rounded-lg p-4"
         data-loading-message="Salesforce wird beschrieben …"
         onsubmit="return confirm('Wirklich {{ pushable_count }} Einträge nach Salesforce schreiben? Das ist nicht rückgängig zu machen.');">

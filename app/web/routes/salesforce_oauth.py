@@ -26,11 +26,14 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _profile_redirect(*, flash: str | None = None, error: str | None = None) -> RedirectResponse:
+def _profile_redirect(
+    request: Request, *, flash: str | None = None, error: str | None = None
+) -> RedirectResponse:
+    base = request.scope.get("root_path", "")
     if error:
-        url = "/profile?error=" + quote_plus(error)[:300]
+        url = f"{base}/profile?error=" + quote_plus(error)[:300]
     else:
-        url = "/profile?flash=" + quote_plus(flash or "")
+        url = f"{base}/profile?flash=" + quote_plus(flash or "")
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
@@ -49,7 +52,7 @@ def salesforce_oauth_connect(request: Request, db: Session = Depends(get_db)):
     _require_login(request, db)
     if not sf_svc.oauth_configured(db):
         return _profile_redirect(
-            error="Salesforce-OAuth ist noch nicht konfiguriert – bitte an den Administrator wenden."
+            request, error="Salesforce-OAuth ist noch nicht konfiguriert – bitte an den Administrator wenden."
         )
     verifier, challenge = sf_svc.make_pkce()
     state = secrets.token_urlsafe(24)
@@ -66,7 +69,7 @@ def salesforce_oauth_connect(request: Request, db: Session = Depends(get_db)):
             db, state=state, code_challenge=challenge, redirect_uri=redirect_uri
         )
     except sf_svc.SalesforceError as e:
-        return _profile_redirect(error=str(e))
+        return _profile_redirect(request, error=str(e))
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
@@ -83,7 +86,7 @@ def salesforce_oauth_callback(
     saved = request.session.pop("sf_oauth", None)
 
     if error:
-        return _profile_redirect(error=f"Salesforce: {error_description or error}")
+        return _profile_redirect(request, error=f"Salesforce: {error_description or error}")
     if (
         not code
         or not state
@@ -91,7 +94,7 @@ def salesforce_oauth_callback(
         or not secrets.compare_digest(state, saved.get("state", ""))
     ):
         return _profile_redirect(
-            error="Salesforce-Anmeldung ungültig oder abgelaufen – bitte erneut versuchen."
+            request, error="Salesforce-Anmeldung ungültig oder abgelaufen – bitte erneut versuchen."
         )
 
     try:
@@ -105,7 +108,7 @@ def salesforce_oauth_callback(
             tokens.get("access_token", ""), tokens.get("instance_url", "")
         )
     except sf_svc.SalesforceError as e:
-        return _profile_redirect(error=str(e))
+        return _profile_redirect(request, error=str(e))
 
     conn = db.execute(
         select(SalesforceConnection).where(SalesforceConnection.user_id == user.id)
@@ -116,7 +119,7 @@ def salesforce_oauth_callback(
     db.add(conn)
     db.commit()
     return _profile_redirect(
-        flash=f"Salesforce verbunden ({account})" if account else "Salesforce verbunden"
+        request, flash=f"Salesforce verbunden ({account})" if account else "Salesforce verbunden"
     )
 
 
@@ -129,4 +132,4 @@ def salesforce_oauth_disconnect(request: Request, db: Session = Depends(get_db))
     if conn is not None:
         db.delete(conn)
         db.commit()
-    return _profile_redirect(flash="Salesforce getrennt")
+    return _profile_redirect(request, flash="Salesforce getrennt")

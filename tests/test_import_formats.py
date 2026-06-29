@@ -4,15 +4,14 @@ from unittest.mock import patch
 from app.schemas.import_format import ImportFormatSuggestion
 
 
-def _login(client, email="admin@example.com", password="testpass") -> str:
-    r = client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+def _headers(client, email="admin@example.com", password="testpass") -> dict:
+    from tests.conftest import hub_headers
+
+    return hub_headers(email)
 
 
 def test_import_format_crud_and_visibility(client):
-    admin = _login(client)
-    h_admin = {"Authorization": f"Bearer {admin}"}
+    h_admin = _headers(client)
 
     # admin creates a second user via the API
     r = client.post(
@@ -23,8 +22,7 @@ def test_import_format_crud_and_visibility(client):
     assert r.status_code == 201, r.text
 
     # consultant logs in
-    consultant = _login(client, "consultant@example.com", "secret123")
-    h_user = {"Authorization": f"Bearer {consultant}"}
+    h_user = _headers(client, "consultant@example.com")
 
     # consultant creates a private format (is_global ignored for non-admins)
     r = client.post(
@@ -71,8 +69,7 @@ def test_import_format_crud_and_visibility(client):
 
 
 def test_suggest_endpoint_uses_ai_service(client, monkeypatch):
-    token = _login(client)
-    h = {"Authorization": f"Bearer {token}"}
+    h = _headers(client)
 
     fake_suggestion = ImportFormatSuggestion(
         source_hint="toggl",
@@ -94,8 +91,7 @@ def test_suggest_endpoint_uses_ai_service(client, monkeypatch):
 
 
 def test_run_imports_via_saved_format(client):
-    token = _login(client)
-    h = {"Authorization": f"Bearer {token}"}
+    h = _headers(client)
 
     # ensure a project exists
     r = client.post(

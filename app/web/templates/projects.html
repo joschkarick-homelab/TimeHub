@@ -13,14 +13,14 @@
   <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
     <h2 class="font-semibold th-section-title th-section-purple th-outfit">Neues Projekt</h2>
     {% if sf_configured %}
-      <a href="/projects/import-salesforce"
+      <a href="{{ path('/projects/import-salesforce') }}"
          class="h-9 px-3 inline-flex items-center bg-sky-600 hover:bg-sky-700 text-white rounded text-sm font-medium"
          title="Projekte aus deinen aktuellen Salesforce-Projektbesetzungen anlegen">
         ↓ Import aus Salesforce-Projekten
       </a>
     {% endif %}
   </div>
-  <form method="post" action="/projects" class="grid sm:grid-cols-6 gap-3 items-end">
+  <form method="post" action="{{ path('/projects') }}" class="grid sm:grid-cols-6 gap-3 items-end">
     <label class="sm:col-span-2 text-sm">
       <span class="block font-medium mb-1 text-xs">Name</span>
       <input name="name" required class="w-full h-10 border border-slate-300 rounded px-2" />
@@ -113,8 +113,8 @@
             {% endif %}
           </td>
           <td class="px-4 py-2 space-x-3 whitespace-nowrap">
-            <a href="/projects/{{ p.id }}/edit" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
-            <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
+            <a href="{{ path('/projects/' ~ p.id ~ '/edit') }}" class="text-xs text-indigo-600 hover:underline">bearbeiten</a>
+            <form action="{{ path('/projects/' ~ p.id ~ '/delete') }}" method="post" class="inline"
                   onsubmit="return confirm('Projekt {{ p.name }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
               <button class="text-xs text-rose-600 hover:underline">löschen</button>
             </form>
@@ -154,8 +154,8 @@
           {% endif %}
         </div>
         <div class="flex items-center gap-4 mt-3">
-          <a href="/projects/{{ p.id }}/edit" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
-          <form action="/projects/{{ p.id }}/delete" method="post" class="inline"
+          <a href="{{ path('/projects/' ~ p.id ~ '/edit') }}" class="text-sm text-indigo-600 hover:underline">bearbeiten</a>
+          <form action="{{ path('/projects/' ~ p.id ~ '/delete') }}" method="post" class="inline"
                 onsubmit="return confirm('Projekt {{ p.name }} wirklich löschen? Projekte mit bestehenden Zeiteinträgen können nicht gelöscht werden.');">
             <button class="text-sm text-rose-600 hover:underline">löschen</button>
           </form>

@@ -9,12 +9,9 @@ from pydantic import ValidationError
 
 
 def _login(client) -> None:
-    r = client.post(
-        "/login",
-        data={"email": "admin@example.com", "password": "testpass"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 302, r.text
+    from tests.conftest import act_as
+
+    act_as(client, "admin@example.com")
 
 
 # ── C1: CSRF ─────────────────────────────────────────────────────────────────
@@ -51,7 +48,8 @@ def test_csrf_token_field_in_form_body_is_accepted(client):
 
 
 def test_meta_csrf_token_is_rendered(client):
-    html = client.get("/login").text
+    _login(client)
+    html = client.get("/").text
     assert 'name="csrf-token"' in html
 
 
