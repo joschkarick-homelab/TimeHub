@@ -137,9 +137,24 @@ Anwesenheiten/Pausen und setzt Buchungsabschlüsse. Genau unser Aufwands-Push.
   robuster bei document/literal + WS-Security.
 - **E-BCS-3: `subject`/`task` werden durch ein Arbeitspaket-Feld ersetzt**
   (`default_work_package` am Projekt + `work_package` am Eintrag).
-- **E-BCS-4: Auth via Impersonation über den System-User `Synchronisation`**
-  (statt Self-Auth pro Berater) — funktioniert mit MS-OAuth, eine Credential in
-  TimeHub, Auth-User lizenzfrei, Buchung läuft im Scope des Beraters.
+- **E-BCS-4: ~~Auth via Impersonation über den System-User `Synchronisation`~~**
+  — **REVIDIERT durch E-BCS-5** (siehe unten). Der gebaute Code nutzt aktuell
+  noch Impersonation.
+- **E-BCS-5 (final, nach Rücksprache mit BCS, 07/2026): Self-Auth pro User.**
+  Jeder Berater hinterlegt seine **eigenen BCS-Zugangsdaten im TimeHub-Profil**;
+  Buchung per WSSE UsernameToken mit diesen Daten, **ohne `ImpersonateAs` und
+  ohne `impersonationOids`**. Grund: die OID-Allowlist skaliert schlecht (jede
+  User-OID muss einzeln in die Service-Config, keine Wildcard/rollenbasierte
+  Variante verfügbar).
+  - **Code-Impact (offen, TODO auf neuer Base):**
+    - Credential-Store von zentral (`bcs.username/password`) auf **pro User**
+      umstellen (verschlüsselt am `User`, analog Fernet). Admin-Maske → Self-
+      Service im Profil.
+    - `bcs.py`: `ImpersonateAs`-Header entfernen; Client aus den User-Creds
+      bauen. `build_time_record_args` kann `employee` weglassen (Self-Scope).
+    - `_sync_dynamic_options` / `bcs_push`: Client pro User statt zentral.
+    - Voraussetzung: jeder Berater braucht ein **WS-taugliches lokales
+      BCS-Passwort** (neben MS-OAuth) + WS-Lizenz.
 
 WSDL + alle XSD-Teile liegen versioniert unter
 [`docs/bcs-schema/`](bcs-schema/) (von `main` übernommen).

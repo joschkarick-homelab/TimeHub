@@ -50,6 +50,14 @@ in `docs/bcs-schema/`, the full design rationale in `docs/bcs-integration.md`.
 - BCS-via-Microsoft-OAuth users typically have **no usable local password**, so
   per-user self-auth is impractical — use the central user + impersonation.
 
+> **Chosen model (07/2026, confirmed with Projektron): self-auth per user.**
+> Each user stores their own BCS credentials and books with them directly — no
+> `ImpersonateAs`, no `impersonationOids`. Reason: the OID allowlist doesn't
+> scale (every user OID must be listed in the service config by hand; no
+> wildcard / role-based option). Trade-off accepted: every booking user needs a
+> WS-usable local BCS password (alongside SSO) + the WS licence. The
+> impersonation section below is kept for reference / other deployments.
+
 ### Impersonation (book on behalf of a consultant)
 
 - Authenticate as the system user `Synchronisation`, add an
