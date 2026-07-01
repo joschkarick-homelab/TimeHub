@@ -114,6 +114,12 @@ Caveat: because the Upsert keys on `id`, sending only *part* of a day's entries 
 later the rest **overwrites** rather than adds — book a day's package together, or
 always send the full day total.
 
+## Postman
+
+Importable collection: `bcs-timerecording.postman_collection.json` (GetTimesheet
++ CreateOrUpdateTimeRecord, variables for host/user/password/workPackageOid).
+Step-by-step guide with common errors: `postman-tutorial.md`.
+
 ## Ready-to-paste SOAP examples (Postman)
 
 SOAP 1.1: `Content-Type: text/xml; charset=UTF-8`, header

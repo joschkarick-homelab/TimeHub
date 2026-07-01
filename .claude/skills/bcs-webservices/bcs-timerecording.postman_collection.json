@@ -1,0 +1,58 @@
+{
+  "info": {
+    "name": "BCS TimerecordingWebService",
+    "description": "Smoke-Tests fuer den Projektron BCS TimerecordingWebService (SOAP 1.1, WS-Security UsernameToken, Self-Auth). Variablen unten anpassen: bcsUser, bcsPassword, host, testDate, workPackageOid.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "host", "value": "mindsquare.bcs-hosting.de" },
+    { "key": "bcsUser", "value": "DEIN_BCS_USER" },
+    { "key": "bcsPassword", "value": "DEIN_PASSWORT" },
+    { "key": "testDate", "value": "2026-07-01" },
+    { "key": "workPackageOid", "value": "AUS_GETTIMESHEET_KOPIEREN" }
+  ],
+  "item": [
+    {
+      "name": "1) GetTimesheet (Arbeitspakete lesen)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+          { "key": "SOAPAction", "value": "http://www.projektron.de/ws/timerecording/GetTimesheet" }
+        ],
+        "url": {
+          "raw": "https://{{host}}/webservices/TimerecordingWebService",
+          "protocol": "https",
+          "host": ["{{host}}"],
+          "path": ["webservices", "TimerecordingWebService"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://www.projektron.de/ws/timerecording\">\n  <soapenv:Header>\n    <wsse:Security xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\">\n      <wsse:UsernameToken>\n        <wsse:Username>{{bcsUser}}</wsse:Username>\n        <wsse:Password Type=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText\">{{bcsPassword}}</wsse:Password>\n      </wsse:UsernameToken>\n    </wsse:Security>\n  </soapenv:Header>\n  <soapenv:Body>\n    <tns:GetTimesheet>\n      <tns:filter>\n        <tns:date>{{testDate}}</tns:date>\n        <tns:typesOfTimesheetEntries><tns:tasks/></tns:typesOfTimesheetEntries>\n      </tns:filter>\n    </tns:GetTimesheet>\n  </soapenv:Body>\n</soapenv:Envelope>"
+        },
+        "description": "Read-only. Liefert die buchbaren Arbeitspakete (timesheetEntries.task) mit Attributen bcsOid + name. Die bcsOid eines Eintrags in die Collection-Variable workPackageOid kopieren."
+      }
+    },
+    {
+      "name": "2) CreateOrUpdateTimeRecord (Buchung schreiben)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/xml; charset=UTF-8" },
+          { "key": "SOAPAction", "value": "http://www.projektron.de/ws/timerecording/CreateOrUpdateTimeRecord" }
+        ],
+        "url": {
+          "raw": "https://{{host}}/webservices/TimerecordingWebService",
+          "protocol": "https",
+          "host": ["{{host}}"],
+          "path": ["webservices", "TimerecordingWebService"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://www.projektron.de/ws/timerecording\">\n  <soapenv:Header>\n    <wsse:Security xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\">\n      <wsse:UsernameToken>\n        <wsse:Username>{{bcsUser}}</wsse:Username>\n        <wsse:Password Type=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText\">{{bcsPassword}}</wsse:Password>\n      </wsse:UsernameToken>\n    </wsse:Security>\n  </soapenv:Header>\n  <soapenv:Body>\n    <tns:CreateOrUpdateTimeRecord>\n      <tns:id systemName=\"TimeHub-Postman\">postman-{{testDate}}-{{workPackageOid}}</tns:id>\n      <tns:target>\n        <tns:task><tns:bcsOid>{{workPackageOid}}</tns:bcsOid></tns:task>\n      </tns:target>\n      <tns:date>{{testDate}}</tns:date>\n      <tns:expense>90</tns:expense>\n      <tns:comment>Postman-Test</tns:comment>\n    </tns:CreateOrUpdateTimeRecord>\n  </soapenv:Body>\n</soapenv:Envelope>"
+        },
+        "description": "Schreibt/aktualisiert eine Buchung. expense=90 (Minuten? verifizieren). id ist stabil -> zweimaliges Senden = Upsert (ein Datensatz). Response enthaelt die Datensatz-OID (oid)."
+      }
+    }
+  ]
+}
