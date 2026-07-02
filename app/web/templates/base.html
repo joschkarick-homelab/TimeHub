@@ -208,6 +208,19 @@
     #user-menu { display: none; }
     #user-menu.open { display: block; }
 
+    /* ── Agent-Hub Safe-Area ────────────────────────────────────────────
+       Der Hub blendet oben links seine Floating-Buttons (App-Launcher + Chat)
+       über den Webview. Auf schmalen Viewports hugt unser zentrierter Header
+       den linken Rand → das Logo läge exakt darunter. Wir schieben die
+       Header-Zeile dann so weit nach rechts, dass sie neben den Hub-Buttons
+       beginnt. Nur mobil (<md) und nur wenn wirklich eingebettet (body[data-hub]);
+       auf Desktop sitzt der zentrierte Header ohnehin weit rechts vom Launcher.
+       Breite bei Bedarf über die Variable justierbar. */
+    :root { --hub-launcher-inset: 6.5rem; }
+    @media (max-width: 767px) {
+      body[data-hub] .th-hub-safe { padding-left: var(--hub-launcher-inset); }
+    }
+
     /* ── mindsquare theme ───────────────────────────────────────────── */
     [data-theme="mindsquare"] .bg-indigo-600                { background-color: #f06616 !important; }
     [data-theme="mindsquare"] .bg-indigo-500                { background-color: #ff6e1c !important; }
@@ -247,11 +260,11 @@
     html[data-theme="light"] .hover\:bg-slate-900:hover { background-color: var(--teal) !important; color: #1A1A1A !important; }
   </style>
 </head>
-<body class="text-slate-900 min-h-screen">
+<body class="text-slate-900 min-h-screen"{% if hub_embedded %} data-hub="true"{% endif %}>
 
   <header class="border-b border-slate-200" style="background-color: var(--surface);">
     <div class="max-w-5xl mx-auto px-4">
-      <div class="flex items-center h-14 gap-6">
+      <div class="th-hub-safe flex items-center h-14 gap-6">
 
         {# Logo #}
         <a href="{{ path('/') }}" class="th-outfit flex items-center gap-2 font-bold text-sm tracking-tight shrink-0"

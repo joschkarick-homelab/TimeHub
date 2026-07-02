@@ -187,6 +187,9 @@ def _ctx(request: Request, user: User | None, **extra) -> dict:
         "user": user,
         "theme": theme,
         "ai_enabled": bool(get_settings().anthropic_api_key),
+        # Embedded behind the Agent Hub → the Hub floats its launcher/chat
+        # buttons over the top-left. The header reserves a safe-area only then.
+        "hub_embedded": get_settings().resolved_auth_mode == "hub",
         **extra,
     }
 

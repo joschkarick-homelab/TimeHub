@@ -27,6 +27,15 @@ def test_html_pages_carry_no_cache(client):
     assert "no-cache" in r.headers.get("cache-control", "")
 
 
+def test_header_reserves_hub_launcher_safe_area(client):
+    """Embedded behind the Hub (AUTH_MODE=hub in tests): the body flags itself
+    so the header row keeps clear of the Hub's top-left floating buttons."""
+    r = client.get("/")
+    assert r.status_code == 200
+    assert 'data-hub="true"' in r.text
+    assert "th-hub-safe" in r.text
+
+
 def _request_with_root_path(root_path: str) -> Request:
     return Request(
         {
