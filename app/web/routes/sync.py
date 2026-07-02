@@ -227,9 +227,14 @@ def sync_salesforce_preview(
         if r["status"] == "blocked":
             skipped.append({"entry": r["entry"], "reason": r["reason"]})
             continue
-        group = grouped.setdefault((r["assignment_id"], r["period"]["id"]), {
+        period = r["period"]
+        # Ein noch anzulegender Monat hat keine Id — nach Monatsbeginn gruppieren,
+        # damit unterschiedliche Monate derselben PB nicht zusammenfallen.
+        group_key = (r["assignment_id"], period["id"] or period["start_date"])
+        group = grouped.setdefault(group_key, {
             "assignment": r["assignment"],
-            "period": r["period"],
+            "period": period,
+            "will_create_period": bool(r.get("period_to_create")),
             "entries": [],
             "total_hours": 0.0,
         })
@@ -321,13 +326,41 @@ def sync_salesforce_execute(
 
     # Same read-only resolution the preview uses — then POST the pushable ones.
     resolved, sf_error = sf_push.resolve_pushes(client, to_resolve, proj_lookup)
+    # Kontierungsmonate, die in diesem Lauf angelegt wurden, pro
+    # (Projektbesetzung × Monat) zwischenspeichern — damit mehrere Einträge im
+    # selben Monat sich EINEN neu angelegten Monat teilen (kein Duplikat).
+    created_periods: dict[tuple[str, str], dict] = {}
     for r in resolved:
         entry = r["entry"]
         if r["status"] == "blocked":
             _fail(entry, r["reason"])
             continue
+
+        period = r["period"]
+        payload = r["payload"]
+        period_created = False
+        # Fehlt der Kontierungsmonat, legen wir ihn jetzt an (Projektlaufzeit
+        # wurde in resolve_pushes bereits geprüft) und setzen die frische Id in
+        # den Payload ein.
+        if r.get("period_to_create"):
+            month_key = (r["assignment_id"], period["start_date"][:7])
+            period = created_periods.get(month_key)
+            if period is None:
+                try:
+                    period = sf_svc.create_monthly_period(
+                        client, r["assignment_id"],
+                        r["period_to_create"]["start"], r["period_to_create"]["end"],
+                    )
+                except sf_svc.SalesforceError as e:
+                    _fail(entry, f"Kontierungsmonat konnte nicht angelegt werden: {e}")
+                    continue
+                created_periods[month_key] = period
+            period_created = True
+            payload = dict(payload)
+            payload["Kontierungsmonat__c"] = period["id"]
+
         try:
-            new_id = sf_svc.create_zeiterfassung(client, r["payload"])
+            new_id = sf_svc.create_zeiterfassung(client, payload)
         except sf_svc.SalesforceError as e:
             _fail(entry, str(e))
             continue
@@ -347,18 +380,48 @@ def sync_salesforce_execute(
         # without its id and cause a duplicate on the next push.
         db.commit()
         results.append({"entry": entry, "status": "synced", "id": new_id,
-                        "assignment": r["assignment"], "period": r["period"],
+                        "assignment": r["assignment"], "period": period,
+                        "payload": payload, "period_created": period_created,
+                        "remote_value": r.get("remote_value") or "",
                         "warning": sf_svc.duration_snap_warning(entry.duration_minutes)})
 
     synced = sum(1 for r in results if r["status"] == "synced")
     failed = sum(1 for r in results if r["status"] == "failed")
     skipped_count = sum(1 for r in results if r["status"] == "skipped")
+
+    # Übersicht der tatsächlich geschriebenen Zeiten: eine Zeile pro
+    # Zeiterfassung, gruppiert nach (Projektbesetzung × Kontierungsmonat). Zeigt
+    # an, welcher Monat automatisch angelegt wurde.
+    written_grouped: dict[tuple, dict] = {}
+    period_created_count = 0
+    for r in results:
+        if r["status"] != "synced":
+            continue
+        assignment = r.get("assignment") or {}
+        period = r.get("period") or {}
+        gkey = (assignment.get("id"), period.get("id"))
+        group = written_grouped.setdefault(gkey, {
+            "assignment": assignment,
+            "period": period,
+            "created": r.get("period_created", False),
+            "rows": [],
+            "total_hours": 0.0,
+        })
+        group["rows"].append(r)
+        group["total_hours"] = round(
+            group["total_hours"] + r["entry"].duration_minutes / 60.0, 2
+        )
+    written_groups = list(written_grouped.values())
+    period_created_count = sum(1 for g in written_groups if g["created"])
+
     return templates.TemplateResponse(
         "sync_salesforce_execute.html",
         _ctx(
             request,
             user,
             results=results,
+            written_groups=written_groups,
+            period_created_count=period_created_count,
             sf_error=sf_error,
             synced=synced,
             failed=failed,

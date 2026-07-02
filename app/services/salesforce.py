@@ -10,6 +10,7 @@ module knows how to read them on demand.
 from __future__ import annotations
 
 import base64
+import calendar
 import hashlib
 import json
 import logging
@@ -20,7 +21,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from xml.sax.saxutils import escape
 
 from sqlalchemy import select
@@ -496,7 +497,7 @@ def get_assignment(client: SalesforceClient, assignment_id: str) -> dict | None:
         "SELECT Id, Name, Projekt__c, Projektbezeichnung__c, "
         "Mitarbeiter__c, MitarbeiterName__c, Mitarbeiternachname__c, "
         "Externe_Projektbesetzung__c, Externe_Projektbesetzung_Formel__c, "
-        "Geschlossen__c, Aktiv__c "
+        "Geschlossen__c, Aktiv__c, Projektstart__c, Projektende__c "
         f"FROM Projektbesetzung__c WHERE Id = '{aid}' LIMIT 1"
     )
     res = client.query(soql)
@@ -517,6 +518,10 @@ def get_assignment(client: SalesforceClient, assignment_id: str) -> dict | None:
         "is_external": bool(r.get("Externe_Projektbesetzung__c") and not r.get("Mitarbeiter__c")),
         "closed": bool(r.get("Geschlossen__c")),
         "active": r.get("Aktiv__c"),
+        # Projektlaufzeit der Projektbesetzung (ISO-Strings oder None) — Grundlage
+        # für das automatische Anlegen eines Kontierungsmonats.
+        "project_start": r.get("Projektstart__c"),
+        "project_end": r.get("Projektende__c"),
     }
 
 
@@ -671,6 +676,42 @@ def get_monthly_period(client: SalesforceClient, assignment_id: str,
     }
 
 
+def month_bounds(day: date) -> tuple[date, date]:
+    """Erster und letzter Tag des Kalendermonats, in dem ``day`` liegt.
+    Grundlage für einen automatisch angelegten Kontierungsmonat (ein KM pro
+    Kalendermonat — mindsquare-Konvention)."""
+    first = day.replace(day=1)
+    last = day.replace(day=calendar.monthrange(day.year, day.month)[1])
+    return first, last
+
+
+def _parse_sf_date(value) -> date | None:
+    """Ein SF-Datumsfeld (``YYYY-MM-DD`` oder None) als ``date``. Unlesbare/leere
+    Werte ergeben None (= keine Grenze)."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def period_creation_bounds(assignment: dict, day: date) -> tuple[date, date] | None:
+    """Kalendermonatsgrenzen für einen automatisch anzulegenden Kontierungsmonat,
+    ODER None, wenn die Projektlaufzeit der Projektbesetzung den Tag nicht abdeckt.
+
+    Permissiv bei fehlenden Laufzeitgrenzen: ein leeres Projektstart-/Projektende
+    bedeutet „keine Grenze auf dieser Seite“. Ansonsten muss ``day`` innerhalb
+    ``[Projektstart, Projektende]`` liegen."""
+    start = _parse_sf_date((assignment or {}).get("project_start"))
+    end = _parse_sf_date((assignment or {}).get("project_end"))
+    if start is not None and day < start:
+        return None
+    if end is not None and day > end:
+        return None
+    return month_bounds(day)
+
+
 def _coerce_bool(value) -> bool:
     """Liberal boolean conversion for the Remote flag from import transforms.
     Accepts true/1/yes/ja/x/wahr (case-insensitive); everything else is False."""
@@ -770,13 +811,14 @@ def _format_create_error(content: bytes) -> str:
     return str(data)[:300]
 
 
-def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
-    """POST eine Zeiterfassung__c in Salesforce und gib die neue Datensatz-Id
-    zurück. Bei einem 4xx-Antwortcode wird der SF-Fehler in einen
-    SalesforceError verpackt — die Fehlermeldung enthält Code + Beschreibung."""
+def _create_record(client: SalesforceClient, sobject: str, payload: dict) -> str:
+    """POST einen Datensatz für ``sobject`` und gib die neue Id zurück. Bei einem
+    4xx-Antwortcode wird der SF-Fehler in einen SalesforceError verpackt — die
+    Fehlermeldung enthält Code + Beschreibung."""
+    name = _ensure_sobject_name(sobject)
     client._ensure_login()
     url = (f"{client.instance_url}/services/data/v{client.api_version}/"
-           "sobjects/Zeiterfassung__c")
+           f"sobjects/{name}")
     body = json.dumps(payload).encode("utf-8")
     status_code, content = _http("POST", url, data=body, headers={
         "Authorization": f"Bearer {client.session_id}",
@@ -792,6 +834,41 @@ def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
     if not res.get("success") or not res.get("id"):
         raise SalesforceError(_format_create_error(content))
     return res["id"]
+
+
+def create_zeiterfassung(client: SalesforceClient, payload: dict) -> str:
+    """POST eine Zeiterfassung__c in Salesforce und gib die neue Datensatz-Id
+    zurück."""
+    return _create_record(client, "Zeiterfassung__c", payload)
+
+
+def create_monthly_period(client: SalesforceClient, assignment_id: str,
+                          start_date: date, end_date: date,
+                          *, status: str = "offen") -> dict:
+    """Lege einen Kontierungsmonat__c für DIESE Projektbesetzung an und liefere
+    ihn im selben Shape wie :func:`get_monthly_period` zurück (plus
+    ``created=True``). Nur die Pflichtfelder werden gesetzt — Name/Monat/Jahr
+    etc. leitet Salesforce selbst ab. Der Status wird auf ``offen`` gesetzt,
+    damit der Monat sofort bebuchbar ist."""
+    aid = _ensure_id(assignment_id)
+    payload = {
+        "Projektbesetzung__c": aid,
+        "Monatsbeginn__c": start_date.isoformat(),
+        "Monatsende__c": end_date.isoformat(),
+        "Status__c": status,
+    }
+    new_id = _create_record(client, "Kontierungsmonat__c", payload)
+    return {
+        "id": new_id,
+        # Der von SF vergebene Name (Autonummer) steht in der POST-Antwort nicht;
+        # für die Anzeige nutzen wir das Monat/Jahr-Label.
+        "name": start_date.strftime("%m/%Y"),
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "status": status,
+        "closed": False,
+        "created": True,
+    }
 
 
 def assignment_id_for(entry, project) -> str | None:

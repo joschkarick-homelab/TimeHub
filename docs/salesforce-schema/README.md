@@ -82,10 +82,35 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
 - keine `salesforce.assignment_id` am Projekt gepflegt ist,
 - die Projektbesetzung in SF nicht gefunden wird,
 - die Projektbesetzung `Geschlossen__c=true` ist,
-- kein Kontierungsmonat für (Projektbesetzung × Tagesdatum) existiert,
+- kein Kontierungsmonat für (Projektbesetzung × Tagesdatum) existiert **und**
+  die Projektlaufzeit der Projektbesetzung das Tagesdatum nicht abdeckt (liegt
+  der Tag in der Laufzeit, wird der Monat stattdessen automatisch angelegt —
+  siehe unten),
 - der Kontierungsmonat `Abgeschlossen__c=true` ist,
 - der Kontierungsmonat einen Status ≠ `offen` hat (also bereits eingereicht
   / in Bearbeitung / kontrolliert / Öffnung beantragt).
+
+## Automatisches Anlegen des Kontierungsmonats
+
+Fehlt der Kontierungsmonat für (Projektbesetzung × Tagesdatum), legt der
+Sync ihn beim Ausführen (nicht in der reinen Vorschau) selbst an — **sofern die
+Projektlaufzeit der Projektbesetzung es zulässt**:
+
+- **Laufzeit-Gate:** Das Tagesdatum muss innerhalb `[Projektstart__c,
+  Projektende__c]` der Projektbesetzung liegen. Fehlt eine der beiden Grenzen,
+  gilt sie als offen (permissiv). Liegt der Tag außerhalb, bleibt der Eintrag
+  blockiert.
+- **Grenzen:** Der neue `Kontierungsmonat__c` deckt den **vollen Kalendermonat**
+  des Tagesdatums ab (`Monatsbeginn__c` = 1., `Monatsende__c` = letzter Tag).
+- **Felder:** Gesetzt werden nur `Projektbesetzung__c`, `Monatsbeginn__c`,
+  `Monatsende__c` und `Status__c = offen`; Name/Monat/Jahr etc. leitet
+  Salesforce selbst ab.
+- **Ein Monat pro Lauf:** Mehrere Einträge desselben Monats teilen sich einen
+  einzigen neu angelegten Kontierungsmonat (kein Duplikat).
+
+Nach dem Sync zeigt die Ergebnisseite eine Tabelle „In Salesforce geschriebene
+Zeiten" — eine Zeile pro `Zeiterfassung__c`, gruppiert nach Kontierungsmonat,
+mit Vermerk, welcher Monat automatisch angelegt wurde.
 
 ## UI
 
@@ -114,8 +139,6 @@ Ein TimeHub-Eintrag erscheint in „Übersprungen", wenn:
    und beim manuellen Projekt-Anlegen sollen passende Salesforce-
    Projektbesetzungen aus den aktiven PBs des Users als Vorschlag angeboten
    werden (Match z. B. über Namensähnlichkeit / Projektbezeichnung).
-2. **Bestehender Kontierungsmonat nicht da:** Aktuell „skipped" mit Hinweis.
-   Soll TimeHub später einen anlegen können?
-3. **Konfigurierbarkeit:** Feld-/Objektnamen sind in der mindsquare-Org
+2. **Konfigurierbarkeit:** Feld-/Objektnamen sind in der mindsquare-Org
    hartcodiert. Wenn ihr in einer zweiten Org gegen ein anderes Schema
    syncen wollt, wird das ein Admin-Setting.

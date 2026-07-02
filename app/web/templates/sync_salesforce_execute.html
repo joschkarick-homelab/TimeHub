@@ -101,6 +101,102 @@
     </section>
   {% endif %}
 
+  {# --- In Salesforce geschriebene Zeiten: eine Zeile pro Zeiterfassung,
+        gruppiert nach Kontierungsmonat; markiert automatisch angelegte KM --- #}
+  {% if written_groups %}
+    <section class="bg-white border border-slate-200 rounded-lg overflow-hidden mb-4">
+      <div class="px-5 pt-5 pb-3">
+        <h2 class="font-semibold">In Salesforce geschriebene Zeiten</h2>
+        <p class="text-xs text-slate-500 mt-1">
+          Eine Zeile pro <code>Zeiterfassung__c</code>, gruppiert nach
+          Kontierungsmonat.
+          {% if period_created_count %}
+            <span class="text-indigo-700">
+              {{ period_created_count }} Kontierungsmonat{% if period_created_count != 1 %}e{% endif %}
+              wurde{% if period_created_count != 1 %}n{% endif %} dabei automatisch angelegt.
+            </span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="divide-y divide-slate-100">
+        {% for g in written_groups %}
+          <div class="px-5 py-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+              <div>
+                <div class="text-sm font-medium">
+                  {{ g.assignment.project_name or g.assignment.name or '(Projekt unbekannt)' }}
+                  <span class="text-slate-500 font-normal">
+                    · PB {{ g.assignment.name }}
+                    {% if g.assignment.resource_name %}· {{ g.assignment.resource_name }}{% endif %}
+                  </span>
+                </div>
+                <div class="text-xs text-slate-500 mt-0.5">
+                  Kontierungsmonat: <strong>{{ g.period.name }}</strong>
+                  ({{ g.period.start_date }} – {{ g.period.end_date }})
+                  {% if g.created %}
+                    <span class="ml-1 text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">
+                      ✚ automatisch angelegt
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="text-sm tabular-nums text-slate-600">
+                {{ g.rows|length }} Zeiterfassung{% if g.rows|length != 1 %}en{% endif %} ·
+                <strong>{{ g.total_hours }} h</strong>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm min-w-[640px]">
+                <thead class="bg-slate-50 text-slate-600 text-left">
+                  <tr>
+                    <th class="px-3 py-2">Datum</th>
+                    <th class="px-3 py-2">Beschreibung</th>
+                    <th class="px-3 py-2 whitespace-nowrap">Von–Bis</th>
+                    <th class="px-3 py-2 text-right">Dauer</th>
+                    <th class="px-3 py-2">Modus</th>
+                    <th class="px-3 py-2">Salesforce-Id</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for r in g.rows %}
+                    <tr class="border-t border-slate-100">
+                      <td class="px-3 py-2 whitespace-nowrap">{{ r.entry.entry_date | de_date }}</td>
+                      <td class="px-3 py-2 text-slate-600">{{ r.entry.description or '—' }}</td>
+                      <td class="px-3 py-2 tabular-nums whitespace-nowrap">
+                        {{ '%02d'|format(r.payload.Von_Stunde__c) }}:{{ r.payload.Von_Minute__c }}–{{ '%02d'|format(r.payload.Bis_Stunde__c) }}:{{ r.payload.Bis_Minute__c }}
+                      </td>
+                      <td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        {{ '%.2f'|format(r.entry.duration_minutes / 60) }} h
+                        {% if r.warning %}
+                          <span class="block text-[10px] text-amber-700">⚠ {{ r.warning }}</span>
+                        {% endif %}
+                      </td>
+                      <td class="px-3 py-2">
+                        {% if r.payload.Remote__c %}
+                          <span class="text-emerald-700">Remote</span>
+                        {% else %}
+                          <span class="text-slate-500">Vor Ort</span>
+                        {% endif %}
+                      </td>
+                      <td class="px-3 py-2 text-xs">
+                        {% if instance_url %}
+                          <a href="{{ instance_url }}/{{ r.id }}" target="_blank" rel="noopener"
+                             class="font-mono text-emerald-700 hover:underline">{{ r.id }}</a>
+                        {% else %}
+                          <span class="font-mono text-emerald-700">{{ r.id }}</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
     <div class="px-5 pt-5 pb-3">
       <h2 class="font-semibold">Alle verarbeiteten Einträge</h2>

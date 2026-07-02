@@ -98,6 +98,12 @@
               ({{ g.period.start_date }} – {{ g.period.end_date }})
               {% if g.period.status %}· Status: {{ g.period.status }}{% endif %}
             </p>
+            {% if g.will_create_period %}
+              <p class="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 mt-1 inline-block">
+                ✚ Kontierungsmonat {{ g.period.name }} ist in Salesforce noch nicht
+                vorhanden und wird beim Sync automatisch angelegt (Status „offen“).
+              </p>
+            {% endif %}
           </div>
           <div class="text-sm tabular-nums">
             {{ g.entries|length }} Eintrag{% if g.entries|length != 1 %}e{% endif %} ·

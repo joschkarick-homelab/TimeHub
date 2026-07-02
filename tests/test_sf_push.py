@@ -20,6 +20,8 @@ def _patch(monkeypatch, *, assignment, period):
     monkeypatch.setattr(sf_push.sf_svc, "build_zeiterfassung_payload",
                         lambda e, pid, rv: {"Kontierungsmonat__c": pid})
     monkeypatch.setattr(sf_push, "_remote_value", lambda e, p: None)
+    # period_creation_bounds keeps its real implementation so the runtime gate is
+    # exercised end-to-end from the assignment's project_start/project_end.
 
 
 def test_resolve_pushable_when_period_open(monkeypatch):
@@ -50,6 +52,52 @@ def test_resolve_blocks_when_assignment_missing(monkeypatch):
     results, _ = sf_push.resolve_pushes(None, [_entry()], {1: SimpleNamespace(id=1)})
     assert results[0]["status"] == "blocked"
     assert "nicht in SF gefunden" in results[0]["reason"]
+
+
+def test_resolve_auto_creates_period_when_runtime_allows(monkeypatch):
+    """Kein Kontierungsmonat, aber die Projektlaufzeit deckt den Tag ab → der
+    Push bleibt pushable und wird als 'Monat anlegen' vorgemerkt."""
+    from app.services import sf_push
+    _patch(monkeypatch,
+           assignment={"id": "a01000000000001", "closed": False,
+                       "project_start": "2026-01-01", "project_end": "2026-12-31"},
+           period=None)
+    results, sf_error = sf_push.resolve_pushes(None, [_entry()], {1: SimpleNamespace(id=1)})
+    assert sf_error is None
+    r = results[0]
+    assert r["status"] == "pushable"
+    assert r["period"]["id"] is None
+    assert r["period"]["created"] is True
+    # Voller Kalendermonat des Eintragsdatums (2026-05-27).
+    assert r["period_to_create"]["start"] == date(2026, 5, 1)
+    assert r["period_to_create"]["end"] == date(2026, 5, 31)
+    # Vorschau-Payload ohne Kontierungsmonat-Id (wird erst beim Anlegen gesetzt).
+    assert r["payload"]["Kontierungsmonat__c"] is None
+
+
+def test_resolve_auto_creates_period_when_runtime_dates_empty(monkeypatch):
+    """Leere Projektlaufzeit ist permissiv — Monat wird trotzdem vorgemerkt."""
+    from app.services import sf_push
+    _patch(monkeypatch,
+           assignment={"id": "a01000000000001", "closed": False,
+                       "project_start": None, "project_end": None},
+           period=None)
+    results, _ = sf_push.resolve_pushes(None, [_entry()], {1: SimpleNamespace(id=1)})
+    assert results[0]["status"] == "pushable"
+    assert results[0]["period_to_create"]["start"] == date(2026, 5, 1)
+
+
+def test_resolve_blocks_when_runtime_excludes_day(monkeypatch):
+    """Kein Kontierungsmonat UND der Tag liegt außerhalb der Projektlaufzeit →
+    blockiert (kein Monat wird angelegt)."""
+    from app.services import sf_push
+    _patch(monkeypatch,
+           assignment={"id": "a01000000000001", "closed": False,
+                       "project_start": "2026-01-01", "project_end": "2026-04-30"},
+           period=None)
+    results, _ = sf_push.resolve_pushes(None, [_entry()], {1: SimpleNamespace(id=1)})
+    assert results[0]["status"] == "blocked"
+    assert "Projektlaufzeit" in results[0]["reason"]
 
 
 def test_resolve_aborts_on_salesforce_error(monkeypatch):

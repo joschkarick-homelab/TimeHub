@@ -164,6 +164,64 @@ def test_build_zeiterfassung_payload_with_start_end_uses_duration_not_clock():
     assert payload["Remote__c"] is False  # no remote value passed
 
 
+def test_month_bounds_full_calendar_month():
+    from datetime import date as _date
+
+    from app.services.salesforce import month_bounds
+    assert month_bounds(_date(2026, 5, 27)) == (_date(2026, 5, 1), _date(2026, 5, 31))
+    assert month_bounds(_date(2026, 2, 10)) == (_date(2026, 2, 1), _date(2026, 2, 28))
+    assert month_bounds(_date(2024, 2, 10)) == (_date(2024, 2, 1), _date(2024, 2, 29))
+
+
+def test_period_creation_bounds_runtime_gate():
+    from datetime import date as _date
+
+    from app.services.salesforce import period_creation_bounds
+    day = _date(2026, 5, 27)
+    # Tag innerhalb der Laufzeit → voller Monat.
+    assert period_creation_bounds(
+        {"project_start": "2026-01-01", "project_end": "2026-12-31"}, day
+    ) == (_date(2026, 5, 1), _date(2026, 5, 31))
+    # Leere Grenzen sind permissiv.
+    assert period_creation_bounds({"project_start": None, "project_end": None}, day) == (
+        _date(2026, 5, 1), _date(2026, 5, 31))
+    # Tag vor Projektstart / nach Projektende → None (kein KM).
+    assert period_creation_bounds({"project_start": "2026-06-01"}, day) is None
+    assert period_creation_bounds({"project_end": "2026-04-30"}, day) is None
+
+
+def test_create_monthly_period_posts_required_fields(monkeypatch):
+    from datetime import date as _date
+
+    from app.services import salesforce as sfs
+    captured = {}
+
+    def fake_http(method, url, *, data=None, headers=None, timeout=30):
+        captured["method"] = method
+        captured["url"] = url
+        captured["data"] = data
+        return 201, b'{"id":"a0Q000NEW26","success":true,"errors":[]}'
+
+    monkeypatch.setattr(sfs, "_http", fake_http)
+    c = sfs.SalesforceClient("u", "p", "")
+    c.session_id = "SESSION"
+    c.instance_url = "https://test.salesforce.com"
+    period = sfs.create_monthly_period(
+        c, "a01000000000001", _date(2026, 5, 1), _date(2026, 5, 31)
+    )
+    assert period["id"] == "a0Q000NEW26"
+    assert period["created"] is True
+    assert period["name"] == "05/2026"
+    assert period["status"] == "offen" and period["closed"] is False
+    assert captured["url"].endswith("/sobjects/Kontierungsmonat__c")
+    import json as _json
+    sent = _json.loads(captured["data"])
+    assert sent["Projektbesetzung__c"] == "a01000000000001"
+    assert sent["Monatsbeginn__c"] == "2026-05-01"
+    assert sent["Monatsende__c"] == "2026-05-31"
+    assert sent["Status__c"] == "offen"
+
+
 def test_preview_skips_when_kontierungsmonat_not_open(client, monkeypatch):
     _login_session(client)
     _pid, eid = _make_project_and_entry(client, "SFPREVSTATUS")
@@ -597,6 +655,83 @@ def test_execute_creates_and_marks_synced(client, monkeypatch):
         assert e.sync_status == "synced"
         meta = (e.sync_metadata_override or {}).get("salesforce") or {}
         assert meta.get("zeiterfassung_id") == "a0Z000000000XYZ"
+
+
+def test_execute_auto_creates_kontierungsmonat_when_missing(client, monkeypatch):
+    """Fehlt der Kontierungsmonat, deckt die Projektlaufzeit den Tag aber ab,
+    wird er automatisch angelegt und die Zeiterfassung hängt daran."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFEXECKM")
+
+    import app.services.salesforce as sfs
+    assignment = dict(_FAKE_ASSIGNMENT, project_start="2026-01-01", project_end="2026-12-31")
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(assignment, id=aid))
+    # Kein Kontierungsmonat vorhanden.
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: None)
+
+    created = {}
+
+    def fake_create_period(_c, aid, start, end, **kw):
+        created["args"] = (aid, start, end)
+        return {"id": "a0Q000NEW26", "name": start.strftime("%m/%Y"),
+                "start_date": start.isoformat(), "end_date": end.isoformat(),
+                "status": "offen", "closed": False, "created": True}
+
+    posted = {}
+
+    def fake_create_zeit(_c, payload):
+        posted["payload"] = payload
+        return "a0Z000000000NEW"
+
+    monkeypatch.setattr(sfs, "create_monthly_period", fake_create_period)
+    monkeypatch.setattr(sfs, "create_zeiterfassung", fake_create_zeit)
+
+    r = client.post("/sync/salesforce/execute", data={"entry_ids": str(eid)})
+    assert r.status_code == 200, r.text
+    # KM wurde für den vollen Kalendermonat angelegt …
+    from datetime import date as _date
+    assert created["args"] == ("a01000000000001", _date(2026, 5, 1), _date(2026, 5, 31))
+    # … und die Zeiterfassung referenziert die neue KM-Id.
+    assert posted["payload"]["Kontierungsmonat__c"] == "a0Q000NEW26"
+    assert "automatisch angelegt" in r.text
+    assert "a0Z000000000NEW" in r.text
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "synced"
+
+
+def test_execute_blocks_when_missing_km_outside_runtime(client, monkeypatch):
+    """Fehlt der KM UND der Tag liegt außerhalb der Projektlaufzeit → kein
+    Anlegen, Eintrag wird als fehlgeschlagen markiert."""
+    _login_session(client)
+    _pid, eid = _make_project_and_entry(client, "SFEXECKMOUT")
+
+    import app.services.salesforce as sfs
+    assignment = dict(_FAKE_ASSIGNMENT, project_start="2026-01-01", project_end="2026-04-30")
+    monkeypatch.setattr(sfs, "client_from_settings", lambda db: _fake_client())
+    monkeypatch.setattr(sfs, "get_assignment", lambda _c, aid: dict(assignment, id=aid))
+    monkeypatch.setattr(sfs, "get_monthly_period", lambda _c, _aid, _date: None)
+
+    def must_not_create(*a, **kw):
+        raise AssertionError("create_monthly_period must not be called outside runtime")
+
+    monkeypatch.setattr(sfs, "create_monthly_period", must_not_create)
+    monkeypatch.setattr(sfs, "create_zeiterfassung",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("no POST expected")))
+
+    r = client.post("/sync/salesforce/execute", data={"entry_ids": str(eid)})
+    assert r.status_code == 200
+    assert "Projektlaufzeit" in r.text
+
+    from app.db import SessionLocal
+    from app.models import TimeEntry
+    with SessionLocal() as db:
+        e = db.get(TimeEntry, eid)
+        assert e.sync_status == "failed"
 
 
 def test_execute_marks_failed_on_sf_error_per_entry(client, monkeypatch):

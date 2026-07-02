@@ -25,7 +25,12 @@ def resolve_pushes(client, entries, proj_lookup) -> tuple[list[dict], str | None
 
     Returns ``(results, sf_error)``. Each result is a dict with ``entry`` and:
       * ``status == "pushable"`` → also ``assignment_id``, ``assignment``,
-        ``period``, ``payload``, ``remote_value``
+        ``period``, ``payload``, ``remote_value``. Fehlt der Kontierungsmonat,
+        die Projektlaufzeit lässt ihn aber zu, ist ``period`` ein synthetischer
+        Platzhalter (``id is None``, ``created=True``) und ``period_to_create``
+        trägt die Monatsgrenzen — die Execute-Stufe legt den Monat dann an,
+        bevor sie schreibt. ``payload`` ist in dem Fall bereits als Vorschau
+        aufgebaut (``Kontierungsmonat__c is None``).
       * ``status == "blocked"``  → also ``reason``
 
     A :class:`SalesforceError` during an assignment/period lookup aborts the run
@@ -68,11 +73,40 @@ def resolve_pushes(client, entries, proj_lookup) -> tuple[list[dict], str | None
                 sf_error = str(err)
                 break
         period = periods[key]
+        month_label = e.entry_date.strftime("%m/%Y")
         if period is None:
-            block(e, f"Kein Kontierungsmonat {e.entry_date.strftime('%m/%Y')} "
-                     f"für diese Projektbesetzung")
+            # Kein Kontierungsmonat vorhanden — automatisch anlegen, sofern die
+            # Projektlaufzeit der Projektbesetzung den Tag abdeckt. Angelegt wird
+            # erst in der Execute-Stufe (resolve bleibt read-only); hier wird der
+            # Push nur als „mit Neuanlage“ vorgemerkt.
+            bounds = sf_svc.period_creation_bounds(assignment, e.entry_date)
+            if bounds is None:
+                block(e, f"Kein Kontierungsmonat {month_label} für diese "
+                         f"Projektbesetzung und Projektlaufzeit lässt keinen zu")
+                continue
+            remote_value = _remote_value(e, project)
+            results.append({
+                "entry": e,
+                "status": "pushable",
+                "assignment_id": aid,
+                "assignment": assignment,
+                "period": {
+                    "id": None,
+                    "name": month_label,
+                    "start_date": bounds[0].isoformat(),
+                    "end_date": bounds[1].isoformat(),
+                    "status": "offen",
+                    "closed": False,
+                    "created": True,
+                },
+                "period_to_create": {"start": bounds[0], "end": bounds[1]},
+                # Vorschau-Payload ohne Kontierungsmonat-Id; die echte Id wird
+                # nach der Neuanlage in der Execute-Stufe eingesetzt.
+                "payload": sf_svc.build_zeiterfassung_payload(e, None, remote_value),
+                "remote_value": remote_value,
+            })
             continue
-        name = period.get("name") or e.entry_date.strftime("%m/%Y")
+        name = period.get("name") or month_label
         if period.get("closed"):
             block(e, f"Kontierungsmonat {name} ist abgeschlossen")
             continue
@@ -88,6 +122,7 @@ def resolve_pushes(client, entries, proj_lookup) -> tuple[list[dict], str | None
             "assignment_id": aid,
             "assignment": assignment,
             "period": period,
+            "period_to_create": None,
             "payload": sf_svc.build_zeiterfassung_payload(e, period["id"], remote_value),
             "remote_value": remote_value,
         })
