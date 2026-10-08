@@ -98,7 +98,29 @@ def test_authorize_url_carries_params(db):
     assert q["code_challenge"] == ["chal"]
     assert q["code_challenge_method"] == ["S256"]
     assert q["redirect_uri"] == ["https://h/m365/callback"]
-    assert "Calendars.Read" in q["scope"][0]
+    scope = q["scope"][0].split()
+    assert "Calendars.Read" in scope and "offline_access" in scope
+    # The account name comes from the ID token, so Graph User.Read is never
+    # requested — one fewer scope the tenant's admin consent must cover.
+    assert "User.Read" not in scope
+
+
+def _unsigned_id_token(claims: dict) -> str:
+    import jwt
+
+    return jwt.encode(claims, key="", algorithm="none")
+
+
+def test_account_from_tokens_reads_id_token():
+    tok = {"id_token": _unsigned_id_token({"preferred_username": "rick@mindsquare.de"})}
+    assert m365_svc.account_from_tokens(tok) == "rick@mindsquare.de"
+
+
+def test_account_from_tokens_tolerates_missing_or_junk():
+    assert m365_svc.account_from_tokens({}) == ""
+    assert m365_svc.account_from_tokens({"id_token": "not-a-jwt"}) == ""
+    tok = {"id_token": _unsigned_id_token({"email": "a@b.de"})}
+    assert m365_svc.account_from_tokens(tok) == "a@b.de"
 
 
 # ── event projection ─────────────────────────────────────────────────────────
