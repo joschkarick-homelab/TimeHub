@@ -102,7 +102,7 @@ def m365_callback(
             code_verifier=saved.get("verifier", ""),
             redirect_uri=saved.get("redirect_uri") or _redirect_uri(db, request),
         )
-        account = m365_svc.fetch_account(tokens["access_token"])
+        account = m365_svc.account_from_tokens(tokens)
     except m365_svc.M365Error as e:
         return _profile_redirect(request, error=str(e))
 

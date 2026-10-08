@@ -166,8 +166,8 @@
   <p class="text-xs text-slate-500 mb-3">
     Entra-App-Registrierung für die read-only Kalender-Ansicht. Lege in Azure/Entra
     eine App mit den <strong>delegierten</strong> Berechtigungen
-    <code>Calendars.Read</code>, <code>offline_access</code>, <code>User.Read</code>
-    an und trage hier Client-ID, Tenant und ein Client-Secret ein. Jede:r Nutzer:in
+    <code>Calendars.Read</code> und <code>offline_access</code>
+    (plus die Standard-Anmelde-Scopes) an und trage hier Client-ID, Tenant und ein Client-Secret ein. Jede:r Nutzer:in
     verbindet danach den eigenen Kalender im
     <a href="{{ path('/profile') }}" class="text-indigo-600 hover:underline">Profil</a>.
     Das Secret wird nur überschrieben, wenn ein Wert eingetragen wird.

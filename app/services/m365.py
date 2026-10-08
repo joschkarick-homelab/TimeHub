@@ -49,9 +49,11 @@ _DEFAULT_TENANT = "organizations"
 # in it — so the day grid (which thinks in local minutes-of-day) lines up.
 _DEFAULT_TIMEZONE = "Europe/Berlin"
 
-# Delegated scopes: offline_access → refresh token; Calendars.Read → the
-# signed-in user's calendar; the rest identify the account for display.
-SCOPES = "openid profile email offline_access User.Read Calendars.Read"
+# Delegated scopes, deliberately minimal: offline_access → refresh token;
+# Calendars.Read → the signed-in user's calendar; openid/profile/email identify
+# the account for display (read from the ID token, so no Graph User.Read). Every
+# extra scope is one more thing the tenant's admin-consent grant could miss.
+SCOPES = "openid profile email offline_access Calendars.Read"
 # SSO login only needs the standard sign-in scopes (no admin consent, no
 # offline_access/Graph) — just enough to get a validated ID token.
 OIDC_SCOPES = "openid profile email"
@@ -354,15 +356,23 @@ def _graph_get(access_token: str, path: str, *, params: dict | None = None,
     return resp.json()
 
 
-def fetch_account(access_token: str) -> str:
-    """Best-effort display name for the connected mailbox (UPN/mail)."""
-    data = _graph_get(
-        access_token, "/me", params={"$select": "userPrincipalName,mail,displayName"}
-    )
+def account_from_tokens(token_response: dict) -> str:
+    """Best-effort display name for the connected mailbox, read from the ID
+    token that comes back with ``openid`` — avoids a Graph ``/me`` call and the
+    ``User.Read`` scope it would need. Display-only, so the signature is not
+    checked here (the token arrived directly from Microsoft's token endpoint
+    over TLS in the same exchange); SSO login uses ``validate_id_token``."""
+    id_token = token_response.get("id_token")
+    if not id_token:
+        return ""
+    try:
+        claims = jwt.decode(id_token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return ""
     return (
-        data.get("userPrincipalName")
-        or data.get("mail")
-        or data.get("displayName")
+        claims.get("preferred_username")
+        or claims.get("email")
+        or claims.get("name")
         or ""
     )
 
